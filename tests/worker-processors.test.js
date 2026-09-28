@@ -7,6 +7,8 @@ const ExcelJS = require('exceljs');
 const { LocalTemporaryStorage } = require('../packages/storage/src');
 const { planVitalPagexTemplate } = require('../packages/shared/templates');
 const { createProcessors } = require('../apps/worker/src/processors');
+const { validateTemplateConfig } = require('../packages/template-engine/src/schema');
+const { resolveTemplateForHeaders } = require('../packages/template-engine/src/mapping');
 
 const limits = { maxRows: 1000, maxColumns: 100, maxSheets: 10, maxSampleRows: 50 };
 const headers = ['RUT', 'Nombre completo', 'Remuneracion', 'Periodo', 'Fecha Inicio', 'Fecha Término', 'AFP', 'dias_licencia', 'dias_pagados', 'base_utilizada', 'monto_rem_dias', 'aporte_pension', 'total_aporte_afp'];
@@ -55,7 +57,6 @@ async function setup(jobOverrides = {}, options = {}) {
   const events = [];
   const processors = createProcessors({
     jobs,
-    templates: { getVersion: async () => ({ id: 't1', ...planVitalPagexTemplate }) },
     storage,
     publish: async (jobId, type) => events.push(type),
     isCancelled: options.isCancelled || (async () => false),
@@ -65,7 +66,7 @@ async function setup(jobOverrides = {}, options = {}) {
   return { storage, jobs, events, processors };
 }
 
-test('analysis stores sheet metadata, default sheet and initial mapping without row values', async () => {
+test('analysis stores sheet metadata and selects the only sheet with data, without row values', async () => {
   const { jobs, events, processors } = await setup();
   await processors.analyze('job-1');
   const job = jobs.jobs.get('job-1');
@@ -73,7 +74,6 @@ test('analysis stores sheet metadata, default sheet and initial mapping without 
   assert.equal(job.status, 'READY');
   assert.equal(job.selectedSheet, 'RESUMEN');
   assert.deepEqual(job.workbookAnalysis.sheets.map((sheet) => sheet.name), ['RESUMEN', 'OTRA']);
-  assert.deepEqual(job.mapping.fecha_fin, { type: 'COLUMN', column: 'Fecha Término' });
   assert.equal(JSON.stringify(job).includes('SOTO'), false);
   assert.deepEqual(events, ['job:started', 'job:stage']);
 });
@@ -99,7 +99,9 @@ async function readyJob(overrides = {}, options = {}) {
   const context = await setup({}, options);
   await context.processors.analyze('job-1');
   const job = context.jobs.jobs.get('job-1');
-  Object.assign(job, { status: 'QUEUED_TRANSFORMATION', ...overrides });
+  const template = validateTemplateConfig({ ...planVitalPagexTemplate, ...(options.template || {}) });
+  const workingTemplate = resolveTemplateForHeaders(template, job.workbookAnalysis.sheets[0].headers);
+  Object.assign(job, { status: 'QUEUED_TRANSFORMATION', workingTemplate, ...overrides });
   context.events.length = 0;
   return context;
 }
@@ -122,6 +124,18 @@ test('transformation writes valid rows, reports progress and summarizes issues',
   assert.equal(sheet.rowCount, 3);
   assert.equal(sheet.getRow(2).getCell(1).value, '123456785');
   assert.equal(sheet.getRow(2).getCell(8).value, '09/05/2024');
+});
+
+test('transformation writes delimited latin1 text when the template asks for it', async () => {
+  const { jobs, storage, processors } = await readyJob({}, { template: { output: { format: 'DELIMITED', delimiter: '|', encoding: 'LATIN1', extension: 'txt' } } });
+  await processors.transform('job-1');
+  const job = jobs.jobs.get('job-1');
+
+  assert.match(job.outputStorageKey, /\.txt$/);
+  const lines = (await fs.readFile(storage.resolvePath(job.outputStorageKey), 'latin1')).trim().split('\r\n');
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^RUT\|APELLIDO PATERNO\|/);
+  assert.match(lines[1], /^123456785\|SOTO\|PEREZ\|JUAN\|\|01\/05\/2024\|03\/05\/2024\|09\/05\/2024\|/);
 });
 
 test('strict mode fails the job when any row has errors', async () => {

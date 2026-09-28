@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AlertCircle, Check, CheckCircle2, Clock, Download, FilePlus2, Loader2, Play, XCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Clock, Download, FilePlus2, Loader2, XCircle } from 'lucide-react';
 import { describeIssue } from '../../lib/templates';
 import { buttonStyles, Notice } from '../panel';
 
@@ -9,41 +9,6 @@ const STAGES = [
   { id: 'VALIDATING', label: 'Validando resultado' },
   { id: 'GENERATING', label: 'Generando archivo' }
 ];
-
-export function ReadyToRun({ job, template, evaluation, onTransform, isBusy }) {
-  const selectedSheet = job.sheets.find((sheet) => sheet.name === job.selectedSheet);
-
-  return (
-    <div>
-      <dl className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-md border border-ink-200 bg-ink-50 p-3">
-          <dt className="text-xs font-medium text-ink-500">Hoja</dt>
-          <dd className="mt-1 text-sm font-semibold text-ink-900">{job.selectedSheet}</dd>
-          <dd className="text-xs text-ink-500">{selectedSheet?.rowCount} filas</dd>
-        </div>
-        <div className="rounded-md border border-ink-200 bg-ink-50 p-3">
-          <dt className="text-xs font-medium text-ink-500">Mapeo</dt>
-          <dd className="mt-1 text-sm font-semibold text-ink-900">{evaluation.counts.ok}/{evaluation.counts.total} campos listos</dd>
-          <dd className="text-xs text-ink-500">{template.name}</dd>
-        </div>
-        <div className="rounded-md border border-ink-200 bg-ink-50 p-3">
-          <dt className="text-xs font-medium text-ink-500">Modo de validación</dt>
-          <dd className="mt-1 text-sm font-semibold text-ink-900">{job.mode === 'STRICT' ? 'Estricto' : 'Flexible'}</dd>
-          <dd className="text-xs text-ink-500">
-            {job.mode === 'STRICT' ? 'Cualquier error detiene el proceso.' : 'Las filas con error se excluyen y se informan.'}
-          </dd>
-        </div>
-      </dl>
-
-      <div className="mt-5 flex justify-end">
-        <button type="button" className={buttonStyles.primary} disabled={isBusy} onClick={onTransform}>
-          <Play size={16} aria-hidden="true" />
-          Transformar archivo
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export function RunProgress({ job, onCancel, isBusy }) {
   const currentIndex = Math.max(0, STAGES.findIndex((stage) => stage.id === job.stage));

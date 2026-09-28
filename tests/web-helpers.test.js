@@ -10,19 +10,15 @@ test('masks RUT digits keeping format, first digits and verifier', async () => {
   assert.equal(maskRut(null), null);
 });
 
-test('runs rows with the job mapping instead of the seed sources', () => {
-  const mapping = Object.fromEntries(planVitalPagexTemplate.columns.map((column) => [column.id, column.source]));
-  mapping.fecha_fin = { type: 'COLUMN', column: 'Fecha Termino' };
-
-  const [result] = runRows(
-    [{ rowNumber: 7, values: { RUT: '10.231.091-8', 'Nombre completo': 'NEIRA QUINCHAHUAL MARIA', 'Fecha Termino': '19-10-2015' } }],
-    planVitalPagexTemplate,
-    mapping
-  );
-
+test('runs rows through the template and reports fixed width overflow', () => {
+  const template = {
+    output: { format: 'FIXED_WIDTH' },
+    columns: [{ id: 'r', position: 1, outputName: 'RUT', source: { type: 'COLUMN', column: 'RUT' }, transformations: [{ type: 'RUT_FORMAT', format: 'NO_DOTS_NO_DASH' }], fixedWidth: { length: 5 } }]
+  };
+  const [result] = runRows([{ rowNumber: 7, values: { RUT: '10.231.091-8' } }], template);
   assert.equal(result.rowNumber, 7);
-  assert.equal(result.output['FEC. FIN'], '19/10/2015');
-  assert.equal(result.output.NOMBRE, 'MARIA');
+  assert.equal(result.output.RUT, '102310918');
+  assert.deepEqual(result.issues.map((issue) => issue.code), ['TOO_LONG']);
 });
 
 test('summary groups issues by column and code with exact counts', () => {

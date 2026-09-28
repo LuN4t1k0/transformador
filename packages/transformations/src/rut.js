@@ -39,6 +39,8 @@ function formatRut(value, format = 'NO_DOTS_DASH') {
   if (!parts) return null;
 
   if (format === 'NO_DOTS_NO_DASH') return `${parts.body}${parts.dv}`;
+  if (format === 'BODY') return parts.body;
+  if (format === 'DV') return parts.dv;
   if (format === 'NO_DOTS_DASH') return `${parts.body}-${parts.dv}`;
   if (format === 'DOTS_DASH') {
     const reversed = parts.body.split('').reverse();

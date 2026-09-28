@@ -12,7 +12,10 @@ function resolveSource(row, source) {
   if (source.type === 'COLUMN') return row[source.column];
   if (source.type === 'CONSTANT') return source.value;
   if (source.type === 'CONCAT') {
-    return source.parts.map((part) => resolveSource(row, part)).join(source.separator || '');
+    const values = source.parts
+      .map((part) => resolveSource(row, part))
+      .filter((value) => value !== null && value !== undefined && String(value).trim() !== '');
+    return values.length ? values.join(source.separator ?? '') : null;
   }
   if (source.type === 'SPLIT_WORD') {
     const words = splitWords(row[source.column]);
@@ -33,14 +36,15 @@ function applyTransformation(value, transformation) {
   throw new Error(`Unsupported transformation type: ${transformation.type}`);
 }
 
-function validateValue(value, validation) {
+// VALID_RUT checks the source value: the output may keep only part of the RUT (body or verifier).
+function validateValue(value, validation, sourceValue = value) {
   if (validation.type === 'REQUIRED') {
     return value !== null && value !== undefined && value !== ''
       ? null
       : { severity: 'error', code: 'REQUIRED', message: 'Required value is missing' };
   }
   if (validation.type === 'VALID_RUT') {
-    return isValidRut(value)
+    return isValidRut(sourceValue)
       ? null
       : { severity: 'error', code: 'INVALID_RUT', message: 'Invalid Chilean RUT' };
   }
@@ -58,7 +62,8 @@ function transformRow(row, template) {
   const columns = [...template.columns].sort((a, b) => a.position - b.position);
 
   for (const column of columns) {
-    let value = resolveSource(row, column.source);
+    const sourceValue = resolveSource(row, column.source);
+    let value = sourceValue;
 
     for (const transformation of column.transformations || []) {
       value = applyTransformation(value, transformation);
@@ -66,7 +71,7 @@ function transformRow(row, template) {
 
     const validations = [...(column.required ? [{ type: 'REQUIRED' }] : []), ...(column.validations || [])];
     for (const validation of validations) {
-      const issue = validateValue(value, validation);
+      const issue = validateValue(value, validation, sourceValue);
       if (issue) {
         issues.push({
           column: column.outputName,

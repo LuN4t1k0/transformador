@@ -60,7 +60,7 @@ export default function JobsPage() {
                     <td className="max-w-xs px-4 py-3">
                       <Link href={`/jobs/${job.id}`} className="block truncate font-medium text-cobalt-700 hover:underline">{job.fileName}</Link>
                     </td>
-                    <td className="px-4 py-3 text-ink-700">{job.template?.name}</td>
+                    <td className="px-4 py-3 text-ink-700">{job.template ? `${job.template.name} v${job.template.version}` : job.workingTemplate ? <span className="text-ink-500">Nueva, sin guardar</span> : <span className="text-ink-400">Sin elegir</span>}</td>
                     <td className="px-4 py-3"><JobStatusBadge status={job.status} /></td>
                     <td className="px-4 py-3 tabular-nums text-ink-500">{formatDateTime(job.createdAt)}</td>
                   </tr>

@@ -1,18 +1,18 @@
-const { analyzeWorkbook, readSheetRows, writeWorkbook, WorkbookLimitError } = require('../../../packages/excel-engine/src');
-const { transformRow } = require('../../../packages/template-engine/src/engine');
-const { createInitialMapping } = require('../../../packages/template-engine/src/mapping');
-const { buildEffectiveTemplate, createSummaryAccumulator, orderedColumns } = require('../../../packages/template-engine/src/run');
+const { analyzeWorkbook, readSheetRows, WorkbookLimitError } = require('../../../packages/excel-engine/src');
+const { writeOutput, outputFileInfo } = require('../../../packages/excel-engine/src/output');
+const { createSummaryAccumulator, orderedColumns, transformTemplateRow } = require('../../../packages/template-engine/src/run');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
 
 class JobCancelledError extends Error {}
 
-function pickDefaultSheet(sheets, template) {
-  const preferred = sheets.find((sheet) => sheet.name === template.input?.sheet && sheet.rowCount > 0);
-  return (preferred || sheets.find((sheet) => sheet.rowCount > 0) || sheets[0])?.name || null;
+// Only an unambiguous sheet is selected automatically; otherwise the user must choose.
+function pickDefaultSheet(sheets) {
+  const withData = sheets.filter((sheet) => sheet.rowCount > 0);
+  return withData.length === 1 ? withData[0].name : null;
 }
 
 // Pure job processors. Infrastructure (PostgreSQL, Redis, BullMQ) is injected so they can be tested in isolation.
-function createProcessors({ jobs, templates, storage, publish, isCancelled, limits, progressIntervalMs = 250, log = () => {} }) {
+function createProcessors({ jobs, storage, publish, isCancelled, limits, progressIntervalMs = 250, log = () => {} }) {
   async function deleteFiles(...keys) {
     await Promise.all(keys.filter(Boolean).map((key) => storage.delete(key).catch(() => {})));
   }
@@ -37,17 +37,12 @@ function createProcessors({ jobs, templates, storage, publish, isCancelled, limi
     await publish(jobId, 'job:started');
 
     try {
-      const template = await templates.getVersion(job.templateVersionId);
       const { sheets } = await analyzeWorkbook(storage.resolvePath(job.inputStorageKey), { limits, sampleRows: limits.maxSampleRows });
-      const selectedSheet = pickDefaultSheet(sheets, template);
-      const headers = sheets.find((sheet) => sheet.name === selectedSheet)?.headers || [];
-
       const updated = await jobs.update(jobId, {
         status: JOB_STATUSES.READY,
         stage: null,
         workbookAnalysis: { sheets },
-        selectedSheet,
-        mapping: createInitialMapping(template.columns, headers),
+        selectedSheet: pickDefaultSheet(sheets),
         confirmedIds: []
       }, { expectStatus: JOB_STATUSES.ANALYZING });
       if (updated) await publish(jobId, 'job:stage');
@@ -64,12 +59,11 @@ function createProcessors({ jobs, templates, storage, publish, isCancelled, limi
     if (!job) return;
     await publish(jobId, 'job:started');
 
-    const template = await templates.getVersion(job.templateVersionId);
-    const effectiveTemplate = buildEffectiveTemplate(template, job.mapping);
+    const template = job.workingTemplate;
     const columns = orderedColumns(template);
     const sheet = job.workbookAnalysis.sheets.find((candidate) => candidate.name === job.selectedSheet);
     const summary = createSummaryAccumulator();
-    const output = await storage.reserve({ extension: 'xlsx' });
+    const output = await storage.reserve({ extension: outputFileInfo(template.output).extension });
     let lastReport = 0;
 
     async function reportProgress(processed, force = false) {
@@ -83,7 +77,7 @@ function createProcessors({ jobs, templates, storage, publish, isCancelled, limi
     async function* outputRows() {
       let processed = 0;
       for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits })) {
-        const { output: values, issues } = transformRow(row.values, effectiveTemplate);
+        const { output: values, issues } = transformTemplateRow(row.values, template);
         processed += 1;
         const isValid = summary.add(row.rowNumber, issues);
         if (isValid) yield columns.map((column) => values[column.outputName] ?? null);
@@ -102,11 +96,7 @@ function createProcessors({ jobs, templates, storage, publish, isCancelled, limi
     }
 
     try {
-      await writeWorkbook(output.path, {
-        sheetName: template.output?.sheetName || 'DATOS',
-        headers: columns.map((column) => column.outputName),
-        rows: outputRows()
-      });
+      await writeOutput(output.path, { output: template.output, columns, rows: outputRows() });
     } catch (error) {
       await deleteFiles(output.key);
       if (error instanceof JobCancelledError) {

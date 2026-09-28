@@ -3,42 +3,81 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { AlertCircle, ArrowLeft, ArrowRight, Check, FileSearch, Loader2, ShieldCheck, WifiOff } from 'lucide-react';
-import { MappingCounts, MappingEditor } from '../../../components/mapping-editor';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, CloudOff, FileSearch, Loader2, ShieldCheck, WifiOff } from 'lucide-react';
+import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
+import { runRows } from '@previley-transformer/template-engine/src/run.js';
 import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
+import { StatusPill } from '../../../components/status-pill';
 import { formatTime, JobStatusBadge } from '../../../components/job-status';
-import { PreviewSection } from '../../../components/job/preview-section';
-import { ReadyToRun, RunProgress, RunResult, RunTerminal } from '../../../components/job/run-section';
-import { SheetSection } from '../../../components/job/sheet-section';
+import { GenerateStep } from '../../../components/job/generate-step';
+import { RunProgress, RunResult, RunTerminal } from '../../../components/job/run-section';
+import { SheetStep } from '../../../components/job/sheet-step';
+import { TemplateStep } from '../../../components/job/template-step';
+import { ColumnList } from '../../../components/template-editor/column-list';
+import { FilePreview } from '../../../components/template-editor/file-preview';
+import { OutputEditor } from '../../../components/template-editor/output-editor';
 import { api } from '../../../lib/api';
 import { formatFileSize } from '../../../lib/file-validation';
 import { useJob } from '../../../lib/hooks/use-job';
-import { evaluateMapping, updateMappingEntry } from '../../../lib/mapping';
+import { useWorkingTemplate } from '../../../lib/hooks/use-working-template';
+import { reviveSampleRows } from '../../../lib/template-editor';
+import { describeOutput } from '../../../lib/templates';
 
 const SECTIONS = [
-  { id: 'sheet', label: 'Hoja', title: 'Hoja de origen', description: 'Elige la hoja del Excel que contiene los datos a transformar.' },
-  { id: 'mapping', label: 'Mapeo', title: 'Mapeo de columnas', description: 'Cada campo de la plantilla toma su valor de una columna de la hoja. Revisa las sugerencias marcadas.' },
-  { id: 'preview', label: 'Vista previa', shortLabel: 'Previa', title: 'Vista previa', description: 'Compara el valor de origen con el resultado para algunas filas antes de procesar el archivo completo.' },
-  { id: 'run', label: 'Generar', title: 'Generar archivo', description: 'Transforma y valida todas las filas con la configuración actual.' }
+  { id: 'sheet', label: 'Hoja', title: 'Hoja de origen', description: 'Elige la hoja del Excel que contiene los datos.' },
+  { id: 'template', label: 'Plantilla', title: 'Plantilla', description: 'Elige el formato que pide el destino, o crea uno nuevo a partir de este archivo.' },
+  { id: 'columns', label: 'Columnas', title: 'Columnas del archivo final', description: 'Define qué columnas lleva el archivo, de dónde sale cada una y en qué formato.' },
+  { id: 'output', label: 'Salida', title: 'Formato del archivo', description: 'Tipo de archivo, separador, codificación y largos.' },
+  { id: 'preview', label: 'Vista previa', shortLabel: 'Previa', title: 'Vista previa', description: 'Así se verá el archivo final con las primeras filas.' },
+  { id: 'generate', label: 'Generar', title: 'Generar archivo', description: 'Guarda la plantilla si quieres reutilizarla y genera el archivo con todas las filas.' }
 ];
 
 const RUNNING = new Set(['QUEUED_TRANSFORMATION', 'TRANSFORMING', 'VALIDATING', 'GENERATING']);
 const ANALYZING = new Set(['QUEUED_ANALYSIS', 'ANALYZING']);
 
-function SectionTabs({ activeId, onSelect, evaluation }) {
-  const pending = evaluation.counts.pending + evaluation.counts.missing;
-
+function Counts({ counts }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border border-ink-200 bg-white p-1" role="tablist" aria-label="Secciones del job">
+    <span className="flex flex-wrap gap-1.5">
+      {counts.pending ? <StatusPill value="REQUIERE_CONFIRMACION" label={`${counts.pending} por confirmar`} /> : null}
+      {counts.missing ? <StatusPill value="FALTANTE" label={`${counts.missing} sin origen`} /> : null}
+      {!counts.pending && !counts.missing ? <StatusPill value="OK" label="Todo resuelto" /> : null}
+    </span>
+  );
+}
+
+function SaveIndicator({ saveState }) {
+  if (saveState.status === 'saving' || saveState.status === 'pending') {
+    return <span className="inline-flex items-center gap-1 text-xs text-ink-500"><Loader2 size={12} className="animate-spin" aria-hidden="true" />Guardando cambios…</span>;
+  }
+  if (saveState.status === 'error') {
+    return <span className="inline-flex items-center gap-1 text-xs text-rose-700"><CloudOff size={12} aria-hidden="true" />No se guardaron los cambios</span>;
+  }
+  return <span className="inline-flex items-center gap-1 text-xs text-ink-400"><Check size={12} aria-hidden="true" />Cambios guardados</span>;
+}
+
+function useSample(jobId, sheetName, enabled) {
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    let active = true;
+    setRows(null);
+    if (!enabled || !sheetName) return undefined;
+    api.getSample(jobId)
+      .then((sample) => active && setRows(reviveSampleRows(sample.rows)))
+      .catch(() => active && setRows([]));
+    return () => {
+      active = false;
+    };
+  }, [jobId, sheetName, enabled]);
+  return rows;
+}
+
+function SectionTabs({ activeId, onSelect, badges }) {
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-lg border border-ink-200 bg-white p-1" role="tablist" aria-label="Pasos del job">
       {SECTIONS.map((section, index) => {
         const isActive = section.id === activeId;
-        const badge = section.id === 'mapping' && pending
-          ? <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-700">{pending}<span className="sr-only"> pendientes</span></span>
-          : section.id === 'sheet' || (section.id === 'mapping' && !pending)
-            ? <Check size={14} className="text-mint-600" aria-label="completo" />
-            : null;
-
+        const badge = badges[section.id];
         return (
           <button
             key={section.id}
@@ -51,10 +90,13 @@ function SectionTabs({ activeId, onSelect, evaluation }) {
             }`}
             onClick={() => onSelect(section.id)}
           >
-            <span className="hidden text-xs tabular-nums text-ink-400 sm:inline">{index + 1}</span>
+            <span className="hidden text-xs tabular-nums text-ink-400 lg:inline">{index + 1}</span>
             <span className="sm:hidden" aria-hidden="true">{section.shortLabel || section.label}</span>
             <span className="sr-only sm:not-sr-only">{section.label}</span>
-            {badge}
+            {badge === true ? <Check size={14} className="text-mint-600" aria-label="completo" /> : null}
+            {typeof badge === 'number' ? (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-700">{badge}<span className="sr-only"> pendientes</span></span>
+            ) : null}
           </button>
         );
       })}
@@ -62,39 +104,38 @@ function SectionTabs({ activeId, onSelect, evaluation }) {
   );
 }
 
-function MappingRequired({ evaluation, onGoToMapping }) {
+function Prerequisite({ message, actionLabel, onAction }) {
   return (
     <div className="flex flex-col items-center rounded-lg border border-dashed border-ink-300 px-4 py-10 text-center">
       <FileSearch className="text-ink-400" size={26} aria-hidden="true" />
-      <p className="mt-2 text-sm font-semibold text-ink-900">Primero resuelve el mapeo</p>
-      <div className="mt-2"><MappingCounts counts={evaluation.counts} /></div>
-      <button type="button" className={`${buttonStyles.secondary} mt-4`} onClick={onGoToMapping}>
-        Ir al mapeo
+      <p className="mt-2 text-sm font-semibold text-ink-900">{message}</p>
+      <button type="button" className={`${buttonStyles.secondary} mt-4`} onClick={onAction}>
+        {actionLabel}
         <ArrowRight size={16} aria-hidden="true" />
       </button>
     </div>
   );
 }
 
-function getNextAction(job, evaluation, activeId) {
-  if (job.status === 'READY') {
-    if (!evaluation.isComplete) {
-      return activeId === 'mapping'
-        ? { hint: 'Resuelve los campos marcados en el mapeo para continuar.' }
-        : { section: 'mapping', label: 'Resolver mapeo', hint: 'Hay campos pendientes antes de continuar.' };
-    }
-    if (activeId === 'run') return { hint: 'Todo listo. Pulsa «Transformar archivo» para procesar todas las filas.' };
-    if (activeId === 'preview') return { section: 'run', label: 'Ir a generar', hint: 'Si la vista previa se ve bien, genera el archivo.' };
-    return { section: 'preview', label: 'Ver vista previa', hint: 'El mapeo está completo. Revisa el resultado antes de generar.' };
-  }
+function getNextStep(job, template, evaluation, activeId) {
   if (ANALYZING.has(job.status)) return { hint: 'Estamos leyendo las hojas y encabezados del archivo.' };
   if (RUNNING.has(job.status)) return { hint: 'Procesando todas las filas.' };
   if (job.status === 'READY_TO_DOWNLOAD') return { hint: 'El archivo está listo. Descárgalo antes de que expire.' };
-  return { hint: 'Este job terminó. Crea uno nuevo para procesar otro archivo.' };
+  if (job.status !== 'READY') return { hint: 'Este job terminó. Crea uno nuevo para procesar otro archivo.' };
+  if (!job.selectedSheet) return { section: 'sheet', label: 'Elegir hoja', hint: 'El archivo tiene varias hojas con datos: elige con cuál trabajar.' };
+  if (!template) return { section: 'template', label: 'Elegir plantilla', hint: 'Elige una plantilla guardada o crea una nueva desde este archivo.' };
+  if (!evaluation.isComplete) {
+    return activeId === 'columns'
+      ? { hint: 'Resuelve las columnas marcadas para continuar.' }
+      : { section: 'columns', label: 'Resolver columnas', hint: 'Hay columnas pendientes antes de generar.' };
+  }
+  if (activeId === 'generate') return { hint: 'Todo listo. Decide si guardas la plantilla y genera el archivo.' };
+  if (activeId === 'preview') return { section: 'generate', label: 'Ir a generar', hint: 'Si la vista previa se ve bien, genera el archivo.' };
+  return { section: 'preview', label: 'Ver vista previa', hint: 'Las columnas están listas. Revisa el resultado antes de generar.' };
 }
 
-function JobContextPanel({ job, template, evaluation, activeId, onGo }) {
-  const next = getNextAction(job, evaluation, activeId);
+function ContextPanel({ job, template, evaluation, saveState, activeId, onGo }) {
+  const next = getNextStep(job, template, evaluation, activeId);
 
   return (
     <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
@@ -108,18 +149,22 @@ function JobContextPanel({ job, template, evaluation, activeId, onGo }) {
           </div>
           <div>
             <dt className="text-xs text-ink-500">Hoja</dt>
-            <dd className="font-medium text-ink-900">{job.selectedSheet || <span className="text-ink-400">Pendiente de análisis</span>}</dd>
+            <dd className="font-medium text-ink-900">{job.selectedSheet || <span className="text-ink-400">Sin elegir</span>}</dd>
           </div>
           <div>
             <dt className="text-xs text-ink-500">Plantilla</dt>
-            <dd className="font-medium text-ink-900">{template.name}</dd>
+            <dd className="font-medium text-ink-900">
+              {job.template ? `${job.template.name} v${job.template.version}` : template ? 'Nueva, sin guardar' : <span className="text-ink-400">Sin elegir</span>}
+            </dd>
+            {template ? <dd className="text-xs text-ink-500">{describeOutput(template.output)}</dd> : null}
           </div>
-          {job.status === 'READY' ? (
+          {evaluation && job.status === 'READY' ? (
             <div>
-              <dt className="text-xs text-ink-500">Mapeo</dt>
-              <dd className="mt-1"><MappingCounts counts={evaluation.counts} /></dd>
+              <dt className="text-xs text-ink-500">Columnas</dt>
+              <dd className="mt-1"><Counts counts={evaluation.counts} /></dd>
             </div>
           ) : null}
+          {template && job.status === 'READY' ? <dd><SaveIndicator saveState={saveState} /></dd> : null}
         </dl>
       </section>
 
@@ -151,31 +196,44 @@ function downloadBlob({ fileName, blob }) {
   URL.revokeObjectURL(url);
 }
 
-function AnalysisInProgress() {
-  return (
-    <p className="flex items-center gap-2 text-sm text-ink-700">
-      <Loader2 size={16} className="animate-spin text-cobalt-600" aria-hidden="true" />
-      Analizando hojas, encabezados y tipos de columna…
-    </p>
-  );
+function initialSection(job) {
+  if (!job.selectedSheet) return 'sheet';
+  if (!job.workingTemplate) return 'template';
+  return 'columns';
 }
 
 function JobWorkspace({ job, setJob }) {
-  const { template } = job;
-  const [activeId, setActiveId] = useState('sheet');
+  const { draft, update, flush, reset, saveState } = useWorkingTemplate(job, setJob);
+  const [activeId, setActiveId] = useState(() => initialSection(job));
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [sampleIndex, setSampleIndex] = useState(0);
   const headingRef = useRef(null);
   const hasMounted = useRef(false);
 
-  const evaluation = useMemo(
-    () => evaluateMapping(template.columns, job.mapping, new Set(job.confirmedIds)),
-    [template, job.mapping, job.confirmedIds]
-  );
   const isEditable = job.status === 'READY';
+  const template = draft.template;
+  const sheet = job.sheets.find((candidate) => candidate.name === job.selectedSheet);
+  const headers = sheet?.headers || null;
+  const sampleRows = useSample(job.id, job.selectedSheet, isEditable);
+
+  const evaluation = useMemo(
+    () => (template && headers ? evaluateColumns(template.columns, headers, new Set(draft.confirmedIds)) : null),
+    [template, headers, draft.confirmedIds]
+  );
+  const results = useMemo(() => {
+    if (!template || !sampleRows?.length) return null;
+    try {
+      return runRows(sampleRows, template);
+    } catch {
+      return null;
+    }
+  }, [template, sampleRows]);
+  const sampleAt = Math.min(sampleIndex, (sampleRows?.length || 1) - 1);
+  const sample = results?.length ? { values: sampleRows[sampleAt].values, result: results[sampleAt] } : null;
+
   const sectionId = isEditable ? activeId : 'run';
   const section = SECTIONS.find((candidate) => candidate.id === sectionId);
-  const selectedSheet = job.sheets.find((sheet) => sheet.name === job.selectedSheet);
 
   useEffect(() => {
     if (!hasMounted.current) {
@@ -189,56 +247,120 @@ function JobWorkspace({ job, setJob }) {
     setIsBusy(true);
     setActionError('');
     try {
-      const result = await action();
-      if (result?.id) setJob(result);
+      return await action();
     } catch (error) {
       setActionError(error.message || 'No pudimos completar la acción. Inténtalo de nuevo.');
+      return null;
     } finally {
       setIsBusy(false);
     }
   }
 
-  function saveMapping(mapping, confirmedIds) {
-    setJob({ ...job, mapping, confirmedIds });
-    run(() => api.saveMapping(job.id, { mapping, confirmedIds }));
+  async function replaceFromServer(action, nextSection) {
+    if (!(await flush())) return;
+    const result = await run(action);
+    if (result?.id) {
+      reset(result);
+      const target = typeof nextSection === 'function' ? nextSection(result) : nextSection;
+      if (target) setActiveId(target);
+    }
   }
 
-  function handleMappingChange(column, detectedColumn) {
-    saveMapping(
-      { ...job.mapping, [column.id]: updateMappingEntry(column, detectedColumn) },
-      job.confirmedIds.filter((id) => id !== column.id)
-    );
+  // A saved template that fully matches the sheet needs no edits: go straight to the preview.
+  function sectionAfterApply(result) {
+    const resultHeaders = result.sheets.find((candidate) => candidate.name === result.selectedSheet)?.headers || [];
+    return evaluateColumns(result.workingTemplate.columns, resultHeaders, new Set(result.confirmedIds)).isComplete ? 'preview' : 'columns';
   }
 
-  function handleConfirm(columnId) {
-    saveMapping(job.mapping, [...new Set([...job.confirmedIds, columnId])]);
+  function changeColumns(columns, options) {
+    update((current) => {
+      let confirmedIds = current.confirmedIds;
+      if (options?.unconfirm) confirmedIds = confirmedIds.filter((id) => id !== options.unconfirm);
+      if (options?.confirm) confirmedIds = [...new Set([...confirmedIds, ...options.confirm])];
+      return { template: { ...current.template, columns }, confirmedIds };
+    });
   }
+
+  async function transform(payload) {
+    if (!(await flush())) return;
+    if (payload) {
+      const saved = await run(() => api.saveJobTemplate(job.id, payload));
+      if (!saved?.id) return;
+      reset(saved);
+    }
+    const queued = await run(() => api.transformJob(job.id));
+    if (queued?.id) setJob(queued);
+  }
+
+  const pending = evaluation ? evaluation.counts.pending + evaluation.counts.missing : 0;
+  const badges = {
+    sheet: Boolean(job.selectedSheet),
+    template: Boolean(template),
+    columns: template ? (pending || true) : null
+  };
+
+  const generateBlocked = saveState.status === 'error'
+    ? `No se pudieron guardar los cambios: ${saveState.error?.message}`
+    : evaluation && !evaluation.isComplete ? `Resuelve ${pending} ${pending === 1 ? 'columna pendiente' : 'columnas pendientes'} en «Columnas».` : null;
 
   function renderSection() {
     if (!isEditable) {
-      if (ANALYZING.has(job.status)) return <AnalysisInProgress />;
-      if (RUNNING.has(job.status)) return <RunProgress job={job} isBusy={isBusy} onCancel={() => run(() => api.cancelJob(job.id))} />;
-      if (job.status === 'READY_TO_DOWNLOAD') {
-        return <RunResult job={job} isBusy={isBusy} onDownload={() => run(async () => downloadBlob(await api.downloadJob(job.id)))} />;
+      if (ANALYZING.has(job.status)) {
+        return <p className="flex items-center gap-2 text-sm text-ink-700"><Loader2 size={16} className="animate-spin text-cobalt-600" aria-hidden="true" />Analizando hojas, encabezados y tipos de columna…</p>;
       }
+      if (RUNNING.has(job.status)) return <RunProgress job={job} isBusy={isBusy} onCancel={() => run(async () => setJob(await api.cancelJob(job.id)))} />;
+      if (job.status === 'READY_TO_DOWNLOAD') return <RunResult job={job} isBusy={isBusy} onDownload={() => run(async () => downloadBlob(await api.downloadJob(job.id)))} />;
       return <RunTerminal job={job} />;
     }
+
     if (sectionId === 'sheet') {
-      return <SheetSection job={job} template={template} isBusy={isBusy} onSelect={(name) => run(() => api.selectSheet(job.id, name))} />;
+      return <SheetStep job={job} isBusy={isBusy} onSelect={(name) => replaceFromServer(() => api.selectSheet(job.id, name), template ? null : 'template')} />;
     }
-    if (sectionId === 'mapping') {
+    if (!job.selectedSheet) return <Prerequisite message="Primero elige la hoja con la que quieres trabajar" actionLabel="Ir a Hoja" onAction={() => setActiveId('sheet')} />;
+    if (sectionId === 'template') {
+      return <TemplateStep job={{ ...job, workingTemplate: template }} isBusy={isBusy} onApply={(selection) => replaceFromServer(() => api.applyTemplate(job.id, selection), sectionAfterApply)} />;
+    }
+    if (!template) return <Prerequisite message="Primero elige o crea una plantilla" actionLabel="Ir a Plantilla" onAction={() => setActiveId('template')} />;
+
+    if (sectionId === 'columns') {
       return (
-        <MappingEditor
-          evaluation={evaluation}
-          detectedColumns={selectedSheet.headers}
-          onChange={handleMappingChange}
-          onConfirm={handleConfirm}
-        />
+        <div className="space-y-3">
+          {sampleRows?.length > 1 ? (
+            <label className="flex items-center gap-2 text-xs text-ink-500">
+              Ejemplos con la fila
+              <select className="h-7 rounded-md border border-ink-200 bg-white px-1 text-xs text-ink-900" value={sampleAt} onChange={(event) => setSampleIndex(Number(event.target.value))}>
+                {sampleRows.map((row, index) => <option key={row.rowNumber} value={index}>{row.rowNumber}</option>)}
+              </select>
+            </label>
+          ) : null}
+          <ColumnList
+            columns={template.columns}
+            onChange={changeColumns}
+            headers={headers}
+            evaluation={evaluation}
+            onConfirm={(id) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, id])] }))}
+            sample={sample}
+            isFixedWidth={template.output.format === 'FIXED_WIDTH'}
+          />
+        </div>
       );
     }
-    if (!evaluation.isComplete) return <MappingRequired evaluation={evaluation} onGoToMapping={() => setActiveId('mapping')} />;
-    if (sectionId === 'preview') return <PreviewSection job={job} template={template} />;
-    return <ReadyToRun job={job} template={template} evaluation={evaluation} isBusy={isBusy} onTransform={() => run(() => api.transformJob(job.id))} />;
+    if (sectionId === 'output') return <OutputEditor template={template} onChange={(next) => update((current) => ({ ...current, template: next }))} />;
+    if (sectionId === 'preview') {
+      if (!results) return <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>;
+      return <FilePreview template={template} results={results} />;
+    }
+    return (
+      <GenerateStep
+        job={job}
+        template={template}
+        evaluation={evaluation}
+        isBusy={isBusy}
+        blockedReason={generateBlocked}
+        onSave={(payload) => replaceFromServer(() => api.saveJobTemplate(job.id, payload))}
+        onTransform={transform}
+      />
+    );
   }
 
   const sectionIndex = SECTIONS.findIndex((candidate) => candidate.id === sectionId);
@@ -248,15 +370,18 @@ function JobWorkspace({ job, setJob }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0 space-y-4">
-        {isEditable ? <SectionTabs activeId={sectionId} onSelect={setActiveId} evaluation={evaluation} /> : null}
-
+        {isEditable ? <SectionTabs activeId={sectionId} onSelect={setActiveId} badges={badges} /> : null}
         {actionError ? <Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice> : null}
+        {isEditable && saveState.status === 'error' ? (
+          <Notice tone="danger" icon={CloudOff} role="alert">No se guardaron los últimos cambios: {saveState.error?.message}</Notice>
+        ) : null}
 
         <div id="job-section-panel" role={isEditable ? 'tabpanel' : undefined}>
           <Panel
             headingRef={headingRef}
             title={isEditable ? section.title : ANALYZING.has(job.status) ? 'Analizando archivo' : RUNNING.has(job.status) ? 'Procesando archivo' : 'Resultado'}
             description={isEditable ? section.description : null}
+            actions={isEditable && template && ['columns', 'output'].includes(sectionId) ? <SaveIndicator saveState={saveState} /> : null}
           >
             {renderSection()}
           </Panel>
@@ -280,7 +405,7 @@ function JobWorkspace({ job, setJob }) {
         ) : null}
       </div>
 
-      <JobContextPanel job={job} template={template} evaluation={evaluation} activeId={sectionId} onGo={setActiveId} />
+      <ContextPanel job={job} template={template} evaluation={evaluation} saveState={saveState} activeId={sectionId} onGo={setActiveId} />
     </div>
   );
 }
@@ -316,7 +441,7 @@ export default function JobPage() {
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-semibold text-ink-900">{job.fileName}</h1>
                 <p className="mt-1 text-sm text-ink-500">
-                  {job.template.name} · creado a las {formatTime(job.createdAt)} · <span className="font-mono text-xs">{job.id}</span>
+                  Creado a las {formatTime(job.createdAt)} · <span className="font-mono text-xs">{job.id}</span>
                 </p>
               </div>
               <JobStatusBadge status={job.status} />
@@ -328,7 +453,7 @@ export default function JobPage() {
                 </Notice>
               </div>
             ) : null}
-            <JobWorkspace job={job} setJob={setJob} />
+            <JobWorkspace key={job.id} job={job} setJob={setJob} />
           </>
         )}
       </div>

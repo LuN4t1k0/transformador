@@ -1,13 +1,5 @@
 const { transformRow } = require('./engine');
 
-// The job mapping overrides the template's default sources; everything else comes from the template version.
-function buildEffectiveTemplate(template, mapping) {
-  return {
-    ...template,
-    columns: template.columns.map((column) => ({ ...column, source: mapping[column.id] || { type: 'EMPTY' } }))
-  };
-}
-
 function orderedColumns(template) {
   return [...template.columns].sort((a, b) => a.position - b.position);
 }
@@ -56,9 +48,35 @@ function createSummaryAccumulator({ maxGroups = 100, sampleRowsPerGroup = 10 } =
   };
 }
 
-function runRows(rows, template, mapping) {
-  const effectiveTemplate = buildEffectiveTemplate(template, mapping);
-  return rows.map(({ rowNumber, values }) => ({ rowNumber, ...transformRow(values, effectiveTemplate) }));
+function formatFixedWidthValue(value, { length, align = 'LEFT', padChar = ' ' }) {
+  const text = value === null || value === undefined ? '' : String(value);
+  if (text.length >= length) return text.slice(0, length);
+  return align === 'RIGHT' ? text.padStart(length, padChar) : text.padEnd(length, padChar);
 }
 
-module.exports = { buildEffectiveTemplate, orderedColumns, createSummaryAccumulator, runRows };
+// Fixed width files must not silently lose data: values longer than the column are validation errors.
+function checkFixedWidth(columns, output) {
+  const issues = [];
+  for (const column of columns) {
+    if (!column.fixedWidth) continue;
+    const value = output[column.outputName];
+    const length = value === null || value === undefined ? 0 : String(value).length;
+    if (length > column.fixedWidth.length) {
+      issues.push({ column: column.outputName, rule: 'FIXED_WIDTH', severity: 'error', code: 'TOO_LONG', message: `Value exceeds ${column.fixedWidth.length} characters` });
+    }
+  }
+  return issues;
+}
+
+// Runs the full template (sources, transformations, validations and output checks) on a row.
+function transformTemplateRow(values, template) {
+  const result = transformRow(values, template);
+  if (template.output?.format === 'FIXED_WIDTH') result.issues.push(...checkFixedWidth(template.columns, result.output));
+  return result;
+}
+
+function runRows(rows, template) {
+  return rows.map(({ rowNumber, values }) => ({ rowNumber, ...transformTemplateRow(values, template) }));
+}
+
+module.exports = { orderedColumns, createSummaryAccumulator, runRows, transformTemplateRow, checkFixedWidth, formatFixedWidthValue };

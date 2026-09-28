@@ -5,11 +5,13 @@ const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
 const { createPool, migrate } = require('../../../packages/shared/src/db');
 const { createJobRepository, createTemplateRepository, createUserRepository } = require('../../../packages/shared/src/repositories');
 const { seedTemplates } = require('../../../packages/shared/templates');
+const { validateTemplateConfig } = require('../../../packages/template-engine/src/schema');
 const { LocalTemporaryStorage } = require('../../../packages/storage/src');
 const { QUEUE_NAMES, createEventPublisher, createQueues, createRedisConnection } = require('../../../packages/queue/src');
 const { createAuthenticator } = require('./auth/authenticator');
 const { HttpError, applyCors, createRouter, readJson, sendError, sendJson } = require('./http');
 const { createJobService } = require('./jobs/service');
+const { createTemplateService } = require('./templates/service');
 const { attachRealtime } = require('./realtime/socket');
 
 const port = Number(process.env.PORT || 4000);
@@ -27,7 +29,7 @@ async function main() {
   const templates = createTemplateRepository(pool);
   const jobs = createJobRepository(pool);
   const systemUser = await users.upsertBySubject({ subject: 'system', email: 'system@previley.local', displayName: 'Sistema' });
-  await templates.ensureSeeds(seedTemplates, systemUser.id);
+  await templates.ensureSeeds(seedTemplates.map((seed) => ({ ...seed, configuration: validateTemplateConfig(seed.configuration) })), systemUser.id);
 
   const redis = createRedisConnection();
   const subscriber = createRedisConnection();
@@ -38,20 +40,32 @@ async function main() {
     users,
     devUser: { email: process.env.DEV_USER_EMAIL, name: process.env.DEV_USER_NAME }
   });
-  const jobService = createJobService({ jobs, templates, storage, queues, redis, publish, config });
+  const templateService = createTemplateService({ templates });
+  const jobService = createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config });
 
   const match = createRouter([
     ['GET', '/session', async ({ user }) => ({ user: { email: user.email, displayName: user.displayName } })],
     ['POST', '/auth/sso/callback', async () => {
       throw new HttpError(501, 'SSO_NOT_CONFIGURED', 'El adaptador de Previley SSO aún no está implementado.');
     }],
-    ['GET', '/templates', async () => ({ templates: await jobService.listTemplates() })],
+    ['GET', '/templates', async ({ url }) => ({ templates: await templateService.list({ includeArchived: url.searchParams.get('archived') === 'true' }) })],
+    ['GET', '/templates/facets', async () => templateService.facets()],
+    ['POST', '/templates', async ({ user, request }) => ({ status: 201, body: { template: await templateService.create((await readJson(request)).configuration, user) } })],
+    ['GET', '/templates/:templateId', async ({ params }) => ({ template: await templateService.get(params.templateId) })],
+    ['GET', '/templates/:templateId/versions/:versionId', async ({ params }) => ({ template: await templateService.getVersion(params.templateId, params.versionId) })],
+    ['POST', '/templates/:templateId/versions', async ({ user, params, request }) => ({ template: await templateService.addVersion(params.templateId, (await readJson(request)).configuration, user) })],
+    ['POST', '/templates/:templateId/duplicate', async ({ user, params, request }) => ({ status: 201, body: { template: await templateService.duplicate(params.templateId, await readJson(request), user) } })],
+    ['POST', '/templates/:templateId/archive', async ({ params }) => ({ template: await templateService.setArchived(params.templateId, true) })],
+    ['POST', '/templates/:templateId/unarchive', async ({ params }) => ({ template: await templateService.setArchived(params.templateId, false) })],
     ['GET', '/jobs', async ({ user }) => ({ jobs: await jobService.list(user) })],
     ['POST', '/jobs', async ({ user, request }) => ({ status: 201, body: { job: await jobService.create(request, user) } })],
     ['GET', '/jobs/:jobId', async ({ user, params }) => ({ job: await jobService.get(params.jobId, user) })],
     ['PATCH', '/jobs/:jobId/sheet', async ({ user, params, request }) => ({ job: await jobService.selectSheet(params.jobId, user, await readJson(request)) })],
-    ['PATCH', '/jobs/:jobId/mapping', async ({ user, params, request }) => ({ job: await jobService.saveMapping(params.jobId, user, await readJson(request)) })],
-    ['POST', '/jobs/:jobId/preview', async ({ user, params }) => jobService.preview(params.jobId, user)],
+    ['GET', '/jobs/:jobId/template-matches', async ({ user, params }) => ({ matches: await jobService.templateMatches(params.jobId, user) })],
+    ['POST', '/jobs/:jobId/template', async ({ user, params, request }) => ({ job: await jobService.applyTemplate(params.jobId, user, await readJson(request)) })],
+    ['PATCH', '/jobs/:jobId/working-template', async ({ user, params, request }) => ({ job: await jobService.saveWorkingTemplate(params.jobId, user, await readJson(request)) })],
+    ['POST', '/jobs/:jobId/template/save', async ({ user, params, request }) => ({ job: await jobService.saveTemplate(params.jobId, user, await readJson(request)) })],
+    ['GET', '/jobs/:jobId/sample', async ({ user, params }) => jobService.sample(params.jobId, user)],
     ['POST', '/jobs/:jobId/transform', async ({ user, params }) => ({ job: await jobService.transform(params.jobId, user) })],
     ['POST', '/jobs/:jobId/cancel', async ({ user, params }) => ({ job: await jobService.cancel(params.jobId, user) })],
     ['GET', '/jobs/:jobId/download', async ({ user, params, response }) => {
@@ -67,7 +81,8 @@ async function main() {
       return;
     }
 
-    const { pathname } = new URL(request.url, 'http://localhost');
+    const url = new URL(request.url, 'http://localhost');
+    const { pathname } = url;
 
     if (request.method === 'GET' && pathname === '/health') {
       const [postgres, redisStatus] = await Promise.all([
@@ -89,7 +104,7 @@ async function main() {
       if (!route) throw new HttpError(404, 'NOT_FOUND', 'Ruta no encontrada.');
       if (route.methodNotAllowed) throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Método no permitido.');
       const user = await authenticate(request.headers);
-      const result = await route.handler({ request, response, params: route.params, user });
+      const result = await route.handler({ request, response, url, params: route.params, user });
       if (result?.handled) return;
       if (result?.status) sendJson(response, result.status, result.body);
       else sendJson(response, 200, result);

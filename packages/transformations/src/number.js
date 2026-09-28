@@ -22,9 +22,10 @@ function transformNumber(value, options = {}) {
     number = Math.round(number * factor) / factor;
   }
   if (options.integer === true) number = Math.trunc(number);
-  if (Number.isInteger(options.fixedDecimals)) return number.toFixed(options.fixedDecimals);
 
-  return number;
+  const text = Number.isInteger(options.fixedDecimals) ? number.toFixed(options.fixedDecimals) : null;
+  if (options.decimalSeparator === ',') return (text ?? String(number)).replace('.', ',');
+  return text ?? number;
 }
 
 module.exports = { parseNumber, transformNumber };

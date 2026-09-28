@@ -2,32 +2,30 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const { JOB_STATUSES } = require('../../../../packages/shared/src/job-statuses');
 const { readSheetRows } = require('../../../../packages/excel-engine/src');
-const { createInitialMapping, evaluateMapping } = require('../../../../packages/template-engine/src/mapping');
-const { runRows } = require('../../../../packages/template-engine/src/run');
+const { outputFileInfo } = require('../../../../packages/excel-engine/src/output');
+const {
+  createTemplateFromHeaders,
+  evaluateColumns,
+  matchTemplate,
+  prepareVersionForSave,
+  resolveTemplateForHeaders
+} = require('../../../../packages/template-engine/src/mapping');
 const { cancelFlagKey } = require('../../../../packages/queue/src');
 const { HttpError } = require('../http');
-const { RUNNING_STATUSES, serializeJob, serializeTemplate, validateMappingPayload } = require('./job-view');
+const { RUNNING_STATUSES, normalizeStoredTemplate, serializeJob, validateTemplatePayload, validateWorkingTemplatePayload } = require('./job-view');
 const { receiveUpload } = require('./upload');
 
-const PREVIEW_ROWS = 5;
+const SAMPLE_ROWS = 5;
 const CANCELLABLE = new Set([JOB_STATUSES.QUEUED_ANALYSIS, JOB_STATUSES.ANALYZING, ...RUNNING_STATUSES]);
 
-function pad(value) {
-  return String(value).padStart(2, '0');
+// Dates cannot travel as JSON; they are tagged so the web can revive them before running the engine.
+function encodeCell(value) {
+  return value instanceof Date ? { $date: value.toISOString() } : value;
 }
 
-function displayValue(value) {
-  if (value instanceof Date) return `${pad(value.getUTCDate())}/${pad(value.getUTCMonth() + 1)}/${value.getUTCFullYear()}`;
-  return value;
-}
-
-function sourceColumns(mapping) {
-  return new Set(Object.values(mapping).filter((entry) => entry.type !== 'EMPTY').map((entry) => entry.column));
-}
-
-function createJobService({ jobs, templates, storage, queues, redis, publish, config }) {
+function createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config }) {
   async function view(job) {
-    return serializeJob(job, await templates.getVersion(job.templateVersionId));
+    return serializeJob(job, job.templateVersionId ? await templates.getVersion(job.templateVersionId) : null);
   }
 
   async function requireJob(jobId, user) {
@@ -40,8 +38,25 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
     if (![].concat(statuses).includes(job.status)) throw new HttpError(409, 'INVALID_STATE', message);
   }
 
-  function conflict() {
-    return new HttpError(409, 'INVALID_STATE', 'El job cambió de estado. Recarga para ver la información actual.');
+  function requireEditable(job) {
+    requireStatus(job, JOB_STATUSES.READY, 'La configuración solo puede cambiarse antes de transformar.');
+  }
+
+  function selectedHeaders(job) {
+    const sheet = (job.workbookAnalysis?.sheets || []).find((candidate) => candidate.name === job.selectedSheet);
+    if (!sheet) throw new HttpError(409, 'SHEET_REQUIRED', 'Primero elige la hoja con la que quieres trabajar.');
+    return sheet.headers;
+  }
+
+  function requireWorkingTemplate(job) {
+    if (!job.workingTemplate) throw new HttpError(409, 'TEMPLATE_REQUIRED', 'Primero elige o crea una plantilla.');
+    return job.workingTemplate;
+  }
+
+  async function update(job, changes) {
+    const updated = await jobs.update(job.id, changes, { expectStatus: job.status });
+    if (!updated) throw new HttpError(409, 'INVALID_STATE', 'El job cambió de estado. Recarga para ver la información actual.');
+    return updated;
   }
 
   async function purgeFiles(job) {
@@ -49,9 +64,7 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
   }
 
   return {
-    async listTemplates() {
-      return (await templates.listActive()).map(serializeTemplate);
-    },
+    view,
 
     async list(user) {
       return Promise.all((await jobs.listForUser(user.id)).map(view));
@@ -62,18 +75,12 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
     },
 
     async create(request, user) {
-      const { fields, file } = await receiveUpload(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes });
-      const template = fields.templateId ? await templates.getActive(fields.templateId).catch(() => null) : null;
-      if (!template) {
-        await storage.delete(file.key);
-        throw new HttpError(400, 'TEMPLATE_NOT_FOUND', 'La plantilla seleccionada no existe.');
-      }
-
+      const { file } = await receiveUpload(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes });
       const job = await jobs.create({
         id: crypto.randomUUID(),
         userId: user.id,
-        templateId: template.id,
-        templateVersionId: template.versionId,
+        templateId: null,
+        templateVersionId: null,
         fileName: file.fileName,
         fileSizeBytes: file.size,
         inputStorageKey: file.key,
@@ -94,73 +101,109 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
 
     async selectSheet(jobId, user, { sheetName }) {
       const job = await requireJob(jobId, user);
-      requireStatus(job, JOB_STATUSES.READY, 'La hoja solo puede cambiarse antes de transformar.');
+      requireEditable(job);
       const sheet = (job.workbookAnalysis?.sheets || []).find((candidate) => candidate.name === sheetName);
       if (!sheet) throw new HttpError(400, 'SHEET_NOT_FOUND', `La hoja «${sheetName}» no existe en el archivo.`);
 
-      const template = await templates.getVersion(job.templateVersionId);
-      const updated = await jobs.update(job.id, {
+      const updated = await update(job, {
         selectedSheet: sheet.name,
-        mapping: createInitialMapping(template.columns, sheet.headers),
+        workingTemplate: job.workingTemplate ? resolveTemplateForHeaders(job.workingTemplate, sheet.headers) : null,
         confirmedIds: []
-      }, { expectStatus: JOB_STATUSES.READY });
-      if (!updated) throw conflict();
+      });
       await publish(job.id, 'job:stage');
       return view(updated);
     },
 
-    async saveMapping(jobId, user, payload) {
+    async templateMatches(jobId, user) {
       const job = await requireJob(jobId, user);
-      requireStatus(job, JOB_STATUSES.READY, 'El mapeo solo puede cambiarse antes de transformar.');
-      const template = await templates.getVersion(job.templateVersionId);
-      const headers = job.workbookAnalysis.sheets.find((sheet) => sheet.name === job.selectedSheet)?.headers || [];
-      const { mapping, confirmedIds } = validateMappingPayload(template, headers, payload);
-
-      const updated = await jobs.update(job.id, { mapping, confirmedIds }, { expectStatus: JOB_STATUSES.READY });
-      if (!updated) throw conflict();
-      return view(updated);
+      const headers = selectedHeaders(job);
+      const list = await templates.list();
+      return list
+        .map((template) => ({ templateId: template.id, ...matchTemplate(normalizeStoredTemplate(template), headers) }))
+        .sort((a, b) => (a.requiredMissing - b.requiredMissing) || (b.matched / Math.max(b.total, 1) - a.matched / Math.max(a.total, 1)));
     },
 
-    // Rows are read from the temporary upload and returned to the owner only; nothing is stored.
-    async preview(jobId, user) {
+    async applyTemplate(jobId, user, { templateId, blank }) {
       const job = await requireJob(jobId, user);
-      requireStatus(job, JOB_STATUSES.READY, 'La vista previa está disponible mientras el job se configura.');
-      const template = await templates.getVersion(job.templateVersionId);
+      requireEditable(job);
+      const headers = selectedHeaders(job);
+
+      if (blank) {
+        const workingTemplate = validateTemplatePayload(createTemplateFromHeaders(headers, { sheet: job.selectedSheet }));
+        return view(await update(job, { templateId: null, templateVersionId: null, workingTemplate, confirmedIds: [] }));
+      }
+
+      const { template, configuration } = await templateService.getActiveConfiguration(templateId);
+      return view(await update(job, {
+        templateId: template.id,
+        templateVersionId: template.versionId,
+        workingTemplate: resolveTemplateForHeaders(configuration, headers),
+        confirmedIds: []
+      }));
+    },
+
+    async saveWorkingTemplate(jobId, user, payload) {
+      const job = await requireJob(jobId, user);
+      requireEditable(job);
+      requireWorkingTemplate(job);
+      const { template, confirmedIds } = validateWorkingTemplatePayload(payload);
+      return view(await update(job, { workingTemplate: template, confirmedIds }));
+    },
+
+    // Persists the working configuration as a new version of the base template or as a brand new template.
+    async saveTemplate(jobId, user, { mode, name, destination, process, description }) {
+      const job = await requireJob(jobId, user);
+      requireEditable(job);
+      const working = requireWorkingTemplate(job);
+
+      if (mode === 'NEW_VERSION') {
+        if (!job.templateId) throw new HttpError(409, 'TEMPLATE_REQUIRED', 'Esta configuración no tiene una plantilla base; guárdala como plantilla nueva.');
+        const base = await templates.getVersion(job.templateVersionId);
+        const configuration = prepareVersionForSave(normalizeStoredTemplate(base), working, job.confirmedIds);
+        const saved = await templateService.addVersion(job.templateId, configuration, user);
+        return view(await update(job, { templateVersionId: saved.versionId, workingTemplate: validateTemplatePayload(configuration) }));
+      }
+
+      if (mode === 'NEW_TEMPLATE') {
+        const configuration = prepareVersionForSave(null, { ...working, name, destination, process, description }, job.confirmedIds);
+        const saved = await templateService.create(configuration, user);
+        return view(await update(job, { templateId: saved.id, templateVersionId: saved.versionId, workingTemplate: validateTemplatePayload(configuration) }));
+      }
+
+      throw new HttpError(400, 'INVALID_MODE', 'Indica si quieres guardar una nueva versión o una plantilla nueva.');
+    },
+
+    // Sample rows go only to the job owner and are never stored; the web runs the engine on them for live previews.
+    async sample(jobId, user) {
+      const job = await requireJob(jobId, user);
+      requireEditable(job);
+      selectedHeaders(job);
 
       const rows = [];
       for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits: config })) {
-        rows.push(row);
-        if (rows.length >= PREVIEW_ROWS) break;
+        rows.push({ rowNumber: row.rowNumber, values: Object.fromEntries(Object.entries(row.values).map(([key, value]) => [key, encodeCell(value)])) });
+        if (rows.length >= SAMPLE_ROWS) break;
       }
-
-      const used = sourceColumns(job.mapping);
-      return {
-        rows: runRows(rows, template, job.mapping).map((result, index) => ({
-          rowNumber: result.rowNumber,
-          input: Object.fromEntries(Object.entries(rows[index].values).filter(([header]) => used.has(header)).map(([header, value]) => [header, displayValue(value)])),
-          output: result.output,
-          issues: result.issues.map(({ column, rule, severity, code }) => ({ column, rule, severity, code }))
-        }))
-      };
+      return { rows };
     },
 
     async transform(jobId, user) {
       const job = await requireJob(jobId, user);
-      requireStatus(job, JOB_STATUSES.READY, 'El job no está listo para transformar.');
-      const template = await templates.getVersion(job.templateVersionId);
-      if (!evaluateMapping(template.columns, job.mapping, new Set(job.confirmedIds)).isComplete) {
-        throw new HttpError(409, 'MAPPING_INCOMPLETE', 'Resuelve el mapeo antes de transformar.');
+      requireEditable(job);
+      const headers = selectedHeaders(job);
+      const template = requireWorkingTemplate(job);
+      if (!evaluateColumns(template.columns, headers, new Set(job.confirmedIds)).isComplete) {
+        throw new HttpError(409, 'MAPPING_INCOMPLETE', 'Resuelve las columnas pendientes antes de transformar.');
       }
 
       const sheet = job.workbookAnalysis.sheets.find((candidate) => candidate.name === job.selectedSheet);
-      const queued = await jobs.update(job.id, {
+      const queued = await update(job, {
         status: JOB_STATUSES.QUEUED_TRANSFORMATION,
         stage: 'QUEUED',
         processedRows: 0,
         totalRows: sheet.rowCount,
         validationSummary: null
-      }, { expectStatus: JOB_STATUSES.READY });
-      if (!queued) throw conflict();
+      });
 
       await redis.del(cancelFlagKey(job.id));
       await queues.transformation.add('transform', { jobId: job.id }, { jobId: job.id });
@@ -174,7 +217,7 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
 
       await redis.set(cancelFlagKey(job.id), '1', 'EX', 24 * 60 * 60);
       const cancelled = await jobs.update(job.id, { status: JOB_STATUSES.CANCELLED, stage: null, purgedAt: new Date() }, { expectStatus: [...CANCELLABLE] });
-      if (!cancelled) throw conflict();
+      if (!cancelled) throw new HttpError(409, 'INVALID_STATE', 'El job cambió de estado. Recarga para ver la información actual.');
 
       // Waiting jobs are removed; an active one sees the cancel flag at its next progress check.
       await Promise.all([queues.analysis.remove(job.id), queues.transformation.remove(job.id)].map((removal) => removal.catch(() => {})));
@@ -186,19 +229,19 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
     async download(jobId, user, response) {
       const job = await requireJob(jobId, user);
       requireStatus(job, JOB_STATUSES.READY_TO_DOWNLOAD, 'El archivo no está disponible para descarga.');
-      const template = await templates.getVersion(job.templateVersionId);
-      const filePath = storage.resolvePath(job.outputStorageKey);
+      const { output, name } = job.workingTemplate;
+      const { extension, contentType } = outputFileInfo(output);
       const baseName = job.fileName.replace(/\.xlsx$/i, '');
-      const fileName = `${baseName}-${template.output?.sheetName || 'salida'}.xlsx`;
+      const fileName = `${baseName}-${name}.${extension}`;
 
       response.writeHead(200, {
-        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-type': contentType,
         'content-disposition': `attachment; filename="${fileName.replace(/[^\w.-]+/g, '_')}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         'cache-control': 'no-store'
       });
 
       await new Promise((resolve, reject) => {
-        const stream = fs.createReadStream(filePath);
+        const stream = fs.createReadStream(storage.resolvePath(job.outputStorageKey));
         stream.on('error', reject);
         response.on('finish', resolve);
         response.on('close', resolve);
@@ -213,9 +256,7 @@ function createJobService({ jobs, templates, storage, queues, redis, publish, co
       await purgeFiles(job);
       await jobs.update(job.id, { status: JOB_STATUSES.PURGED, purgedAt: new Date() }, { expectStatus: JOB_STATUSES.DOWNLOADED });
       await publish(job.id, 'job:purged');
-    },
-
-    view
+    }
   };
 }
 

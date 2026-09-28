@@ -8,7 +8,8 @@ Incluye:
 
 - SDD inicial en `docs/SDD.md`.
 - Diseño frontend MVP: rutas, pantallas, estados, contratos API, realtime y criterios de aceptacion.
-- App web Next.js + Tailwind en `apps/web`: `/jobs/new`, `/jobs/:jobId` (hoja, mapeo, vista previa, generación con progreso realtime y descarga), `/jobs` y `/templates`.
+- App web Next.js + Tailwind en `apps/web`: `/jobs/new`, `/jobs/:jobId` (hoja, plantilla, columnas, salida, vista previa, generación con progreso realtime y descarga), `/jobs` y `/templates` (lista, detalle con versiones, crear, editar, duplicar, archivar).
+- Plantillas dinámicas creadas por usuarios (ver `docs/plantillas-dinamicas.md`): orígenes por columna, formatos de RUT/fecha/número/texto, salida XLSX, texto delimitado o ancho fijo, versiones inmutables y reconocimiento de encabezados por alias.
 - API Node en `apps/api`: endpoints de jobs y plantillas del SDD, subida multipart, Socket.IO por room `job:{jobId}` con verificación de acceso, descarga con purga posterior.
 - Worker BullMQ en `apps/worker`: colas `analysis`, `transformation` (progreso y cancelación) y `cleanup` (expiración cada 10 minutos).
 - Lectura y escritura XLSX real con `exceljs` en `packages/excel-engine`, con límites de filas, columnas y hojas.

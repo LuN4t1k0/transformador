@@ -71,8 +71,29 @@ export function createHttpApi(baseUrl) {
     async getSession() {
       return (await getJson('/session')).user;
     },
-    async listTemplates() {
-      return (await getJson('/templates')).templates;
+    async listTemplates({ includeArchived = false } = {}) {
+      return (await getJson(`/templates${includeArchived ? '?archived=true' : ''}`)).templates;
+    },
+    async getTemplateFacets() {
+      return getJson('/templates/facets');
+    },
+    async getTemplate(templateId) {
+      return (await getJson(`/templates/${templateId}`)).template;
+    },
+    async getTemplateVersion(templateId, versionId) {
+      return (await getJson(`/templates/${templateId}/versions/${versionId}`)).template;
+    },
+    async createTemplate(configuration) {
+      return (await getJson('/templates', { method: 'POST', json: { configuration } })).template;
+    },
+    async addTemplateVersion(templateId, configuration) {
+      return (await getJson(`/templates/${templateId}/versions`, { method: 'POST', json: { configuration } })).template;
+    },
+    async duplicateTemplate(templateId, name) {
+      return (await getJson(`/templates/${templateId}/duplicate`, { method: 'POST', json: { name } })).template;
+    },
+    async setTemplateArchived(templateId, archived) {
+      return (await getJson(`/templates/${templateId}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' })).template;
     },
     async listJobs() {
       return (await getJson('/jobs')).jobs;
@@ -80,20 +101,28 @@ export function createHttpApi(baseUrl) {
     async getJob(jobId) {
       return (await getJson(`/jobs/${encodeURIComponent(jobId)}`)).job;
     },
-    async createJob({ file, templateId }) {
+    async createJob({ file }) {
       const form = new FormData();
-      form.append('templateId', templateId);
       form.append('file', file, file.name);
       return (await getJson('/jobs', { method: 'POST', body: form })).job;
     },
     async selectSheet(jobId, sheetName) {
       return (await getJson(`/jobs/${jobId}/sheet`, { method: 'PATCH', json: { sheetName } })).job;
     },
-    async saveMapping(jobId, { mapping, confirmedIds }) {
-      return (await getJson(`/jobs/${jobId}/mapping`, { method: 'PATCH', json: { mapping, confirmedIds } })).job;
+    async getTemplateMatches(jobId) {
+      return (await getJson(`/jobs/${jobId}/template-matches`)).matches;
     },
-    async previewJob(jobId) {
-      return getJson(`/jobs/${jobId}/preview`, { method: 'POST' });
+    async applyTemplate(jobId, selection) {
+      return (await getJson(`/jobs/${jobId}/template`, { method: 'POST', json: selection })).job;
+    },
+    async saveWorkingTemplate(jobId, { template, confirmedIds }) {
+      return (await getJson(`/jobs/${jobId}/working-template`, { method: 'PATCH', json: { template, confirmedIds } })).job;
+    },
+    async saveJobTemplate(jobId, payload) {
+      return (await getJson(`/jobs/${jobId}/template/save`, { method: 'POST', json: payload })).job;
+    },
+    async getSample(jobId) {
+      return getJson(`/jobs/${jobId}/sample`);
     },
     async transformJob(jobId) {
       return (await getJson(`/jobs/${jobId}/transform`, { method: 'POST' })).job;

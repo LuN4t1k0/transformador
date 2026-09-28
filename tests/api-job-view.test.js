@@ -1,38 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { planVitalPagexTemplate } = require('../packages/shared/templates');
-const { serializeJob, validateMappingPayload } = require('../apps/api/src/jobs/job-view');
+const { serializeJob, validateWorkingTemplatePayload } = require('../apps/api/src/jobs/job-view');
 const { createRouter } = require('../apps/api/src/http');
 
-const headers = ['RUT', 'Nombre completo', 'AFP'];
-
-test('validates mapping against template columns and sheet headers', () => {
-  const result = validateMappingPayload(planVitalPagexTemplate, headers, {
-    mapping: {
-      rut: { type: 'COLUMN', column: 'RUT', extra: 'ignored' },
-      apellido_paterno: { type: 'SPLIT_WORD', column: 'Nombre completo', index: 0 },
-      nombre: { type: 'SPLIT_WORD_RANGE', column: 'Nombre completo', start: 2 }
-    },
-    confirmedIds: ['apellido_paterno', 'apellido_paterno']
-  });
-
-  assert.deepEqual(result.mapping.rut, { type: 'COLUMN', column: 'RUT' });
-  assert.deepEqual(result.mapping.periodo, { type: 'EMPTY' });
-  assert.deepEqual(result.confirmedIds, ['apellido_paterno']);
+test('validates the working template and keeps only known confirmations', () => {
+  const result = validateWorkingTemplatePayload({ template: planVitalPagexTemplate, confirmedIds: ['rut', 'rut', 'otra'] });
+  assert.equal(result.template.columns.length, 17);
+  assert.deepEqual(result.confirmedIds, ['rut']);
 });
 
-test('rejects unknown columns, headers, source types and confirmations', () => {
-  const invalid = [
-    { mapping: { desconocida: { type: 'EMPTY' } } },
-    { mapping: { rut: { type: 'COLUMN', column: 'No existe' } } },
-    { mapping: { rut: { type: 'CONSTANT', value: 'x' } } },
-    { mapping: { rut: { type: 'SPLIT_WORD', column: 'RUT', index: -1 } } },
-    { mapping: {}, confirmedIds: ['otra'] },
-    { mapping: null }
-  ];
-  for (const payload of invalid) {
-    assert.throws(() => validateMappingPayload(planVitalPagexTemplate, headers, payload), { code: 'INVALID_MAPPING' });
-  }
+test('rejects invalid working templates as 400 errors', () => {
+  assert.throws(() => validateWorkingTemplatePayload({ template: { name: 'x', columns: [] } }), { status: 400, code: 'INVALID_TEMPLATE' });
 });
 
 test('serializes jobs without storage keys or owner ids', () => {
@@ -46,7 +25,7 @@ test('serializes jobs without storage keys or owner ids', () => {
     processedRows: 4,
     workbookAnalysis: { sheets: [{ name: 'RESUMEN' }] },
     errorCode: null
-  }, { id: 't1', name: 'PlanVital', columns: [] });
+  }, { id: 't1', name: 'PlanVital', columns: [], versionId: 'v1', version: 2 });
 
   assert.deepEqual(view.progress, { processed: 4, total: 10 });
   assert.deepEqual(view.sheets, [{ name: 'RESUMEN' }]);
