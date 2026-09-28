@@ -58,7 +58,10 @@ const ISSUE_MESSAGES = {
   REQUIRED: 'Falta un valor obligatorio',
   INVALID_RUT: 'RUT con dígito verificador inválido',
   INVALID_INTEGER: 'Debe ser un número entero',
-  TOO_LONG: 'Supera el largo de la columna'
+  TOO_LONG: 'Supera el largo de la columna',
+  INVALID_DATE: 'No se reconoce como fecha',
+  INVALID_NUMBER: 'No se reconoce como número',
+  INVALID_RUT_FORMAT: 'No se reconoce como RUT'
 };
 
 export function describeIssue(issue) {

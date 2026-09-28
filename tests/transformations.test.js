@@ -63,3 +63,30 @@ test('VALID_RUT checks the source RUT even when the output keeps only body or ve
   assert.deepEqual(transformRow({ RUT: '10.231.091-8' }, template).issues, []);
   assert.deepEqual(transformRow({ RUT: '10.231.091-9' }, template).issues.map((issue) => issue.code), ['INVALID_RUT', 'INVALID_RUT']);
 });
+
+test('parses numbers with automatic or explicit decimal separator', () => {
+  const { parseNumber } = require('../packages/transformations/src/number');
+  const cases = [
+    ['1234.56', 1234.56], ['1,234.56', 1234.56], ['1.234,56', 1234.56], ['1.234', 1234], ['1.234.567', 1234567],
+    ['1,5', 1.5], ['1,234,567', 1234567], ['12.5', 12.5], ['$ 1.500', 1500], ['-2.500', -2500], [' 7 ', 7], ['abc', null], ['1.2.3', null], [42, 42]
+  ];
+  for (const [input, expected] of cases) assert.equal(parseNumber(input), expected, String(input));
+  assert.equal(parseNumber('1.234', { decimalSeparator: '.' }), 1.234);
+  assert.equal(parseNumber('1,234', { decimalSeparator: ',' }), 1.234);
+  assert.equal(parseNumber('1,234', { decimalSeparator: '.' }), 1234);
+});
+
+test('values that cannot be converted are reported instead of silently emptied', () => {
+  const { transformRow } = require('../packages/template-engine/src/engine');
+  const template = {
+    columns: [
+      { id: 'f', position: 1, outputName: 'FECHA', required: false, source: { type: 'COLUMN', column: 'F' }, transformations: [{ type: 'DATE_FORMAT', inputFormat: 'AUTO', outputFormat: 'DD/MM/YYYY' }] },
+      { id: 'm', position: 2, outputName: 'MONTO', required: true, source: { type: 'COLUMN', column: 'M' }, transformations: [{ type: 'NUMBER', fixedDecimals: 2 }] },
+      { id: 'r', position: 3, outputName: 'RUT', required: false, source: { type: 'COLUMN', column: 'R' }, transformations: [{ type: 'RUT_FORMAT', format: 'NO_DOTS_NO_DASH' }] },
+      { id: 'e', position: 4, outputName: 'VACIA', required: false, source: { type: 'COLUMN', column: 'E' }, transformations: [{ type: 'DATE_FORMAT', inputFormat: 'AUTO', outputFormat: 'DD/MM/YYYY' }] }
+    ]
+  };
+  const result = transformRow({ F: '31-02-2024', M: 'n/a', R: '12-ABC', E: null }, template);
+  assert.deepEqual(result.issues.map((issue) => `${issue.column}:${issue.code}`), ['FECHA:INVALID_DATE', 'MONTO:INVALID_NUMBER', 'RUT:INVALID_RUT_FORMAT']);
+  assert.equal(transformRow({ F: '03-05-2024', M: '1234.56', R: '12.345.678-5', E: '' }, template).output.MONTO, '1234.56');
+});

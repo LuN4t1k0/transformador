@@ -123,6 +123,9 @@ function normalizeTransformation(transformation, label) {
     if (transformation.round !== undefined && transformation.round !== null) number.round = integer(transformation.round, `${label}: el redondeo`, { max: 10 });
     if (transformation.fixedDecimals !== undefined && transformation.fixedDecimals !== null) number.fixedDecimals = integer(transformation.fixedDecimals, `${label}: los decimales`, { max: 10 });
     if (transformation.decimalSeparator !== undefined) number.decimalSeparator = oneOf(transformation.decimalSeparator, ['.', ','], `${label}: el separador decimal no es válido.`);
+    if (transformation.inputDecimalSeparator !== undefined && transformation.inputDecimalSeparator !== 'AUTO') {
+      number.inputDecimalSeparator = oneOf(transformation.inputDecimalSeparator, ['.', ','], `${label}: el separador decimal de entrada no es válido.`);
+    }
     return number;
   }
   return fail(`${label}: la transformación no es válida.`);

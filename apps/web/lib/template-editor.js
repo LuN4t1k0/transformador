@@ -44,6 +44,7 @@ export function parseFormat(column) {
     dateOutput: primary?.type === 'DATE_FORMAT' ? primary.outputFormat : 'DD/MM/YYYY',
     numberDecimals: primary?.type === 'NUMBER' ? (primary.integer ? 0 : primary.fixedDecimals ?? null) : 0,
     decimalSeparator: primary?.type === 'NUMBER' ? primary.decimalSeparator || '.' : '.',
+    inputDecimalSeparator: primary?.type === 'NUMBER' ? primary.inputDecimalSeparator || 'AUTO' : 'AUTO',
     validateInteger: validations.has('INTEGER'),
     textCase: textOps.has('UPPERCASE') ? 'UPPERCASE' : textOps.has('LOWERCASE') ? 'LOWERCASE' : 'NONE',
     removeAccents: textOps.has('REMOVE_ACCENTS'),
@@ -65,6 +66,7 @@ export function applyFormat(column, format) {
     if (format.numberDecimals === 0) number.integer = true;
     else if (Number.isInteger(format.numberDecimals)) number.fixedDecimals = format.numberDecimals;
     if (format.decimalSeparator === ',') number.decimalSeparator = ',';
+    if (format.inputDecimalSeparator && format.inputDecimalSeparator !== 'AUTO') number.inputDecimalSeparator = format.inputDecimalSeparator;
     transformations.push(number);
     if (format.validateInteger && format.numberDecimals === 0) validations.push({ type: 'INTEGER' });
   }

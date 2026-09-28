@@ -27,6 +27,7 @@ test('builds RUT, date and number formats from the UI model', async () => {
 
   assert.deepEqual(applyFormat(base, { ...format, kind: 'DATE', dateInput: 'AUTO', dateOutput: 'YYYYMMDD', textCase: 'NONE' }).transformations, [{ type: 'DATE_FORMAT', inputFormat: 'AUTO', outputFormat: 'YYYYMMDD' }]);
   assert.deepEqual(applyFormat(base, { ...format, kind: 'NUMBER', numberDecimals: 2, decimalSeparator: ',', textCase: 'NONE' }).transformations, [{ type: 'NUMBER', fixedDecimals: 2, decimalSeparator: ',' }]);
+  assert.deepEqual(applyFormat(base, { ...format, kind: 'NUMBER', numberDecimals: 2, decimalSeparator: '.', inputDecimalSeparator: '.', textCase: 'NONE' }).transformations, [{ type: 'NUMBER', fixedDecimals: 2, inputDecimalSeparator: '.' }]);
 });
 
 test('adds, duplicates and moves columns keeping names unique', async () => {

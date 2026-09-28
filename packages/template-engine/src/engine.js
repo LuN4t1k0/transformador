@@ -56,6 +56,16 @@ function validateValue(value, validation, sourceValue = value) {
   return { severity: 'warning', code: 'UNKNOWN_VALIDATION', message: `Unknown validation ${validation.type}` };
 }
 
+const CONVERSION_ISSUES = {
+  DATE_FORMAT: { code: 'INVALID_DATE', message: 'Value is not a recognizable date' },
+  NUMBER: { code: 'INVALID_NUMBER', message: 'Value is not a recognizable number' },
+  RUT_FORMAT: { code: 'INVALID_RUT_FORMAT', message: 'Value is not a recognizable RUT' }
+};
+
+function isBlank(value) {
+  return value === null || value === undefined || String(value).trim() === '';
+}
+
 function transformRow(row, template) {
   const output = {};
   const issues = [];
@@ -65,11 +75,18 @@ function transformRow(row, template) {
     const sourceValue = resolveSource(row, column.source);
     let value = sourceValue;
 
+    // A conversion that turns a present value into nothing is a data problem, never a silent blank.
+    let conversionIssue = null;
     for (const transformation of column.transformations || []) {
+      const before = value;
       value = applyTransformation(value, transformation);
+      if (!conversionIssue && !isBlank(before) && isBlank(value) && CONVERSION_ISSUES[transformation.type]) {
+        conversionIssue = CONVERSION_ISSUES[transformation.type];
+        issues.push({ column: column.outputName, rule: transformation.type, severity: 'error', ...conversionIssue });
+      }
     }
 
-    const validations = [...(column.required ? [{ type: 'REQUIRED' }] : []), ...(column.validations || [])];
+    const validations = conversionIssue ? [] : [...(column.required ? [{ type: 'REQUIRED' }] : []), ...(column.validations || [])];
     for (const validation of validations) {
       const issue = validateValue(value, validation, sourceValue);
       if (issue) {

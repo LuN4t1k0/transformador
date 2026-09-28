@@ -58,6 +58,14 @@ export function FormatEditor({ idPrefix, column, onChange }) {
 
           {format.kind === 'NUMBER' ? (
             <div className="grid gap-2 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className={labelClass} htmlFor={`${idPrefix}-input-decimal`}>En el archivo, los decimales se separan con</label>
+                <select id={`${idPrefix}-input-decimal`} className={inputClass} value={format.inputDecimalSeparator} onChange={(event) => set({ inputDecimalSeparator: event.target.value })}>
+                  <option value="AUTO">Detectar (1.234 = mil; 1,5 = uno coma cinco; 1234.56 = decimal)</option>
+                  <option value=",">Coma (1.234,56)</option>
+                  <option value=".">Punto (1,234.56)</option>
+                </select>
+              </div>
               <div>
                 <label className={labelClass} htmlFor={`${idPrefix}-decimals`}>Decimales</label>
                 <select
@@ -75,7 +83,7 @@ export function FormatEditor({ idPrefix, column, onChange }) {
                 </select>
               </div>
               <div>
-                <label className={labelClass} htmlFor={`${idPrefix}-separator`}>Separador decimal</label>
+                <label className={labelClass} htmlFor={`${idPrefix}-separator`}>Separador decimal al escribir</label>
                 <select id={`${idPrefix}-separator`} className={inputClass} value={format.decimalSeparator} onChange={(event) => set({ decimalSeparator: event.target.value })} disabled={format.numberDecimals === 0}>
                   <option value=".">Punto (1234.50)</option>
                   <option value=",">Coma (1234,50)</option>
