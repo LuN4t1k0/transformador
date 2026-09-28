@@ -58,6 +58,15 @@ function SampleLoader({ sample, onLoaded }) {
 export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSample = null, report = null }) {
   const [template, setTemplate] = useState(initial);
   const [sample, setSample] = useState(initialSample);
+  // Columns suggested by a similar header name stay marked until the user accepts or changes them.
+  const [flagged, setFlagged] = useState(() => new Map(
+    initial.columns.filter((column) => report?.suggested?.includes(column.outputName)).map((column) => [column.id, 'Sugerida'])
+  ));
+  const unflag = (id) => setFlagged((current) => {
+    const next = new Map(current);
+    next.delete(id);
+    return next;
+  });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
   const [state, setState] = useState({ saving: false, error: null });
   const suggestions = useMemo(() => knownHeaderNames(template.columns), [template.columns]);
@@ -138,7 +147,12 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
       >
         <ColumnList
           columns={template.columns}
-          onChange={(columns) => setTemplate({ ...template, columns })}
+          onChange={(columns, options) => {
+            setTemplate({ ...template, columns });
+            if (options?.unconfirm) unflag(options.unconfirm);
+          }}
+          flagged={flagged}
+          onFlagResolve={unflag}
           headers={sample ? sample.headers : null}
           suggestions={suggestions}
           evaluation={evaluation}

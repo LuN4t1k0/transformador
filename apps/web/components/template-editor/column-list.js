@@ -72,8 +72,50 @@ function FixedWidthEditor({ idPrefix, column, onChange }) {
   );
 }
 
+// Direct mapping from the row: pick the file column (or leave empty / use a fixed value) without opening the editor.
+function InlineSourceSelect({ column, headers, onChange, onExpand }) {
+  const { source } = column;
+  if (!['COLUMN', 'EMPTY'].includes(source.type)) {
+    return <span className="block truncate text-xs text-ink-700" title={describeSource(source)}>{describeSource(source)}</span>;
+  }
+  const value = source.type === 'COLUMN' ? source.column : '';
+  const isMissing = value && !headers.includes(value);
+
+  return (
+    <select
+      aria-label={`Origen de ${column.outputName}`}
+      className={`h-8 w-full min-w-0 rounded-md border bg-white px-2 text-xs ${value ? 'border-ink-200 text-ink-900' : 'border-rose-200 text-rose-700'}`}
+      value={value}
+      onChange={(event) => {
+        const choice = event.target.value;
+        if (choice === '__constant') {
+          onChange({ ...column, source: { type: 'CONSTANT', value: '' }, reviewed: false }, { sourceChanged: true });
+          onExpand();
+        } else if (choice === '__empty') {
+          onChange({ ...column, source: { type: 'EMPTY' }, reviewed: false }, { sourceChanged: true });
+        } else if (choice === '__more') {
+          onExpand();
+        } else if (choice) {
+          onChange({ ...column, source: { type: 'COLUMN', column: choice }, reviewed: false }, { sourceChanged: true });
+        }
+      }}
+    >
+      <option value="">{value ? 'Sin origen' : '¿De qué columna sale?'}</option>
+      {isMissing ? <option value={value}>{value} (no está en el archivo)</option> : null}
+      <optgroup label="Columnas de tu archivo">
+        {headers.map((header) => <option key={header} value={header}>{header}</option>)}
+      </optgroup>
+      <optgroup label="Otras opciones">
+        <option value="__constant">Valor fijo…</option>
+        <option value="__more">Unir o separar columnas…</option>
+        {source.type !== 'EMPTY' ? <option value="__empty">Dejar vacía</option> : null}
+      </optgroup>
+    </select>
+  );
+}
+
 // One-line summary of a column; expands into the full editor.
-function CompactRow({ column, index, row, sample, onToggle, onConfirm }) {
+function CompactRow({ column, index, row, sample, headers, flag, onToggle, onConfirm, onChange, onExpand, onFlagResolve }) {
   const status = row?.status;
   const mask = (value) => (isRutColumn(column) && value ? maskRut(formatCell(value)) : formatCell(value));
   const output = sample ? mask(sample.result.output[column.outputName]) : '';
@@ -84,14 +126,29 @@ function CompactRow({ column, index, row, sample, onToggle, onConfirm }) {
     <li className={`grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 sm:grid-cols-[28px_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_216px] ${tone}`}>
       <span className="text-right text-xs tabular-nums text-ink-400">{index + 1}</span>
       <span className="min-w-0">
-        <span className="block truncate text-sm font-medium text-ink-900">{column.outputName}{column.required ? <span className="ml-1 text-ink-400" title="Obligatoria">*</span> : null}</span>
-        <span className="block truncate text-xs text-ink-500 sm:hidden">{describeSource(column.source)}</span>
+        <span className="block break-words text-sm font-medium text-ink-900 sm:truncate">{column.outputName}{column.required ? <span className="ml-1 text-ink-400" title="Obligatoria">*</span> : null}</span>
+        {headers ? null : <span className="block truncate text-xs text-ink-500 sm:hidden">{describeSource(column.source)}</span>}
       </span>
-      <span className="hidden min-w-0 truncate text-xs text-ink-500 sm:block" title={[describeSource(column.source), ...describeTransformations(column)].join(' · ')}>
-        {describeSource(column.source)}{describeTransformations(column).length ? ` · ${describeTransformations(column).join(' · ')}` : ''}
-      </span>
+      {headers ? (
+        <span className="order-last col-span-full min-w-0 pl-10 sm:order-none sm:col-span-1 sm:pl-0">
+          <InlineSourceSelect column={column} headers={headers} onChange={onChange} onExpand={onExpand} />
+          {describeTransformations(column).length ? <span className="mt-0.5 block truncate text-[11px] text-ink-500">{describeTransformations(column).join(' · ')}</span> : null}
+        </span>
+      ) : (
+        <span className="hidden min-w-0 truncate text-xs text-ink-500 sm:block" title={[describeSource(column.source), ...describeTransformations(column)].join(' · ')}>
+          {describeSource(column.source)}{describeTransformations(column).length ? ` · ${describeTransformations(column).join(' · ')}` : ''}
+        </span>
+      )}
       <span className={`hidden min-w-0 truncate font-mono text-xs sm:block ${hasError ? 'text-rose-700' : 'text-ink-900'}`}>{output || <span className="text-ink-300">—</span>}</span>
       <span className="flex items-center justify-end gap-1">
+        {flag && status === 'OK' ? (
+          <>
+            <span className="inline-flex h-6 items-center rounded-full bg-amber-50 px-2 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200" title="Sugerida por un nombre de columna parecido: revisa que sea correcta">{flag}</span>
+            <button type="button" className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-xs font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onFlagResolve(column.id)}>
+              <Check size={13} aria-hidden="true" />Está bien
+            </button>
+          </>
+        ) : null}
         {status && status !== 'OK' ? <StatusPill value={status} /> : null}
         {status === 'REQUIERE_CONFIRMACION' && onConfirm ? (
           <button type="button" className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-xs font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirm(column.id)}>
@@ -102,7 +159,7 @@ function CompactRow({ column, index, row, sample, onToggle, onConfirm }) {
           <ChevronDown size={16} aria-hidden="true" />
         </button>
       </span>
-      {row?.reason ? <span className="col-span-full pl-10 text-xs text-ink-700">{row.reason}</span> : null}
+      {row?.reason ? <span className="order-last col-span-full pl-10 text-xs text-ink-700">{row.reason}</span> : null}
     </li>
   );
 }
@@ -173,13 +230,15 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, i
 }
 
 // Editable list of output columns. `evaluation`, `sample` and `onConfirm` are optional (not available without a file).
-export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, isFixedWidth = false }) {
+// `flagged` (Map id → label) marks columns to double-check, e.g. suggested by a similar header name.
+export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, isFixedWidth = false, flagged = new Map(), onFlagResolve = () => {} }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [compact, setCompact] = useState(columns.length > 8);
   const pendingIds = (evaluation?.rows || []).filter((row) => row.status === 'REQUIERE_CONFIRMACION').map((row) => row.column.id);
   const rowsById = new Map((evaluation?.rows || []).map((row) => [row.column.id, row]));
-  const pendingCount = evaluation ? evaluation.counts.pending + evaluation.counts.missing : 0;
+  const flaggedOk = columns.filter((column) => flagged.has(column.id) && (rowsById.get(column.id)?.status || 'OK') === 'OK').map((column) => column.id);
+  const pendingCount = (evaluation ? evaluation.counts.pending + evaluation.counts.missing : 0) + flaggedOk.length;
 
   function replace(index, column, { sourceChanged = false } = {}) {
     const next = [...columns];
@@ -206,13 +265,19 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
               <LayoutList size={15} aria-hidden="true" /><span className="sr-only">Vista detallada</span>
             </button>
           </div>
+          {flaggedOk.length > 1 ? (
+            <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => flaggedOk.forEach(onFlagResolve)}>
+              <CheckCircle2 size={15} aria-hidden="true" />
+              Aceptar sugeridas ({flaggedOk.length})
+            </button>
+          ) : null}
           {onConfirmAll && pendingIds.length > 1 ? (
             <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirmAll(pendingIds)}>
               <CheckCircle2 size={15} aria-hidden="true" />
               Confirmar todas ({pendingIds.length})
             </button>
           ) : null}
-          {evaluation ? (
+          {evaluation || flagged.size ? (
             <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-ink-200 px-3 text-sm font-medium text-ink-700 hover:bg-ink-50">
               <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} />
               <ListFilter size={15} aria-hidden="true" />
@@ -229,9 +294,24 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
       <ul className={compact ? 'divide-y divide-ink-100 overflow-hidden rounded-lg border border-ink-200' : 'space-y-2'}>
         {columns.map((column, index) => {
           const row = rowsById.get(column.id);
-          if (pendingOnly && row?.status === 'OK') return null;
+          if (pendingOnly && (row?.status || 'OK') === 'OK' && !flagged.has(column.id)) return null;
           if (compact && expandedId !== column.id) {
-            return <CompactRow key={column.id} column={column} index={index} row={row} sample={sample} onConfirm={onConfirm} onToggle={() => setExpandedId(column.id)} />;
+            return (
+              <CompactRow
+                key={column.id}
+                column={column}
+                index={index}
+                row={row}
+                sample={sample}
+                headers={headers}
+                flag={flagged.get(column.id)}
+                onConfirm={onConfirm}
+                onToggle={() => setExpandedId(column.id)}
+                onExpand={() => setExpandedId(column.id)}
+                onChange={(next, options) => replace(index, next, options)}
+                onFlagResolve={onFlagResolve}
+              />
+            );
           }
           return (
             <ColumnCard

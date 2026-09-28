@@ -194,7 +194,14 @@ export function SourceEditor({ idPrefix, source, headers, suggestions, onChange 
           </div>
         ) : null}
 
-        {source.type === 'EMPTY' ? <p className="pt-6 text-sm text-ink-500">La columna saldrá vacía en el archivo final.</p> : null}
+        {source.type === 'EMPTY' ? (
+          headers ? (
+            <>
+              <label className={labelClass} htmlFor={`${idPrefix}-column`}>Columna (o déjala vacía)</label>
+              <HeaderInput id={`${idPrefix}-column`} value="" headers={headers} suggestions={suggestions} onChange={(column) => column && onChange({ type: 'COLUMN', column })} />
+            </>
+          ) : <p className="pt-6 text-sm text-ink-500">La columna saldrá vacía en el archivo final.</p>
+        ) : null}
       </div>
     </div>
   );
