@@ -2,18 +2,47 @@
 
 import { Plus, X } from 'lucide-react';
 import { CalcEditor, defaultCalc } from './calc-editor';
+import { CaseEditor, CoalesceEditor, DateCalcEditor, defaultRule, MapEditor, RowNumberEditor, TemplateTextEditor } from './rule-editors';
 
 export const inputClass = 'h-9 w-full min-w-0 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900';
 const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
 
-const SOURCE_TYPES = [
-  { value: 'COLUMN', label: 'Columna del archivo' },
-  { value: 'SPLIT', label: 'Separar por palabras' },
-  { value: 'CONCAT', label: 'Unir varias columnas' },
-  { value: 'CALC', label: 'Cálculo (%, suma, resta…)' },
-  { value: 'CONSTANT', label: 'Valor fijo' },
-  { value: 'EMPTY', label: 'Vacía' }
+const SOURCE_GROUPS = [
+  { label: 'Tomar del archivo', types: [
+    { value: 'COLUMN', label: 'Columna del archivo' },
+    { value: 'SPLIT', label: 'Separar (por palabras u otro separador)' },
+    { value: 'CONCAT', label: 'Unir varias columnas' },
+    { value: 'COALESCE', label: 'Primer valor no vacío' }
+  ] },
+  { label: 'Reglas', types: [
+    { value: 'CASE', label: 'Condición (si… entonces…)' },
+    { value: 'MAP', label: 'Tabla de equivalencias' }
+  ] },
+  { label: 'Texto', types: [
+    { value: 'TEMPLATE', label: 'Texto con variables' },
+    { value: 'CONSTANT', label: 'Valor fijo' }
+  ] },
+  { label: 'Números y fechas', types: [
+    { value: 'CALC', label: 'Cálculo (%, suma, resta…)' },
+    { value: 'DATE_CALC', label: 'Operación con fechas' },
+    { value: 'ROW_NUMBER', label: 'Número correlativo' }
+  ] },
+  { label: 'Otros', types: [{ value: 'EMPTY', label: 'Vacía' }] }
 ];
+
+const RULE_EDITORS = { CASE: CaseEditor, MAP: MapEditor, COALESCE: CoalesceEditor, TEMPLATE: TemplateTextEditor, DATE_CALC: DateCalcEditor, ROW_NUMBER: RowNumberEditor, CALC: CalcEditor };
+
+function SourceTypeSelect({ id, value, onChange }) {
+  return (
+    <select id={id} className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>
+      {SOURCE_GROUPS.map((group) => (
+        <optgroup key={group.label} label={group.label}>
+          {group.types.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
 // Header picker: a select when the file headers are known, otherwise free text with suggestions.
 export function HeaderInput({ id, value, headers, suggestions = [], onChange, label }) {
@@ -43,8 +72,9 @@ function defaultColumn(source) {
   return source.parts?.find((part) => part.type === 'COLUMN')?.column || '';
 }
 
-function convertSource(source, type) {
+export function convertSource(source, type, headers) {
   const column = defaultColumn(source);
+  if (RULE_EDITORS[type] && type !== 'CALC') return defaultRule(type, column ? [column, ...(headers || [])] : headers);
   if (type === 'COLUMN') return { type: 'COLUMN', column };
   if (type === 'SPLIT') return { type: 'SPLIT_WORD', column, index: 0 };
   if (type === 'CONCAT') return { type: 'CONCAT', separator: ' ', parts: [{ type: 'COLUMN', column }] };
@@ -54,16 +84,15 @@ function convertSource(source, type) {
 }
 
 export function SourceEditor({ idPrefix, source, headers, suggestions, outputColumns = [], onChange }) {
-  if (source.type === 'CALC') {
+  const RuleEditor = RULE_EDITORS[source.type];
+  if (RuleEditor) {
     return (
       <div className="space-y-3">
-        <div className="max-w-[200px]">
+        <div className="max-w-xs">
           <label className={labelClass} htmlFor={`${idPrefix}-type`}>Origen</label>
-          <select id={`${idPrefix}-type`} className={inputClass} value="CALC" onChange={(event) => onChange(convertSource(source, event.target.value))}>
-            {SOURCE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-          </select>
+          <SourceTypeSelect id={`${idPrefix}-type`} value={source.type} onChange={(type) => onChange(convertSource(source, type, headers))} />
         </div>
-        <CalcEditor idPrefix={idPrefix} source={source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={onChange} />
+        <RuleEditor idPrefix={idPrefix} source={source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={onChange} />
       </div>
     );
   }
@@ -74,9 +103,7 @@ export function SourceEditor({ idPrefix, source, headers, suggestions, outputCol
     <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
       <div>
         <label className={labelClass} htmlFor={`${idPrefix}-type`}>Origen</label>
-        <select id={`${idPrefix}-type`} className={inputClass} value={kind} onChange={(event) => onChange(convertSource(source, event.target.value))}>
-          {SOURCE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-        </select>
+        <SourceTypeSelect id={`${idPrefix}-type`} value={kind} onChange={(type) => onChange(convertSource(source, type, headers))} />
       </div>
 
       <div className="min-w-0">
@@ -88,7 +115,7 @@ export function SourceEditor({ idPrefix, source, headers, suggestions, outputCol
         ) : null}
 
         {kind === 'SPLIT' ? (
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_80px]">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_80px_90px]">
             <div className="min-w-0">
               <label className={labelClass} htmlFor={`${idPrefix}-column`}>Columna</label>
               <HeaderInput id={`${idPrefix}-column`} value={source.column} headers={headers} suggestions={suggestions} onChange={(column) => onChange({ ...source, column })} />
@@ -122,6 +149,20 @@ export function SourceEditor({ idPrefix, source, headers, suggestions, outputCol
                 onChange={(event) => {
                   const position = Math.max(0, Math.min(49, Number(event.target.value || 1) - 1));
                   onChange(source.type === 'SPLIT_WORD' ? { ...source, index: position } : { ...source, start: position });
+                }}
+              />
+            </div>
+            <div>
+              <label className={labelClass} htmlFor={`${idPrefix}-delimiter`}>Separador</label>
+              <input
+                id={`${idPrefix}-delimiter`}
+                maxLength={5}
+                className={`${inputClass} font-mono`}
+                value={source.delimiter || ''}
+                placeholder="espacio"
+                onChange={(event) => {
+                  const { delimiter, ...rest } = source;
+                  onChange(event.target.value ? { ...rest, delimiter: event.target.value } : rest);
                 }}
               />
             </div>

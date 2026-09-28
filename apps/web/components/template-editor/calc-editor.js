@@ -2,6 +2,7 @@
 
 import { Plus, X } from 'lucide-react';
 import { inputClass } from './source-editor';
+import { OperandPicker } from './operand-picker';
 
 const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
 
@@ -11,7 +12,10 @@ export const CALC_OPERATIONS = [
   { value: 'SUBTRACT', label: 'Resta' },
   { value: 'MULTIPLY', label: 'Multiplicación' },
   { value: 'DIVIDE', label: 'División' },
-  { value: 'AVERAGE', label: 'Promedio' }
+  { value: 'AVERAGE', label: 'Promedio' },
+  { value: 'MIN', label: 'Mínimo' },
+  { value: 'MAX', label: 'Máximo' },
+  { value: 'ABS', label: 'Valor absoluto' }
 ];
 
 const ROUNDING = [
@@ -27,55 +31,6 @@ export function defaultCalc(column) {
   return { type: 'CALC', op: 'PERCENT', value: 10, operands: [column ? { type: 'COLUMN', column } : { type: 'NUMBER', value: 0 }], round: { mode: 'ROUND', decimals: 0 } };
 }
 
-function encode(operand) {
-  if (operand.type === 'OUTPUT') return `out:${operand.columnId}`;
-  if (operand.type === 'COLUMN') return `col:${operand.column}`;
-  return 'num';
-}
-
-function decode(value, previous) {
-  if (value.startsWith('out:')) return { type: 'OUTPUT', columnId: value.slice(4) };
-  if (value.startsWith('col:')) return { type: 'COLUMN', column: value.slice(4) };
-  return { type: 'NUMBER', value: previous?.type === 'NUMBER' ? previous.value : 0 };
-}
-
-function OperandPicker({ id, operand, headers, suggestions, outputColumns, onChange }) {
-  const fileColumns = headers || suggestions;
-  const current = encode(operand);
-  const known = current === 'num' || fileColumns.includes(operand.column) || outputColumns.some((column) => column.id === operand.columnId);
-
-  return (
-    <div className="flex min-w-0 flex-1 gap-2">
-      <select id={id} aria-label="Valor del cálculo" className={`${inputClass} flex-1`} value={current} onChange={(event) => onChange(decode(event.target.value, operand))}>
-        {!known ? <option value={current}>{operand.column || operand.columnId} (no disponible)</option> : null}
-        {outputColumns.length ? (
-          <optgroup label="Columnas anteriores de esta plantilla">
-            {outputColumns.map((column) => <option key={column.id} value={`out:${column.id}`}>{column.outputName}</option>)}
-          </optgroup>
-        ) : null}
-        {fileColumns.length ? (
-          <optgroup label="Columnas del Excel">
-            {fileColumns.map((header) => <option key={header} value={`col:${header}`}>{header}</option>)}
-          </optgroup>
-        ) : null}
-        <option value="num">Un número…</option>
-      </select>
-      {operand.type === 'NUMBER' ? (
-        <input
-          aria-label="Número"
-          inputMode="decimal"
-          className="h-9 w-28 shrink-0 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
-          defaultValue={String(operand.value).replace('.', ',')}
-          onBlur={(event) => {
-            const number = Number(event.target.value.trim().replace(/\./g, '').replace(',', '.'));
-            if (Number.isFinite(number)) onChange({ type: 'NUMBER', value: number });
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 // Structured calculation editor: no free-form formulas, only whitelisted operations over columns and numbers.
 export function CalcEditor({ idPrefix, source, headers, suggestions = [], outputColumns = [], onChange }) {
   const set = (changes) => onChange({ ...source, ...changes });
@@ -84,6 +39,7 @@ export function CalcEditor({ idPrefix, source, headers, suggestions = [], output
 
   function changeOperation(op) {
     if (op === 'PERCENT') set({ op, value: source.value ?? 10, operands: [source.operands[0]] });
+    else if (op === 'ABS') set({ op, value: undefined, operands: [source.operands[0]] });
     else set({ op, value: undefined, operands: source.operands.length >= 2 ? source.operands : [...source.operands, { type: 'NUMBER', value: 0 }] });
   }
 
@@ -115,12 +71,17 @@ export function CalcEditor({ idPrefix, source, headers, suggestions = [], output
               <OperandPicker id={`${idPrefix}-calc-0`} operand={source.operands[0]} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(operand) => setOperand(0, operand)} />
             </div>
           </div>
+        ) : source.op === 'ABS' ? (
+          <div>
+            <label className={labelClass} htmlFor={`${idPrefix}-calc-0`}>Valor</label>
+            <OperandPicker id={`${idPrefix}-calc-0`} operand={source.operands[0]} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(operand) => setOperand(0, operand)} />
+          </div>
         ) : (
           <div className="space-y-2">
             {source.operands.map((operand, index) => (
               <div key={index} className="flex items-center gap-2">
                 <span className="w-5 shrink-0 text-center text-sm font-semibold text-ink-500" aria-hidden="true">
-                  {index === 0 ? '' : { SUM: '+', SUBTRACT: '−', MULTIPLY: '×', DIVIDE: '÷', AVERAGE: '·' }[source.op]}
+                  {index === 0 ? '' : { SUM: '+', SUBTRACT: '−', MULTIPLY: '×', DIVIDE: '÷', AVERAGE: '·', MIN: '·', MAX: '·' }[source.op]}
                 </span>
                 <OperandPicker id={`${idPrefix}-calc-${index}`} operand={operand} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(next) => setOperand(index, next)} />
                 <button

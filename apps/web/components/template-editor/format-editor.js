@@ -110,6 +110,7 @@ export function FormatEditor({ idPrefix, column, onChange }) {
             <option value="NONE">Como vienen</option>
             <option value="UPPERCASE">MAYÚSCULAS</option>
             <option value="LOWERCASE">minúsculas</option>
+            <option value="TITLE_CASE">Nombre Propio</option>
           </select>
         </label>
         <label className={checkboxClass}>
@@ -120,7 +121,62 @@ export function FormatEditor({ idPrefix, column, onChange }) {
           <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={format.normalizeSpaces} onChange={(event) => set({ normalizeSpaces: event.target.checked })} />
           Limpiar espacios
         </label>
+        <label className={checkboxClass}>
+          <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={format.digitsOnly} onChange={(event) => set({ digitsOnly: event.target.checked })} />
+          Dejar solo dígitos
+        </label>
       </fieldset>
+
+      <details className="rounded-md border border-ink-200" open={Boolean(format.replacements.length || format.substring || format.pad)}>
+        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-ink-700 hover:bg-ink-50">Más opciones de texto: reemplazar, extraer una parte, rellenar</summary>
+        <div className="space-y-3 border-t border-ink-100 p-3">
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-ink-500">Reemplazar</p>
+            {format.replacements.map((replacement, index) => (
+              <div key={index} className="flex flex-wrap items-center gap-2 text-sm">
+                <input aria-label={`Buscar ${index + 1}`} className="h-8 w-32 rounded-md border border-ink-200 px-2 font-mono text-sm" value={replacement.find} placeholder="buscar" onChange={(event) => set({ replacements: format.replacements.map((item, position) => (position === index ? { ...item, find: event.target.value } : item)) })} />
+                <span className="text-ink-500">por</span>
+                <input aria-label={`Reemplazar ${index + 1}`} className="h-8 w-32 rounded-md border border-ink-200 px-2 font-mono text-sm" value={replacement.replace} placeholder="(nada)" onChange={(event) => set({ replacements: format.replacements.map((item, position) => (position === index ? { ...item, replace: event.target.value } : item)) })} />
+                <button type="button" className="text-xs text-ink-500 hover:text-rose-700" onClick={() => set({ replacements: format.replacements.filter((_, position) => position !== index) })}>Quitar</button>
+              </div>
+            ))}
+            <button type="button" className="text-xs font-medium text-cobalt-700 hover:underline" onClick={() => set({ replacements: [...format.replacements, { find: '', replace: '' }] })}>+ Agregar reemplazo</button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label className={checkboxClass}>
+              <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={Boolean(format.substring)} onChange={(event) => set({ substring: event.target.checked ? { start: 1, length: 3 } : null })} />
+              Extraer parte:
+            </label>
+            {format.substring ? (
+              <>
+                <span className="text-ink-500">desde el carácter</span>
+                <input aria-label="Desde el carácter" type="number" min={1} className="h-8 w-16 rounded-md border border-ink-200 px-2" value={format.substring.start} onChange={(event) => set({ substring: { ...format.substring, start: Math.max(1, Number(event.target.value) || 1) } })} />
+                <span className="text-ink-500">cantidad</span>
+                <input aria-label="Cantidad de caracteres" type="number" min={1} className="h-8 w-16 rounded-md border border-ink-200 px-2" value={format.substring.length || ''} placeholder="todo" onChange={(event) => set({ substring: { ...format.substring, length: Number(event.target.value) || undefined } })} />
+              </>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label className={checkboxClass}>
+              <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={Boolean(format.pad)} onChange={(event) => set({ pad: event.target.checked ? { length: 8, char: '0', side: 'LEFT' } : null })} />
+              Rellenar hasta
+            </label>
+            {format.pad ? (
+              <>
+                <input aria-label="Largo del relleno" type="number" min={1} className="h-8 w-16 rounded-md border border-ink-200 px-2" value={format.pad.length} onChange={(event) => set({ pad: { ...format.pad, length: Math.max(1, Number(event.target.value) || 1) } })} />
+                <span className="text-ink-500">caracteres con</span>
+                <input aria-label="Carácter de relleno" maxLength={1} className="h-8 w-10 rounded-md border border-ink-200 px-2 text-center font-mono" value={format.pad.char} onChange={(event) => event.target.value && set({ pad: { ...format.pad, char: event.target.value } })} />
+                <select aria-label="Lado del relleno" className="h-8 rounded-md border border-ink-200 bg-white px-2" value={format.pad.side} onChange={(event) => set({ pad: { ...format.pad, side: event.target.value } })}>
+                  <option value="LEFT">a la izquierda</option>
+                  <option value="RIGHT">a la derecha</option>
+                </select>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

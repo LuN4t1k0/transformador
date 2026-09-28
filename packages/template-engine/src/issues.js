@@ -6,7 +6,8 @@ const ISSUE_MESSAGES = {
   TOO_LONG: 'Supera el largo de la columna',
   INVALID_DATE: 'No se reconoce como fecha',
   INVALID_NUMBER: 'No se reconoce como número',
-  INVALID_RUT_FORMAT: 'No se reconoce como RUT'
+  INVALID_RUT_FORMAT: 'No se reconoce como RUT',
+  DIVISION_BY_ZERO: 'División por cero'
 };
 
 // What a valid value looks like, so users know how to fix the cell.
@@ -17,7 +18,8 @@ const ISSUE_HINTS = {
   TOO_LONG: 'Acorta el valor o pide que se amplíe el largo de la columna en la plantilla.',
   INVALID_DATE: 'Usa una fecha real, por ejemplo 03-05-2024 o 2024-05-03.',
   INVALID_NUMBER: 'Usa un número como 1.234.567 o 1234,50, sin letras.',
-  INVALID_RUT_FORMAT: 'Usa un RUT como 12.345.678-5 o 12345678-5.'
+  INVALID_RUT_FORMAT: 'Usa un RUT como 12.345.678-5 o 12345678-5.',
+  DIVISION_BY_ZERO: 'El divisor de este cálculo vale 0 en esta fila; revisa el valor o usa una condición para esos casos.'
 };
 
 function describeIssue(issue) {

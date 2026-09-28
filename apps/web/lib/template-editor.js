@@ -46,9 +46,13 @@ export function parseFormat(column) {
     decimalSeparator: primary?.type === 'NUMBER' ? primary.decimalSeparator || '.' : '.',
     inputDecimalSeparator: primary?.type === 'NUMBER' ? primary.inputDecimalSeparator || 'AUTO' : 'AUTO',
     validateInteger: validations.has('INTEGER'),
-    textCase: textOps.has('UPPERCASE') ? 'UPPERCASE' : textOps.has('LOWERCASE') ? 'LOWERCASE' : 'NONE',
+    textCase: textOps.has('UPPERCASE') ? 'UPPERCASE' : textOps.has('LOWERCASE') ? 'LOWERCASE' : textOps.has('TITLE_CASE') ? 'TITLE_CASE' : 'NONE',
     removeAccents: textOps.has('REMOVE_ACCENTS'),
-    normalizeSpaces: textOps.has('NORMALIZE_SPACES') || textOps.has('TRIM')
+    normalizeSpaces: textOps.has('NORMALIZE_SPACES') || textOps.has('TRIM'),
+    digitsOnly: textOps.has('DIGITS_ONLY'),
+    replacements: transformations.filter((transformation) => transformation.type === 'REPLACE').map(({ find, replace }) => ({ find, replace })),
+    substring: transformations.find((transformation) => transformation.type === 'SUBSTRING') || null,
+    pad: transformations.find((transformation) => transformation.type === 'PAD') || null
   };
 }
 
@@ -74,6 +78,12 @@ export function applyFormat(column, format) {
   if (format.normalizeSpaces) transformations.push({ type: 'TEXT', operation: 'NORMALIZE_SPACES' });
   if (format.removeAccents) transformations.push({ type: 'TEXT', operation: 'REMOVE_ACCENTS' });
   if (format.textCase !== 'NONE') transformations.push({ type: 'TEXT', operation: format.textCase });
+  if (format.digitsOnly) transformations.push({ type: 'TEXT', operation: 'DIGITS_ONLY' });
+  for (const replacement of format.replacements || []) {
+    if (replacement.find) transformations.push({ type: 'REPLACE', find: replacement.find, replace: replacement.replace || '' });
+  }
+  if (format.substring) transformations.push({ type: 'SUBSTRING', start: format.substring.start, ...(format.substring.length ? { length: format.substring.length } : {}) });
+  if (format.pad) transformations.push({ type: 'PAD', length: format.pad.length, char: format.pad.char, side: format.pad.side });
 
   return { ...column, transformations, validations };
 }

@@ -8,6 +8,7 @@ import { describeIssue, describeSource, describeTransformations } from '../../li
 import { StatusPill } from '../status-pill';
 import { FormatEditor } from './format-editor';
 import { defaultCalc } from './calc-editor';
+import { convertSource } from './source-editor';
 import { inputClass, SourceEditor } from './source-editor';
 
 const iconButton = 'flex h-8 w-8 items-center justify-center rounded-md text-ink-500 hover:bg-ink-100 hover:text-ink-900 disabled:opacity-30 disabled:hover:bg-transparent';
@@ -17,7 +18,7 @@ function sourceSample(values, source) {
   if (source.type === 'COLUMN' || source.type.startsWith('SPLIT')) return values[source.column];
   if (source.type === 'CONSTANT') return source.value;
   if (source.type === 'CONCAT') return source.parts.map((part) => (part.type === 'COLUMN' ? formatCell(values[part.column]) : part.value)).filter(Boolean).join(source.separator);
-  if (source.type === 'CALC') return 'calculado';
+  if (['CALC', 'CASE', 'MAP', 'COALESCE', 'TEMPLATE', 'DATE_CALC', 'ROW_NUMBER'].includes(source.type)) return 'regla';
   return null;
 }
 
@@ -98,6 +99,9 @@ function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }
         } else if (choice === '__calc') {
           onChange({ ...column, source: defaultCalc(headers[0]), transformations: [], reviewed: false }, { sourceChanged: true });
           onExpand();
+        } else if (choice.startsWith('__rule:')) {
+          onChange({ ...column, source: convertSource(source, choice.slice(7), headers), transformations: [], reviewed: false }, { sourceChanged: true });
+          onExpand();
         } else if (choice === '__more') {
           onExpand();
         } else if (choice) {
@@ -113,6 +117,12 @@ function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }
       <optgroup label="Otras opciones">
         <option value="__constant">Valor fijo…</option>
         <option value="__calc">Cálculo (%, suma, resta…)…</option>
+        <option value="__rule:CASE">Condición (si… entonces…)…</option>
+        <option value="__rule:MAP">Tabla de equivalencias…</option>
+        <option value="__rule:COALESCE">Primer valor no vacío…</option>
+        <option value="__rule:TEMPLATE">Texto con variables…</option>
+        <option value="__rule:DATE_CALC">Operación con fechas…</option>
+        <option value="__rule:ROW_NUMBER">Número correlativo</option>
         <option value="__more">Unir o separar columnas…</option>
         {source.type !== 'EMPTY' ? <option value="__empty">Dejar vacía</option> : null}
       </optgroup>

@@ -30,6 +30,23 @@ test('builds RUT, date and number formats from the UI model', async () => {
   assert.deepEqual(applyFormat(base, { ...format, kind: 'NUMBER', numberDecimals: 2, decimalSeparator: '.', inputDecimalSeparator: '.', textCase: 'NONE' }).transformations, [{ type: 'NUMBER', fixedDecimals: 2, inputDecimalSeparator: '.' }]);
 });
 
+test('round-trips the generic text functions', async () => {
+  const { parseFormat, applyFormat } = await load();
+  const transformations = [
+    { type: 'TEXT', operation: 'TITLE_CASE' },
+    { type: 'TEXT', operation: 'DIGITS_ONLY' },
+    { type: 'REPLACE', find: '-', replace: '' },
+    { type: 'SUBSTRING', start: 2, length: 3 },
+    { type: 'PAD', length: 8, char: '0', side: 'LEFT' }
+  ];
+  const column = { id: 'x', outputName: 'X', source: { type: 'COLUMN', column: 'X' }, transformations, validations: [] };
+  const format = parseFormat(column);
+  assert.equal(format.textCase, 'TITLE_CASE');
+  assert.equal(format.digitsOnly, true);
+  assert.deepEqual(applyFormat(column, format).transformations, transformations);
+  validateTemplateConfig({ name: 'T', columns: [applyFormat(column, format)] });
+});
+
 test('adds, duplicates and moves columns keeping names unique', async () => {
   const { createColumn, duplicateColumn, moveColumn } = await load();
   const columns = [{ id: 'a', outputName: 'Nueva columna' }, { id: 'b', outputName: 'B' }];
