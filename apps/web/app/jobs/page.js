@@ -2,18 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { FilePlus2, History, Loader2 } from 'lucide-react';
+import { AlertCircle, FilePlus2, History, Loader2 } from 'lucide-react';
 import { formatDateTime, JobStatusBadge } from '../../components/job-status';
-import { buttonStyles } from '../../components/panel';
+import { buttonStyles, Notice } from '../../components/panel';
 import { Shell } from '../../components/shell';
 import { api } from '../../lib/api';
-import { getTemplate } from '../../lib/templates';
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.listJobs().then(setJobs).catch(() => setJobs([]));
+    api.listJobs().then(setJobs).catch(setError);
   }, []);
 
   return (
@@ -22,7 +22,7 @@ export default function JobsPage() {
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-ink-900">Historial</h1>
-            <p className="mt-1 text-sm text-ink-500">Jobs de esta sesión. Solo se guarda metadata: nunca el contenido de las filas.</p>
+            <p className="mt-1 text-sm text-ink-500">Tus últimos jobs. Solo se guarda metadata: nunca el contenido de las filas.</p>
           </div>
           <Link href="/jobs/new" className={buttonStyles.primary}>
             <FilePlus2 size={16} aria-hidden="true" />
@@ -30,7 +30,9 @@ export default function JobsPage() {
           </Link>
         </div>
 
-        {!jobs ? (
+        {error ? (
+          <Notice tone="danger" icon={AlertCircle} role="alert">No pudimos cargar el historial: {error.message}</Notice>
+        ) : !jobs ? (
           <p className="flex items-center gap-2 text-sm text-ink-500">
             <Loader2 size={16} className="animate-spin" aria-hidden="true" />
             Cargando…
@@ -58,7 +60,7 @@ export default function JobsPage() {
                     <td className="max-w-xs px-4 py-3">
                       <Link href={`/jobs/${job.id}`} className="block truncate font-medium text-cobalt-700 hover:underline">{job.fileName}</Link>
                     </td>
-                    <td className="px-4 py-3 text-ink-700">{getTemplate(job.templateId)?.name}</td>
+                    <td className="px-4 py-3 text-ink-700">{job.template?.name}</td>
                     <td className="px-4 py-3"><JobStatusBadge status={job.status} /></td>
                     <td className="px-4 py-3 tabular-nums text-ink-500">{formatDateTime(job.createdAt)}</td>
                   </tr>

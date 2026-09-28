@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, ArrowRight, CheckCircle2, FileSpreadsheet, Loader2, ShieldCheck } from 'lucide-react';
 import { FileDropzone } from '../../../components/file-dropzone';
@@ -8,9 +8,18 @@ import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { api } from '../../../lib/api';
 import { formatFileSize, MAX_FILE_SIZE_BYTES, validateExcelFile } from '../../../lib/file-validation';
-import { templates } from '../../../lib/templates';
 
-function TemplatePicker({ templateId, onChange }) {
+function TemplatePicker({ templates, error, templateId, onChange }) {
+  if (error) return <Notice tone="danger" icon={AlertCircle} role="alert">No pudimos cargar las plantillas: {error.message}</Notice>;
+  if (!templates) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-ink-500">
+        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+        Cargando plantillas…
+      </p>
+    );
+  }
+
   return (
     <div className="grid gap-2" role="radiogroup" aria-label="Plantilla de salida">
       {templates.map((template) => {
@@ -48,9 +57,20 @@ export default function NewJobPage() {
   const router = useRouter();
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState('');
-  const [templateId, setTemplateId] = useState(templates[0].id);
+  const [templates, setTemplates] = useState(null);
+  const [templatesError, setTemplatesError] = useState(null);
+  const [templateId, setTemplateId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [apiError, setApiError] = useState('');
+
+  useEffect(() => {
+    api.listTemplates()
+      .then((list) => {
+        setTemplates(list);
+        setTemplateId((current) => current || list[0]?.id || null);
+      })
+      .catch(setTemplatesError);
+  }, []);
 
   const blockedReason = !file
     ? 'Selecciona un archivo .xlsx para continuar.'
@@ -60,7 +80,7 @@ export default function NewJobPage() {
     const error = validateExcelFile(selected);
     setFileError(error || '');
     setApiError('');
-    if (!error) setFile({ name: selected.name, size: selected.size });
+    if (!error) setFile(selected);
   }
 
   async function handleCreate() {
@@ -68,7 +88,7 @@ export default function NewJobPage() {
     setIsCreating(true);
     setApiError('');
     try {
-      const job = await api.createJob({ fileName: file.name, fileSize: file.size, templateId });
+      const job = await api.createJob({ file, templateId });
       router.push(`/jobs/${job.id}`);
     } catch (error) {
       setApiError(error.message || 'No pudimos crear el job. Inténtalo de nuevo.');
@@ -94,7 +114,7 @@ export default function NewJobPage() {
               <FileDropzone file={file} error={fileError} onFile={handleFile} />
 
               <h3 className="mb-2 mt-6 text-sm font-semibold text-ink-900">2. Plantilla de salida</h3>
-              <TemplatePicker templateId={templateId} onChange={setTemplateId} />
+              <TemplatePicker templates={templates} error={templatesError} templateId={templateId} onChange={setTemplateId} />
 
               {apiError ? (
                 <div className="mt-4">
@@ -113,7 +133,7 @@ export default function NewJobPage() {
                 onClick={handleCreate}
               >
                 {isCreating ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
-                {isCreating ? 'Creando job…' : 'Crear job y analizar'}
+                {isCreating ? 'Subiendo archivo…' : 'Crear job y analizar'}
                 {isCreating ? null : <ArrowRight size={16} aria-hidden="true" />}
               </button>
             </div>

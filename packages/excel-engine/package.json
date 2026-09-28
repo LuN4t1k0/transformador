@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "main": "src/security-policy.js"
+  "main": "src/index.js",
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
 }

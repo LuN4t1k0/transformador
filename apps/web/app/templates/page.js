@@ -1,14 +1,24 @@
-import { FileSpreadsheet } from 'lucide-react';
-import { Shell } from '../../components/shell';
-import { describeSource, describeTransformations, templates } from '../../lib/templates';
+'use client';
 
-export const metadata = { title: 'Plantillas · Previley Transformer' };
+import { useEffect, useState } from 'react';
+import { AlertCircle, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Notice } from '../../components/panel';
+import { Shell } from '../../components/shell';
+import { api } from '../../lib/api';
+import { describeSource, describeTransformations } from '../../lib/templates';
 
 function sourceLabel(source) {
   return describeSource(source) || `Columna «${source.column}»`;
 }
 
 export default function TemplatesPage() {
+  const [templates, setTemplates] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.listTemplates().then(setTemplates).catch(setError);
+  }, []);
+
   return (
     <Shell>
       <div className="mx-auto max-w-6xl">
@@ -17,13 +27,23 @@ export default function TemplatesPage() {
           <p className="mt-1 text-sm text-ink-500">Formatos de salida disponibles y la columna de origen que cada campo espera por defecto.</p>
         </div>
 
+        {error ? <Notice tone="danger" icon={AlertCircle} role="alert">No pudimos cargar las plantillas: {error.message}</Notice> : null}
+        {!templates && !error ? (
+          <p className="flex items-center gap-2 text-sm text-ink-500">
+            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+            Cargando…
+          </p>
+        ) : null}
         <div className="space-y-5">
-          {templates.map((template) => (
+          {(templates || []).map((template) => (
             <section key={template.id} className="rounded-lg border border-ink-200 bg-white shadow-panel">
               <div className="flex items-start gap-3 border-b border-ink-100 px-4 py-4 sm:px-5">
                 <FileSpreadsheet className="mt-0.5 shrink-0 text-cobalt-600" size={20} aria-hidden="true" />
                 <div className="min-w-0">
-                  <h2 className="text-base font-semibold text-ink-900">{template.name}</h2>
+                  <h2 className="text-base font-semibold text-ink-900">
+                    {template.name}
+                    <span className="ml-2 align-middle text-xs font-medium text-ink-500">versión {template.version}</span>
+                  </h2>
                   <p className="mt-1 text-sm text-ink-500">{template.description}</p>
                   <p className="mt-1 text-xs text-ink-500">
                     Lee la hoja «{template.input.sheet}» · genera la hoja «{template.output.sheetName}» en .{template.output.format} · {template.columns.length} columnas

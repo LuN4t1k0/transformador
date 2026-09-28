@@ -11,12 +11,21 @@ class LocalTemporaryStorage extends TemporaryStorage {
   }
 
   async save(buffer, metadata = {}) {
+    const { key, path: filePath } = await this.reserve(metadata);
+    await fs.writeFile(filePath, buffer, { mode: 0o600 });
+    return { key, path: filePath, expiresAt: new Date(Date.now() + this.ttlMs) };
+  }
+
+  // Returns a fresh key and local path so large files can be streamed in without buffering.
+  async reserve(metadata = {}) {
     await fs.mkdir(this.rootDir, { recursive: true, mode: 0o700 });
     const extension = metadata.extension ? `.${metadata.extension.replace(/^\./, '')}` : '';
     const key = `${Date.now()}-${crypto.randomUUID()}${extension}`;
-    const filePath = path.join(this.rootDir, key);
-    await fs.writeFile(filePath, buffer, { mode: 0o600 });
-    return { key, path: filePath, expiresAt: new Date(Date.now() + this.ttlMs) };
+    return { key, path: path.join(this.rootDir, key) };
+  }
+
+  resolvePath(key) {
+    return this.#resolve(key);
   }
 
   async open(key) {

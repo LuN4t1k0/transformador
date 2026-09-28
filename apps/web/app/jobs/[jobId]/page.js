@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { AlertCircle, ArrowLeft, ArrowRight, Check, FileSearch, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, FileSearch, Loader2, ShieldCheck, WifiOff } from 'lucide-react';
 import { MappingCounts, MappingEditor } from '../../../components/mapping-editor';
 import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
@@ -15,7 +15,6 @@ import { api } from '../../../lib/api';
 import { formatFileSize } from '../../../lib/file-validation';
 import { useJob } from '../../../lib/hooks/use-job';
 import { evaluateMapping, updateMappingEntry } from '../../../lib/mapping';
-import { getTemplate } from '../../../lib/templates';
 
 const SECTIONS = [
   { id: 'sheet', label: 'Hoja', title: 'Hoja de origen', description: 'Elige la hoja del Excel que contiene los datos a transformar.' },
@@ -25,6 +24,7 @@ const SECTIONS = [
 ];
 
 const RUNNING = new Set(['QUEUED_TRANSFORMATION', 'TRANSFORMING', 'VALIDATING', 'GENERATING']);
+const ANALYZING = new Set(['QUEUED_ANALYSIS', 'ANALYZING']);
 
 function SectionTabs({ activeId, onSelect, evaluation }) {
   const pending = evaluation.counts.pending + evaluation.counts.missing;
@@ -87,6 +87,7 @@ function getNextAction(job, evaluation, activeId) {
     if (activeId === 'preview') return { section: 'run', label: 'Ir a generar', hint: 'Si la vista previa se ve bien, genera el archivo.' };
     return { section: 'preview', label: 'Ver vista previa', hint: 'El mapeo está completo. Revisa el resultado antes de generar.' };
   }
+  if (ANALYZING.has(job.status)) return { hint: 'Estamos leyendo las hojas y encabezados del archivo.' };
   if (RUNNING.has(job.status)) return { hint: 'Procesando todas las filas.' };
   if (job.status === 'READY_TO_DOWNLOAD') return { hint: 'El archivo está listo. Descárgalo antes de que expire.' };
   return { hint: 'Este job terminó. Crea uno nuevo para procesar otro archivo.' };
@@ -107,7 +108,7 @@ function JobContextPanel({ job, template, evaluation, activeId, onGo }) {
           </div>
           <div>
             <dt className="text-xs text-ink-500">Hoja</dt>
-            <dd className="font-medium text-ink-900">{job.selectedSheet}</dd>
+            <dd className="font-medium text-ink-900">{job.selectedSheet || <span className="text-ink-400">Pendiente de análisis</span>}</dd>
           </div>
           <div>
             <dt className="text-xs text-ink-500">Plantilla</dt>
@@ -150,8 +151,17 @@ function downloadBlob({ fileName, blob }) {
   URL.revokeObjectURL(url);
 }
 
+function AnalysisInProgress() {
+  return (
+    <p className="flex items-center gap-2 text-sm text-ink-700">
+      <Loader2 size={16} className="animate-spin text-cobalt-600" aria-hidden="true" />
+      Analizando hojas, encabezados y tipos de columna…
+    </p>
+  );
+}
+
 function JobWorkspace({ job, setJob }) {
-  const template = getTemplate(job.templateId);
+  const { template } = job;
   const [activeId, setActiveId] = useState('sheet');
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -206,6 +216,7 @@ function JobWorkspace({ job, setJob }) {
 
   function renderSection() {
     if (!isEditable) {
+      if (ANALYZING.has(job.status)) return <AnalysisInProgress />;
       if (RUNNING.has(job.status)) return <RunProgress job={job} isBusy={isBusy} onCancel={() => run(() => api.cancelJob(job.id))} />;
       if (job.status === 'READY_TO_DOWNLOAD') {
         return <RunResult job={job} isBusy={isBusy} onDownload={() => run(async () => downloadBlob(await api.downloadJob(job.id)))} />;
@@ -244,7 +255,7 @@ function JobWorkspace({ job, setJob }) {
         <div id="job-section-panel" role={isEditable ? 'tabpanel' : undefined}>
           <Panel
             headingRef={headingRef}
-            title={isEditable ? section.title : RUNNING.has(job.status) ? 'Procesando archivo' : 'Resultado'}
+            title={isEditable ? section.title : ANALYZING.has(job.status) ? 'Analizando archivo' : RUNNING.has(job.status) ? 'Procesando archivo' : 'Resultado'}
             description={isEditable ? section.description : null}
           >
             {renderSection()}
@@ -276,7 +287,7 @@ function JobWorkspace({ job, setJob }) {
 
 export default function JobPage() {
   const { jobId } = useParams();
-  const { job, error, isLoading, setJob } = useJob(jobId);
+  const { job, error, isLoading, setJob, isRealtimeConnected } = useJob(jobId);
 
   return (
     <Shell>
@@ -305,11 +316,18 @@ export default function JobPage() {
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-semibold text-ink-900">{job.fileName}</h1>
                 <p className="mt-1 text-sm text-ink-500">
-                  {getTemplate(job.templateId).name} · creado a las {formatTime(job.createdAt)} · <span className="font-mono text-xs">{job.id}</span>
+                  {job.template.name} · creado a las {formatTime(job.createdAt)} · <span className="font-mono text-xs">{job.id}</span>
                 </p>
               </div>
               <JobStatusBadge status={job.status} />
             </div>
+            {!isRealtimeConnected ? (
+              <div className="mb-4">
+                <Notice tone="warning" icon={WifiOff} role="status">
+                  Se perdió la conexión en tiempo real. Reintentando… Al reconectar, el estado se actualizará automáticamente.
+                </Notice>
+              </div>
+            ) : null}
             <JobWorkspace job={job} setJob={setJob} />
           </>
         )}

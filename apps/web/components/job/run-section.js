@@ -100,25 +100,31 @@ export function RunProgress({ job, onCancel, isBusy }) {
   );
 }
 
-function IssuesTable({ issues }) {
+function IssuesTable({ groups }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-ink-200">
-      <table className="w-full min-w-[520px] text-left text-sm">
+      <table className="w-full min-w-[560px] text-left text-sm">
         <thead className="bg-ink-50 text-xs text-ink-500">
           <tr>
-            <th scope="col" className="w-16 px-3 py-2 font-medium">Fila</th>
             <th scope="col" className="px-3 py-2 font-medium">Columna</th>
             <th scope="col" className="px-3 py-2 font-medium">Problema</th>
-            <th scope="col" className="px-3 py-2 font-medium">Código</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium">Casos</th>
+            <th scope="col" className="px-3 py-2 font-medium">Filas de ejemplo</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-ink-100">
-          {issues.map((issue) => (
-            <tr key={`${issue.row}-${issue.column}-${issue.code}`}>
-              <td className="px-3 py-2 tabular-nums text-ink-700">{issue.row}</td>
-              <td className="px-3 py-2 font-medium text-ink-900">{issue.column}</td>
-              <td className={`px-3 py-2 ${issue.severity === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>{describeIssue(issue)}</td>
-              <td className="px-3 py-2 font-mono text-xs text-ink-500">{issue.code}</td>
+          {groups.map((group) => (
+            <tr key={`${group.column}-${group.code}`}>
+              <td className="px-3 py-2 font-medium text-ink-900">{group.column}</td>
+              <td className={`px-3 py-2 ${group.severity === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>
+                {describeIssue(group)}
+                <span className="ml-1 font-mono text-xs text-ink-400">{group.code}</span>
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums text-ink-900">{group.count}</td>
+              <td className="px-3 py-2 tabular-nums text-ink-500">
+                {group.sampleRows.join(', ')}
+                {group.count > group.sampleRows.length ? ` y ${group.count - group.sampleRows.length} más` : ''}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -148,10 +154,13 @@ export function RunResult({ job, onDownload, isBusy }) {
         ))}
       </dl>
 
-      {summary.issues.length ? (
+      {summary.issueGroups?.length ? (
         <>
           <h3 className="mb-2 mt-5 text-sm font-semibold text-ink-900">Problemas encontrados</h3>
-          <IssuesTable issues={summary.issues} />
+          <IssuesTable groups={summary.issueGroups} />
+          {summary.truncatedGroups ? (
+            <p className="mt-2 text-xs text-ink-500">Hay más tipos de problema de los que se muestran; los totales de arriba incluyen todas las filas.</p>
+          ) : null}
         </>
       ) : null}
 
@@ -171,7 +180,7 @@ const TERMINAL_MESSAGES = {
   PURGED: { tone: 'success', icon: CheckCircle2, title: 'Archivo descargado', text: 'La copia temporal ya fue eliminada del servidor. Si necesitas el archivo otra vez, crea un nuevo job.' },
   CANCELLED: { tone: 'warning', icon: XCircle, title: 'Transformación cancelada', text: 'No se generó ningún archivo. Crea un nuevo job para volver a intentarlo.' },
   EXPIRED: { tone: 'warning', icon: Clock, title: 'El job expiró', text: 'Los archivos temporales se eliminaron por tiempo. Vuelve a subir el Excel para continuar.' },
-  FAILED: { tone: 'danger', icon: AlertCircle, title: 'La transformación falló', text: 'No se generó ningún archivo.' }
+  FAILED: { tone: 'danger', icon: AlertCircle, title: 'No pudimos procesar el archivo', text: 'No se generó ningún archivo y los temporales se eliminaron.' }
 };
 
 export function RunTerminal({ job }) {
@@ -183,7 +192,7 @@ export function RunTerminal({ job }) {
       <Notice tone={message.tone} icon={message.icon} role="status">
         <p className="font-semibold">{message.title}</p>
         <p className="mt-0.5">{message.text}</p>
-        {job.error ? <p className="mt-1 font-mono text-xs">{job.error}</p> : null}
+        {job.error ? <p className="mt-1">{job.error.message} <span className="font-mono text-xs">({job.error.code})</span></p> : null}
       </Notice>
       {job.summary ? (
         <p className="mt-3 text-sm text-ink-500">

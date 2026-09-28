@@ -355,8 +355,8 @@ Archivo: `/Users/cristianvenegas/Desktop/EjemploPagex.xlsx`.
 
 Hojas:
 
-- `RESUMEN`: rango `A1:AG4`.
-- `DETALLE_CADENAS`: rango `A1:AB40`.
+- `RESUMEN`: rango `A1:AG4` (3 filas, 33 columnas).
+- `DETALLE_CADENAS`: rango `A1:AB40` (39 filas, 28 columnas). Las fechas vienen como celdas de fecha de Excel, no como texto.
 
 Columnas relevantes detectadas:
 
@@ -366,7 +366,7 @@ Columnas relevantes detectadas:
 - `Cod.`
 - `Periodo`
 - `Fecha Inicio`
-- `Fecha Termino`
+- `Fecha Término`
 - `AFP`
 - `dias_licencia`
 - `dias_pagados`

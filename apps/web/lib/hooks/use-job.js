@@ -3,17 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 
-// Loads job metadata and keeps it in sync with realtime events. Every event carries the full job,
-// so a missed event is recovered on the next one or on reload (rehydration from getJob).
+// Loads job metadata and keeps it in sync with realtime events. Every event carries the full job and each
+// (re)subscription rehydrates it, so disconnections never leave the page with stale state.
 export function useJob(jobId) {
   const [state, setState] = useState({ job: null, error: null, isLoading: true });
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(true);
 
   useEffect(() => {
     let active = true;
-    // Subscribe first: getJob may resume a stalled worker that emits immediately.
     const unsubscribe = api.subscribe(jobId, ({ job }) => {
       if (active) setState({ job, error: null, isLoading: false });
     });
+    const stopConnectionWatch = api.onConnectionChange((connected) => active && setIsRealtimeConnected(connected));
 
     api.getJob(jobId)
       .then((job) => active && setState({ job, error: null, isLoading: false }))
@@ -22,10 +23,11 @@ export function useJob(jobId) {
     return () => {
       active = false;
       unsubscribe();
+      stopConnectionWatch();
     };
   }, [jobId]);
 
   const setJob = useCallback((job) => setState((current) => ({ ...current, job })), []);
 
-  return { ...state, setJob };
+  return { ...state, setJob, isRealtimeConnected };
 }

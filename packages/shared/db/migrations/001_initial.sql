@@ -28,9 +28,14 @@ create table if not exists template_versions (
   unique (template_id, version)
 );
 
-alter table templates
-  add constraint templates_active_version_fk
-  foreign key (active_version_id) references template_versions(id);
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'templates_active_version_fk') then
+    alter table templates
+      add constraint templates_active_version_fk
+      foreign key (active_version_id) references template_versions(id);
+  end if;
+end $$;
 
 create table if not exists transformation_jobs (
   id uuid primary key,

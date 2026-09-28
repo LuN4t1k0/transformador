@@ -22,6 +22,10 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4000
+      AUTH_MODE: ${AUTH_MODE:-dev}
+      DEV_USER_EMAIL: ${DEV_USER_EMAIL:-dev@previley.local}
+      DEV_USER_NAME: ${DEV_USER_NAME:-Usuario de desarrollo}
+      WEB_ORIGIN: http://localhost:${WEB_PORT:-3000}
       DATABASE_URL: postgres://transformador:transformador@postgres:5432/transformador
       REDIS_URL: redis://redis:6379
       TEMP_DIR: /tmp/previley-excel-transformer
@@ -66,7 +70,6 @@ services:
       - "${POSTGRES_PORT:-5434}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./packages/shared/db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U transformador -d transformador"]
       interval: 5s

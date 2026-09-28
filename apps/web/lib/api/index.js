@@ -1,5 +1,4 @@
-import { createMockApi } from './mock-api.js';
+import { createHttpApi } from './http-api.js';
 
-// Single entry point for pages. Replace with an HTTP + Socket.IO client once apps/api exposes the job endpoints.
-export const api = createMockApi();
-export { ApiError } from './mock-api.js';
+export const api = createHttpApi(process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000');
+export { ApiError } from './http-api.js';

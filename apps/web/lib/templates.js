@@ -1,17 +1,3 @@
-import { planVitalPagexTemplate } from '@previley-transformer/shared/templates/planvital-pagex.js';
-
-export const templates = [
-  {
-    id: 'planvital-pagex',
-    description: 'Formato de carga PAGEX para licencias médicas en AFP PlanVital.',
-    ...planVitalPagexTemplate
-  }
-];
-
-export function getTemplate(templateId) {
-  return templates.find((template) => template.id === templateId) || null;
-}
-
 const RUT_FORMATS = {
   NO_DOTS_NO_DASH: 'RUT sin puntos ni guion',
   NO_DOTS_DASH: 'RUT con guion',

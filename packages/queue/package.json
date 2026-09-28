@@ -3,5 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "main": "src/index.js"
+  "main": "src/index.js",
+  "dependencies": {
+    "bullmq": "^5.81.5",
+    "ioredis": "^5.11.1"
+  }
 }

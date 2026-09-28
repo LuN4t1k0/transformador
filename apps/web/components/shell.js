@@ -1,7 +1,8 @@
-import { FileSpreadsheet, UserCircle } from 'lucide-react';
+import { FileSpreadsheet } from 'lucide-react';
 import { MainNav } from './main-nav';
+import { UserBadge } from './user-badge';
 
-export function Shell({ user, children }) {
+export function Shell({ children }) {
   return (
     <div className="min-h-screen text-ink-900">
       <header className="border-b border-ink-200 bg-white">
@@ -15,12 +16,7 @@ export function Shell({ user, children }) {
               <p className="truncate text-xs text-ink-500">Excel a plantillas previsionales</p>
             </div>
           </div>
-          {user ? (
-            <div className="flex h-9 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-medium text-ink-700">
-              <UserCircle size={17} aria-hidden="true" />
-              {user.name}
-            </div>
-          ) : null}
+          <UserBadge />
         </div>
       </header>
       <MainNav />
