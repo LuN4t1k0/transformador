@@ -72,6 +72,7 @@ El núcleo no conoce RUT, AFP ni UF. Un paquete aporta formatos, validaciones, d
 
 1. Funciones de columna genéricas (condiciones, equivalencias, primer no vacío, texto con variables, texto, fechas, correlativo, mínimo/máximo/absoluto, separar por cualquier separador).
 2. Paso de filas: filtrar, ordenar, quitar duplicados, agrupar, rellenar hacia abajo.
+   Hecho: sección opcional `rowSteps` de la plantilla, en orden fijo: rellenar hacia abajo (columnas del Excel) → columnas → filtro (quitar o mantener, con columnas del Excel o de la plantilla; las filas filtradas no se validan) → rechazo de filas con errores → quitar duplicados (primera o última) → agrupar (suma, promedio, mínimo, máximo, cantidad, primer/último valor, lista) → ordenar → correlativo según el orden final. Sumas y orden usan el valor antes del formato. Sin pasos de filas, el archivo se escribe en streaming como antes.
 3. Parámetros al ejecutar y salida en varios archivos; diseño de salida (encabezado, totales, formatos, nombre).
 4. Separar el paquete Chile del núcleo.
 5. Varias tablas, validaciones genéricas, corrección en grilla y automatización.

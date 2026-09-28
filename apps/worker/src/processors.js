@@ -1,7 +1,8 @@
 const { analyzeWorkbook, createXlsxWriter, readSheetRows, WorkbookLimitError } = require('../../../packages/excel-engine/src');
 const { describeIssue, describeIssueHint } = require('../../../packages/template-engine/src/issues');
 const { writeOutput, outputFileInfo } = require('../../../packages/excel-engine/src/output');
-const { createSummaryAccumulator, orderedColumns, transformTemplateRow } = require('../../../packages/template-engine/src/run');
+const { createSummaryAccumulator, orderedColumns } = require('../../../packages/template-engine/src/run');
+const { createRowPipeline } = require('../../../packages/template-engine/src/rows');
 const { resolveTemplateForHeaders } = require('../../../packages/template-engine/src/mapping');
 const { normalizeStoredTemplate } = require('../../../packages/template-engine/src/schema');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
@@ -159,15 +160,19 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, templat
       await publish(jobId, 'job:progress');
     }
 
+    const pipeline = createRowPipeline(template);
+    const toValues = (row) => columns.map((column) => row.output[column.outputName] ?? null);
+
     async function* outputRows() {
       let processed = 0;
-      const now = new Date();
-      for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits, headerRow: sheet.headerRow })) {
-        const { output: values, issues } = transformTemplateRow(row.values, template, { rowIndex: processed, now });
+      for await (const input of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits, headerRow: sheet.headerRow })) {
+        // Fill down, columns and filter; excluded rows are neither validated nor written.
+        const row = pipeline.transform(input.rowNumber, input.values);
         processed += 1;
-        const isValid = summary.add(row.rowNumber, issues);
-        if (isValid) yield columns.map((column) => values[column.outputName] ?? null);
-        else if (writesRejects) await addReject(row, issues);
+        if (row.excluded) summary.exclude();
+        else if (summary.add(row.rowNumber, row.issues)) {
+          for (const ready of pipeline.accept(row)) yield toValues(ready);
+        } else if (writesRejects) await addReject(row, row.issues);
         await reportProgress(processed);
       }
       await reportProgress(processed, true);
@@ -180,6 +185,14 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, templat
       }
       await jobs.update(jobId, { status: JOB_STATUSES.GENERATING, stage: 'GENERATING' });
       await publish(jobId, 'job:stage');
+
+      // Duplicates, groups and sorting need every row; the file is written once they are known.
+      for (const ready of pipeline.finish()) {
+        const tooLong = ready.issues.find((issue) => issue.severity === 'error');
+        if (tooLong) throw new WorkbookLimitError('GROUPED_VALUE_TOO_LONG', `Al agrupar, «${tooLong.column}» supera el largo de la columna. Amplía el largo en la plantilla.`);
+        yield toValues(ready);
+      }
+      summary.setRowSteps(pipeline.stats());
     }
 
     try {

@@ -8,6 +8,7 @@ function orderedColumns(template) {
 // with exact counts over all rows and a few sample row numbers.
 function createSummaryAccumulator({ maxGroups = 100, sampleRowsPerGroup = 10 } = {}) {
   const totals = { totalRows: 0, validRows: 0, errorCount: 0, warningCount: 0 };
+  let rowSteps = null;
   const groups = new Map();
   let truncatedGroups = false;
 
@@ -39,11 +40,20 @@ function createSummaryAccumulator({ maxGroups = 100, sampleRowsPerGroup = 10 } =
       if (!hasError) totals.validRows += 1;
       return !hasError;
     },
+    // A row left out by the template's filter: read, but neither validated nor written.
+    exclude() {
+      totals.totalRows += 1;
+      totals.excludedRows = (totals.excludedRows || 0) + 1;
+    },
+    // Counts from the row steps (filtered, duplicated, written rows) once the file is complete.
+    setRowSteps(stats) {
+      rowSteps = stats;
+    },
     result() {
       const issueGroups = [...groups.values()]
         .map((group) => ({ ...group, sampleRows: [...group.sampleRows] }))
         .sort((a, b) => b.count - a.count);
-      return { ...totals, issueGroups, truncatedGroups };
+      return { ...totals, issueGroups, truncatedGroups, ...(rowSteps ? { rowSteps } : {}) };
     }
   };
 }

@@ -281,6 +281,8 @@ function transformRow(row, template, { rowIndex = 0, now = new Date() } = {}) {
   const columns = [...template.columns].sort((a, b) => a.position - b.position);
   const context = { outputsById: new Map(), outputsByName: new Map(), rowIndex, now };
   const output = {};
+  // Values before transformations (numbers stay numbers), used to sum, compare and sort rows.
+  const raw = {};
 
   for (const column of columns) {
     let sourceValue;
@@ -290,6 +292,7 @@ function transformRow(row, template, { rowIndex = 0, now = new Date() } = {}) {
       if (!(error instanceof CellIssue)) throw error;
       issues.push({ column: column.outputName, rule: column.source.type, severity: 'error', code: error.code, message: error.message });
       output[column.outputName] = null;
+      raw[column.outputName] = null;
       context.outputsById.set(column.id, null);
       context.outputsByName.set(column.outputName, null);
       continue;
@@ -314,14 +317,21 @@ function transformRow(row, template, { rowIndex = 0, now = new Date() } = {}) {
     }
 
     output[column.outputName] = value;
+    raw[column.outputName] = sourceValue ?? null;
     context.outputsById.set(column.id, value);
     context.outputsByName.set(column.outputName, value);
   }
 
-  return { output, issues };
+  return { output, raw, issues };
 }
 
 module.exports = {
+  CellIssue,
+  isBlank,
+  normalizeText,
+  toNumber,
+  compare,
+  conditionHolds,
   resolveSource,
   applyTransformation,
   validateValue,

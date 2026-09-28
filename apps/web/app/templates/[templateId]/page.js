@@ -10,7 +10,7 @@ import { buttonStyles, Notice } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { formatDateTime } from '../../../components/job-status';
 import { api } from '../../../lib/api';
-import { describeOutput, describeSource, describeTransformations } from '../../../lib/templates';
+import { describeOutput, describeRowSteps, describeSource, describeTransformations } from '../../../lib/templates';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 
 export default function TemplateDetailPage() {
@@ -118,6 +118,14 @@ export default function TemplateDetailPage() {
                     </Link>
                   ) : null}
                 </div>
+                {shown.configuration.rowSteps ? (
+                  <div className="border-b border-ink-100 px-4 py-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Filas</h3>
+                    <ol className="mt-1 list-inside list-decimal space-y-0.5 text-sm text-ink-700">
+                      {describeRowSteps(shown.configuration.rowSteps, shown.configuration.columns).map((line) => <li key={line}>{line}</li>)}
+                    </ol>
+                  </div>
+                ) : null}
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[720px] text-left text-sm">
                     <thead className="bg-ink-50 text-xs text-ink-500">

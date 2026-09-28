@@ -217,7 +217,7 @@ function ColumnReview({ evaluation, headers, sample, onChangeSource, onConfirm, 
   );
 }
 
-export function QuickFlow({ job, template, evaluation, results, sample, headers, isBusy, blockedReason, onSelectSheet, onApply, onChangeSource, onConfirm, onConfirmAll, onGenerate, onAdvanced }) {
+export function QuickFlow({ job, template, evaluation, results, sampleCount, sample, headers, isBusy, blockedReason, onSelectSheet, onApply, onChangeSource, onConfirm, onConfirmAll, onGenerate, onAdvanced }) {
   const [changingTemplate, setChangingTemplate] = useState(false);
   const [mode, setMode] = useState('LENIENT');
   const [autoApplied, setAutoApplied] = useState(false);
@@ -289,7 +289,7 @@ export function QuickFlow({ job, template, evaluation, results, sample, headers,
 
       {!showTemplatePicker ? (
         <Step number={evaluation?.isComplete ? 2 : 3} title="Así quedará tu archivo" done={false}>
-          {results ? <FilePreview template={template} results={results} /> : <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>}
+          {results ? <FilePreview template={template} results={results} sampleCount={sampleCount} /> : <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>}
 
           <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-ink-100 pt-4">
             <label className="text-xs text-ink-500">

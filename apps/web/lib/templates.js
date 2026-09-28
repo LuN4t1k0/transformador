@@ -84,6 +84,33 @@ export function describeSource(source, outputNames) {
   return 'Vacía';
 }
 
+const AGGREGATE_LABELS = { SUM: 'suma', COUNT: 'cantidad', AVERAGE: 'promedio', MIN: 'mínimo', MAX: 'máximo', FIRST: 'primer valor', LAST: 'último valor', CONCAT: 'lista' };
+
+function describeCondition(condition, outputNames) {
+  const right = ['EMPTY', 'NOT_EMPTY'].includes(condition.op) ? '' : ` ${describeOperand(condition.right, outputNames)}`;
+  return `${describeOperand(condition.left, outputNames)} ${OPERATOR_SYMBOLS[condition.op]}${right}`;
+}
+
+// One sentence per configured row step, in the order they are applied.
+export function describeRowSteps(steps, columns) {
+  if (!steps) return [];
+  const outputNames = new Map(columns.map((column) => [column.id, column.outputName]));
+  const names = (ids) => ids.map((id) => `«${outputNames.get(id) || id}»`).join(', ');
+  const lines = [];
+  if (steps.fillDown?.length) lines.push(`Rellenar hacia abajo ${steps.fillDown.map((name) => `«${name}»`).join(', ')}`);
+  if (steps.filter) {
+    const joiner = steps.filter.match === 'ANY' ? ' o ' : ' y ';
+    lines.push(`${steps.filter.mode === 'KEEP' ? 'Mantener solo filas con' : 'Quitar filas con'} ${steps.filter.conditions.map((condition) => describeCondition(condition, outputNames)).join(joiner)}`);
+  }
+  if (steps.dedupe) lines.push(`Quitar duplicados por ${names(steps.dedupe.columnIds)} (conserva la ${steps.dedupe.keep === 'LAST' ? 'última' : 'primera'})`);
+  if (steps.group) {
+    const summaries = steps.group.aggregates.map((item) => `${AGGREGATE_LABELS[item.op]} de «${outputNames.get(item.columnId) || item.columnId}»`);
+    lines.push(`Agrupar por ${names(steps.group.columnIds)}${summaries.length ? `: ${summaries.join(', ')}` : ''}`);
+  }
+  if (steps.sort?.length) lines.push(`Ordenar por ${steps.sort.map((key) => `«${outputNames.get(key.columnId) || key.columnId}» ${key.direction === 'DESC' ? '↓' : '↑'}`).join(', ')}`);
+  return lines;
+}
+
 export function describeOutput(output) {
   if (!output) return '';
   if (output.format === 'XLSX') return `${OUTPUT_FORMATS.XLSX}, hoja «${output.sheetName}»`;

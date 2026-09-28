@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CloudOff, FileSearch, Loader2, ShieldCheck, WifiOff } from 'lucide-react';
 import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
 import { runRows } from '@previley-transformer/template-engine/src/run.js';
+import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
 import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { StatusPill } from '../../../components/status-pill';
@@ -19,6 +20,8 @@ import { TemplateStep } from '../../../components/job/template-step';
 import { ColumnList } from '../../../components/template-editor/column-list';
 import { FilePreview } from '../../../components/template-editor/file-preview';
 import { OutputEditor } from '../../../components/template-editor/output-editor';
+import { RowStepsEditor, RowStepsNote } from '../../../components/template-editor/row-steps-editor';
+import { withColumns } from '../../../lib/template-editor';
 import { api } from '../../../lib/api';
 import { formatFileSize } from '../../../lib/file-validation';
 import { useJob } from '../../../lib/hooks/use-job';
@@ -33,6 +36,7 @@ const SECTIONS = [
   { id: 'sheet', label: 'Hoja', title: 'Hoja de origen', description: 'Elige la hoja del Excel que contiene los datos.' },
   { id: 'template', label: 'Plantilla', title: 'Plantilla', description: 'Elige el formato que pide el destino, o crea uno nuevo a partir de este archivo.' },
   { id: 'columns', label: 'Columnas', title: 'Columnas del archivo final', description: 'Define qué columnas lleva el archivo, de dónde sale cada una y en qué formato.' },
+  { id: 'rows', label: 'Filas', title: 'Filas', description: 'Opcional: filtra, quita duplicados, agrupa u ordena las filas del archivo final.' },
   { id: 'output', label: 'Tipo de archivo', shortLabel: 'Tipo', title: 'Tipo de archivo', description: 'Excel, texto con separador o texto de ancho fijo.' },
   { id: 'preview', label: 'Vista previa', shortLabel: 'Previa', title: 'Vista previa', description: 'Así se verá el archivo final con las primeras filas.' },
   { id: 'generate', label: 'Generar', title: 'Generar archivo', description: 'Guarda la plantilla si quieres reutilizarla y genera el archivo con todas las filas.' }
@@ -227,6 +231,14 @@ function JobWorkspace({ job, setJob }) {
       return null;
     }
   }, [template, sampleRows]);
+  const preview = useMemo(() => {
+    if (!template || !sampleRows?.length) return null;
+    try {
+      return previewRows(sampleRows, template);
+    } catch {
+      return null;
+    }
+  }, [template, sampleRows]);
   const sampleAt = Math.min(sampleIndex, (sampleRows?.length || 1) - 1);
   const sample = results?.length ? { values: sampleRows[sampleAt].values, result: results[sampleAt] } : null;
 
@@ -285,7 +297,7 @@ function JobWorkspace({ job, setJob }) {
       let confirmedIds = current.confirmedIds;
       if (options?.unconfirm) confirmedIds = confirmedIds.filter((id) => id !== options.unconfirm);
       if (options?.confirm) confirmedIds = [...new Set([...confirmedIds, ...options.confirm])];
-      return { template: { ...current.template, columns }, confirmedIds };
+      return { template: withColumns(current.template, columns), confirmedIds };
     });
   }
 
@@ -371,10 +383,25 @@ function JobWorkspace({ job, setJob }) {
         </div>
       );
     }
+    if (sectionId === 'rows') {
+      return (
+        <RowStepsEditor
+          steps={template.rowSteps}
+          columns={template.columns}
+          headers={headers}
+          onChange={(rowSteps) => update((current) => ({ ...current, template: withColumns({ ...current.template, rowSteps }, current.template.columns) }))}
+        />
+      );
+    }
     if (sectionId === 'output') return <OutputEditor template={template} onChange={(next) => update((current) => ({ ...current, template: next }))} />;
     if (sectionId === 'preview') {
-      if (!results) return <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>;
-      return <FilePreview template={template} results={results} />;
+      if (!preview) return <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>;
+      return (
+        <>
+          <RowStepsNote preview={preview} sampleCount={sampleRows.length} />
+          <FilePreview template={template} results={preview.results} sampleCount={sampleRows.length} />
+        </>
+      );
     }
     return (
       <GenerateStep
@@ -406,7 +433,8 @@ function JobWorkspace({ job, setJob }) {
             job={job}
             template={template}
             evaluation={evaluation}
-            results={results}
+            results={preview?.results || null}
+            sampleCount={sampleRows?.length}
             sample={sample}
             headers={headers || []}
             isBusy={isBusy}
@@ -452,7 +480,7 @@ function JobWorkspace({ job, setJob }) {
             headingRef={headingRef}
             title={isEditable ? section.title : ANALYZING.has(job.status) ? 'Analizando archivo' : RUNNING.has(job.status) ? 'Procesando archivo' : 'Resultado'}
             description={isEditable ? section.description : null}
-            actions={isEditable && template && ['columns', 'output'].includes(sectionId) ? <SaveIndicator saveState={saveState} /> : null}
+            actions={isEditable && template && ['columns', 'rows', 'output'].includes(sectionId) ? <SaveIndicator saveState={saveState} /> : null}
           >
             {renderSection()}
           </Panel>

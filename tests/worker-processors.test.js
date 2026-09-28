@@ -156,6 +156,24 @@ test('transformation extends the expiry within the hard limit', async () => {
   assert.ok(expiresIn > 25 * 60 * 1000 && expiresIn <= 30 * 60 * 1000, `expires in ${expiresIn}`);
 });
 
+test('row steps: filtered rows are neither validated nor rejected, and output is sorted', async () => {
+  const rowSteps = {
+    filter: { mode: 'EXCLUDE', conditions: [{ left: { type: 'COLUMN', column: 'Nombre completo' }, op: 'STARTS_WITH', right: { type: 'TEXT', value: 'fuentes' } }] },
+    sort: [{ columnId: 'apellido_paterno', direction: 'ASC' }]
+  };
+  const { jobs, storage, processors } = await readyJob({}, { template: { rowSteps } });
+  await processors.transform('job-1');
+  const job = jobs.jobs.get('job-1');
+
+  assert.equal(job.status, 'READY_TO_DOWNLOAD');
+  assert.deepEqual({ total: job.validationSummary.totalRows, valid: job.validationSummary.validRows, excluded: job.validationSummary.excludedRows, errors: job.errorCount }, { total: 3, valid: 2, excluded: 1, errors: 0 });
+  assert.deepEqual(job.validationSummary.rowSteps, { excludedRows: 1, duplicateRows: 0, outputRows: 2 });
+  assert.equal(job.rejectedRows, 0);
+  const output = new ExcelJS.Workbook();
+  await output.xlsx.readFile(storage.resolvePath(job.outputStorageKey));
+  assert.deepEqual([2, 3].map((row) => output.getWorksheet('DATOS').getRow(row).getCell(2).value), ['GONZALEZ', 'SOTO']);
+});
+
 test('transformation writes delimited latin1 text when the template asks for it', async () => {
   const { jobs, storage, processors } = await readyJob({}, { template: { output: { format: 'DELIMITED', delimiter: '|', encoding: 'LATIN1', extension: 'txt' } } });
   await processors.transform('job-1');

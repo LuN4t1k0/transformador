@@ -104,10 +104,12 @@ function IssuesTable({ groups }) {
 export function RunResult({ job, onDownload, onPurge, isBusy }) {
   const [confirmPurge, setConfirmPurge] = useState(false);
   const { summary, files } = job;
-  const invalidRows = summary.totalRows - summary.validRows;
+  const excludedRows = summary.excludedRows || 0;
+  const invalidRows = summary.totalRows - summary.validRows - excludedRows;
+  const steps = summary.rowSteps;
   const stats = [
     { label: 'Filas totales', value: summary.totalRows },
-    { label: 'Filas en el archivo', value: summary.validRows, tone: 'text-mint-600' },
+    { label: 'Filas en el archivo', value: steps?.outputRows ?? summary.validRows, tone: 'text-mint-600' },
     { label: 'Filas rechazadas', value: invalidRows, tone: invalidRows ? 'text-rose-700' : undefined },
     { label: 'Advertencias', value: summary.warningCount, tone: summary.warningCount ? 'text-amber-700' : undefined }
   ];
@@ -128,6 +130,15 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
           </div>
         ))}
       </dl>
+      {excludedRows || steps?.duplicateRows || (steps && steps.outputRows !== summary.validRows) ? (
+        <p className="mt-2 text-sm text-ink-500">
+          {[
+            excludedRows ? `${excludedRows} ${excludedRows === 1 ? 'fila quedó fuera' : 'filas quedaron fuera'} por el filtro de la plantilla` : null,
+            steps?.duplicateRows ? `${steps.duplicateRows} ${steps.duplicateRows === 1 ? 'duplicada quitada' : 'duplicadas quitadas'}` : null,
+            steps && steps.outputRows < summary.validRows - steps.duplicateRows ? `${summary.validRows - steps.duplicateRows} filas agrupadas en ${steps.outputRows}` : null
+          ].filter(Boolean).join(' · ')}.
+        </p>
+      ) : null}
 
       {summary.issueGroups?.length ? (
         <>

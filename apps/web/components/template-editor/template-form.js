@@ -4,11 +4,14 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { AlertCircle, FileSpreadsheet, Loader2, Save, Sparkles } from 'lucide-react';
 import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
 import { runRows } from '@previley-transformer/template-engine/src/run.js';
+import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
 import { api } from '../../lib/api';
 import { reviveSampleRows } from '../../lib/template-editor';
 import { buttonStyles, Notice, Panel } from '../panel';
 import { ColumnList } from './column-list';
 import { FilePreview } from './file-preview';
+import { RowStepsEditor, RowStepsNote } from './row-steps-editor';
+import { withColumns } from '../../lib/template-editor';
 import { OutputEditor } from './output-editor';
 import { inputClass } from './source-editor';
 
@@ -74,10 +77,19 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
     () => (sample ? evaluateColumns(template.columns, sample.headers, new Set(template.columns.map((column) => column.id))) : null),
     [template.columns, sample]
   );
+  // Column examples use each row on its own; the preview applies the row steps (filter, group, sort…).
   const results = useMemo(() => {
     if (!sample?.rows?.length) return null;
     try {
       return runRows(sample.rows, template);
+    } catch {
+      return null;
+    }
+  }, [template, sample]);
+  const preview = useMemo(() => {
+    if (!sample?.rows?.length) return null;
+    try {
+      return previewRows(sample.rows, template);
     } catch {
       return null;
     }
@@ -153,7 +165,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
         <ColumnList
           columns={template.columns}
           onChange={(columns, options) => {
-            setTemplate({ ...template, columns });
+            setTemplate(withColumns(template, columns));
             if (options?.unconfirm) unflag(options.unconfirm);
           }}
           flagged={flagged}
@@ -166,13 +178,24 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
         />
       </Panel>
 
+      <Panel title="Filas" description="Opcional: filtra, quita duplicados, agrupa u ordena las filas del archivo final.">
+        <RowStepsEditor
+          steps={template.rowSteps}
+          columns={template.columns}
+          headers={sample ? sample.headers : null}
+          suggestions={suggestions}
+          onChange={(rowSteps) => setTemplate(withColumns({ ...template, rowSteps }, template.columns))}
+        />
+      </Panel>
+
       <Panel title="Tipo de archivo">
         <OutputEditor template={template} onChange={setTemplate} />
       </Panel>
 
-      {results ? (
+      {preview ? (
         <Panel title="Vista previa" description={`Así quedaría el archivo con las primeras filas de «${sample.fileName}».`}>
-          <FilePreview template={template} results={results} />
+          <RowStepsNote preview={preview} sampleCount={sample.rows.length} />
+          <FilePreview template={template} results={preview.results} sampleCount={sample.rows.length} />
         </Panel>
       ) : null}
 

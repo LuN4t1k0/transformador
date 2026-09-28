@@ -20,7 +20,7 @@ function decode(value, previous) {
 }
 
 // Picks the value a function uses: an earlier column of the template, a file column, a number or a text.
-export function OperandPicker({ id, label = 'Valor', operand, headers, suggestions = [], outputColumns = [], allowText = false, allowEmpty = false, emptyLabel = 'Vacío', onChange }) {
+export function OperandPicker({ id, label = 'Valor', operand, headers, suggestions = [], outputColumns = [], outputLabel = 'Columnas anteriores de esta plantilla', allowText = false, allowEmpty = false, emptyLabel = 'Vacío', onChange }) {
   const fileColumns = headers || suggestions;
   const current = encode(operand);
   // Without a test Excel there is no header list to check against, so file columns are shown as written.
@@ -34,7 +34,7 @@ export function OperandPicker({ id, label = 'Valor', operand, headers, suggestio
         {!known ? <option value={current}>{operand?.column || operand?.columnId}{headers || operand?.type === 'OUTPUT' ? ' (no disponible)' : ''}</option> : null}
         {allowEmpty ? <option value="empty">{emptyLabel}</option> : null}
         {outputColumns.length ? (
-          <optgroup label="Columnas anteriores de esta plantilla">
+          <optgroup label={outputLabel}>
             {outputColumns.map((column) => <option key={column.id} value={`out:${column.id}`}>{column.outputName}</option>)}
           </optgroup>
         ) : null}

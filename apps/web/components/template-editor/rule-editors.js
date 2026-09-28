@@ -39,6 +39,28 @@ function firstOperand(headers) {
   return headers?.length ? { type: 'COLUMN', column: headers[0] } : { type: 'TEXT', value: '' };
 }
 
+export function defaultCondition(headers) {
+  return { left: firstOperand(headers), op: 'EQ', right: { type: 'TEXT', value: '' } };
+}
+
+// One comparison: value, operator and (unless it checks for blanks) the value to compare with.
+export function ConditionRow({ idPrefix, condition, pickerProps, canRemove, onChange, onRemove }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <OperandPicker id={`${idPrefix}-l`} label="Valor a revisar" operand={condition.left} {...pickerProps} onChange={(left) => onChange({ left })} />
+      <select aria-label="Condición" className="h-9 rounded-md border border-ink-200 bg-white px-2 text-sm" value={condition.op} onChange={(event) => onChange({ op: event.target.value, right: condition.right || { type: 'TEXT', value: '' } })}>
+        {CONDITION_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
+      </select>
+      {!['EMPTY', 'NOT_EMPTY'].includes(condition.op) ? (
+        <OperandPicker id={`${idPrefix}-r`} label="Comparar con" operand={condition.right} {...pickerProps} onChange={(right) => onChange({ right })} />
+      ) : null}
+      <button type="button" aria-label="Quitar condición" className={removeButton} disabled={!canRemove} onClick={onRemove}>
+        <X size={15} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 export function defaultRule(type, headers) {
   const first = firstOperand(headers);
   if (type === 'CASE') return { type, cases: [{ match: 'ALL', conditions: [{ left: first, op: 'EQ', right: { type: 'TEXT', value: '' } }], result: { type: 'TEXT', value: '' } }], otherwise: { type: 'EMPTY' } };
@@ -73,20 +95,17 @@ export function CaseEditor({ idPrefix, source, headers, suggestions, outputColum
             <button type="button" className="text-xs text-ink-500 hover:text-rose-700" onClick={() => onChange({ ...source, cases: source.cases.filter((_, position) => position !== caseIndex) })}>Quitar caso</button>
           </div>
           {branch.conditions.map((condition, conditionIndex) => (
-            <div key={conditionIndex} className="flex flex-wrap items-center gap-2">
-              <OperandPicker id={`${idPrefix}-c${caseIndex}-${conditionIndex}-l`} label="Valor a revisar" operand={condition.left} {...pickerProps} onChange={(left) => setCondition(caseIndex, conditionIndex, { left })} />
-              <select aria-label="Condición" className="h-9 rounded-md border border-ink-200 bg-white px-2 text-sm" value={condition.op} onChange={(event) => setCondition(caseIndex, conditionIndex, { op: event.target.value, right: condition.right || { type: 'TEXT', value: '' } })}>
-                {CONDITION_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
-              </select>
-              {!['EMPTY', 'NOT_EMPTY'].includes(condition.op) ? (
-                <OperandPicker id={`${idPrefix}-c${caseIndex}-${conditionIndex}-r`} label="Comparar con" operand={condition.right} {...pickerProps} onChange={(right) => setCondition(caseIndex, conditionIndex, { right })} />
-              ) : null}
-              <button type="button" aria-label="Quitar condición" className={removeButton} disabled={branch.conditions.length === 1} onClick={() => setCase(caseIndex, { conditions: branch.conditions.filter((_, position) => position !== conditionIndex) })}>
-                <X size={15} aria-hidden="true" />
-              </button>
-            </div>
+            <ConditionRow
+              key={conditionIndex}
+              idPrefix={`${idPrefix}-c${caseIndex}-${conditionIndex}`}
+              condition={condition}
+              pickerProps={pickerProps}
+              canRemove={branch.conditions.length > 1}
+              onChange={(changes) => setCondition(caseIndex, conditionIndex, changes)}
+              onRemove={() => setCase(caseIndex, { conditions: branch.conditions.filter((_, position) => position !== conditionIndex) })}
+            />
           ))}
-          <button type="button" className={addButton} disabled={branch.conditions.length >= 5} onClick={() => setCase(caseIndex, { conditions: [...branch.conditions, { left: firstOperand(headers), op: 'EQ', right: { type: 'TEXT', value: '' } }] })}>
+          <button type="button" className={addButton} disabled={branch.conditions.length >= 5} onClick={() => setCase(caseIndex, { conditions: [...branch.conditions, defaultCondition(headers)] })}>
             <Plus size={15} aria-hidden="true" />
             Otra condición
           </button>

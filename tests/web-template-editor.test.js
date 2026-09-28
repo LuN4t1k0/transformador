@@ -79,3 +79,26 @@ test('revives dates from sample rows', async () => {
   assert.equal(formatCell(row.values.F), '03/05/2024');
   assert.equal(formatCell(null), '');
 });
+
+test('removing a column drops row steps that used it and keeps the rest', async () => {
+  const { withColumns } = await load();
+  const columns = [{ id: 'a', outputName: 'A' }, { id: 'b', outputName: 'B' }];
+  const template = {
+    columns,
+    rowSteps: {
+      fillDown: ['X'],
+      filter: { mode: 'KEEP', match: 'ALL', conditions: [{ left: { type: 'OUTPUT', columnId: 'b' }, op: 'NOT_EMPTY' }, { left: { type: 'COLUMN', column: 'Z' }, op: 'EMPTY' }] },
+      dedupe: { columnIds: ['b'], keep: 'FIRST' },
+      group: { columnIds: ['a', 'b'], aggregates: [] },
+      sort: [{ columnId: 'b', direction: 'DESC' }, { columnId: 'a', direction: 'ASC' }]
+    }
+  };
+  const next = withColumns(template, [columns[0]]);
+  assert.deepEqual(next.rowSteps, {
+    fillDown: ['X'],
+    filter: { mode: 'KEEP', match: 'ALL', conditions: [{ left: { type: 'COLUMN', column: 'Z' }, op: 'EMPTY' }] },
+    group: { columnIds: ['a'], aggregates: [] },
+    sort: [{ columnId: 'a', direction: 'ASC' }]
+  });
+  assert.equal('rowSteps' in withColumns({ columns, rowSteps: { sort: [{ columnId: 'b', direction: 'ASC' }] } }, [columns[0]]), false);
+});

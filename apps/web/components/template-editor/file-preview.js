@@ -38,7 +38,7 @@ function FixedWidthRuler({ columns }) {
   );
 }
 
-export function FilePreview({ template, results }) {
+export function FilePreview({ template, results, sampleCount = results.length }) {
   const [asText, setAsText] = useState(false);
   const { columns, output } = template;
   const rowValues = results.map((result) => columns.map((column) => cellText(column, result.output[column.outputName])));
@@ -90,7 +90,9 @@ export function FilePreview({ template, results }) {
           <tbody className="divide-y divide-ink-100">
             {results.map((result, rowIndex) => (
               <tr key={result.rowNumber}>
-                <th scope="row" className="sticky left-0 bg-white px-3 py-1.5 text-xs font-normal tabular-nums text-ink-400">{result.rowNumber}</th>
+                <th scope="row" className="sticky left-0 bg-white px-3 py-1.5 text-xs font-normal tabular-nums text-ink-400" title={result.rowNumbers?.length > 1 ? `Agrupa las filas ${result.rowNumbers.join(', ')}` : undefined}>
+                  {result.rowNumbers?.length > 1 ? `${result.rowNumber} +${result.rowNumbers.length - 1}` : result.rowNumber}
+                </th>
                 {columns.map((column, columnIndex) => {
                   const hasError = result.issues.some((issue) => issue.column === column.outputName && issue.severity === 'error');
                   return (
@@ -132,7 +134,7 @@ export function FilePreview({ template, results }) {
       ) : null}
 
       <p className="text-xs text-ink-500">
-        Primeras {results.length} filas de la hoja, con el RUT enmascarado. Al generar se procesan y validan todas las filas; las que tengan errores se excluyen y se informan.
+        Primeras {sampleCount} filas de la hoja, con el RUT enmascarado. Al generar se procesan y validan todas las filas; las que tengan errores se excluyen y se informan.
       </p>
     </div>
   );

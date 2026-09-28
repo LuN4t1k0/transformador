@@ -21,6 +21,8 @@ const CONDITION_OPERATORS = ['EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'CONTAINS', 
 const DATE_OPERATIONS = { DAYS_BETWEEN: 2, ADD_DAYS: 2, ADD_MONTHS: 2, YEAR: 1, MONTH: 1, DAY: 1, START_OF_MONTH: 1, END_OF_MONTH: 1, TODAY: 0 };
 const MAX_MAP_ENTRIES = 1000;
 const ROUND_MODES = ['ROUND', 'FLOOR', 'CEIL', 'NONE'];
+const AGGREGATES = ['SUM', 'COUNT', 'AVERAGE', 'MIN', 'MAX', 'FIRST', 'LAST', 'CONCAT'];
+const SORT_DIRECTIONS = ['ASC', 'DESC'];
 
 class TemplateValidationError extends Error {
   constructor(message) {
@@ -133,6 +135,13 @@ function normalizeCalc(source, label) {
   return calc;
 }
 
+function normalizeCondition(condition, label) {
+  const op = oneOf(condition?.op, CONDITION_OPERATORS, `${label}: el operador de la condición no es válido.`);
+  const normalized = { left: normalizeOperand(condition.left, label, { allowText: true }), op };
+  if (!['EMPTY', 'NOT_EMPTY'].includes(op)) normalized.right = normalizeOperand(condition.right, label, { allowText: true });
+  return normalized;
+}
+
 function normalizeCase(source, label) {
   if (!Array.isArray(source.cases) || source.cases.length > 20) fail(`${label}: la condición debe tener hasta 20 casos.`);
   return {
@@ -141,12 +150,7 @@ function normalizeCase(source, label) {
       if (!Array.isArray(branch?.conditions) || !branch.conditions.length || branch.conditions.length > 5) fail(`${label}: cada caso necesita entre 1 y 5 condiciones.`);
       return {
         match: oneOf(branch.match || 'ALL', ['ALL', 'ANY'], `${label}: el tipo de coincidencia no es válido.`),
-        conditions: branch.conditions.map((condition) => {
-          const op = oneOf(condition?.op, CONDITION_OPERATORS, `${label}: el operador de la condición no es válido.`);
-          const normalized = { left: normalizeOperand(condition.left, label, { allowText: true }), op };
-          if (!['EMPTY', 'NOT_EMPTY'].includes(op)) normalized.right = normalizeOperand(condition.right, label, { allowText: true });
-          return normalized;
-        }),
+        conditions: branch.conditions.map((condition) => normalizeCondition(condition, label)),
         result: normalizeOperand(branch.result, label, { allowText: true, allowEmpty: true })
       };
     }),
@@ -292,6 +296,69 @@ function outputReferences(source) {
   return { ids, names };
 }
 
+function columnIdList(value, columnIds, label, { min = 1, max = 10 } = {}) {
+  if (!Array.isArray(value) || value.length < min || value.length > max) fail(`${label}: elige entre ${min} y ${max} columnas.`);
+  const unique = [...new Set(value)];
+  if (unique.some((id) => !columnIds.has(id))) fail(`${label}: usa una columna que no existe en la plantilla.`);
+  return unique;
+}
+
+// Steps over whole rows, applied in a fixed order: fill down (input), filter, remove duplicates, group, sort.
+// Returns null when nothing is configured, so templates without row steps keep their stored shape.
+function normalizeRowSteps(steps, columns) {
+  if (!steps || typeof steps !== 'object') return null;
+  const columnIds = new Set(columns.map((column) => column.id));
+  const normalized = {};
+
+  if (Array.isArray(steps.fillDown) && steps.fillDown.length) {
+    if (steps.fillDown.length > 50) fail('Rellenar hacia abajo admite hasta 50 columnas.');
+    normalized.fillDown = [...new Set(steps.fillDown.map((column) => normalizeSourceColumn(column, 'rellenar hacia abajo')))];
+  }
+
+  if (steps.filter && Array.isArray(steps.filter.conditions) && steps.filter.conditions.length) {
+    const label = 'El filtro de filas';
+    if (steps.filter.conditions.length > 10) fail(`${label} admite hasta 10 condiciones.`);
+    normalized.filter = {
+      mode: oneOf(steps.filter.mode || 'KEEP', ['KEEP', 'EXCLUDE'], `${label}: el modo no es válido.`),
+      match: oneOf(steps.filter.match || 'ALL', ['ALL', 'ANY'], `${label}: el tipo de coincidencia no es válido.`),
+      conditions: steps.filter.conditions.map((condition) => normalizeCondition(condition, label))
+    };
+    if (outputReferences(normalized.filter).ids.some((id) => !columnIds.has(id))) fail(`${label} usa una columna que no existe en la plantilla.`);
+  }
+
+  if (steps.dedupe && Array.isArray(steps.dedupe.columnIds) && steps.dedupe.columnIds.length) {
+    normalized.dedupe = {
+      columnIds: columnIdList(steps.dedupe.columnIds, columnIds, 'Quitar duplicados'),
+      keep: oneOf(steps.dedupe.keep || 'FIRST', ['FIRST', 'LAST'], 'Quitar duplicados: la fila a conservar no es válida.')
+    };
+  }
+
+  if (steps.group && Array.isArray(steps.group.columnIds) && steps.group.columnIds.length) {
+    const by = columnIdList(steps.group.columnIds, columnIds, 'Agrupar');
+    const aggregates = (Array.isArray(steps.group.aggregates) ? steps.group.aggregates : [])
+      .filter((aggregate) => !by.includes(aggregate?.columnId))
+      .map((aggregate) => {
+        if (!columnIds.has(aggregate?.columnId)) fail('Agrupar: un resumen usa una columna que no existe en la plantilla.');
+        return { columnId: aggregate.columnId, op: oneOf(aggregate.op, AGGREGATES, 'Agrupar: el resumen no es válido.') };
+      });
+    const seen = new Set();
+    normalized.group = { columnIds: by, aggregates: aggregates.filter((aggregate) => !seen.has(aggregate.columnId) && seen.add(aggregate.columnId)) };
+  }
+
+  if (Array.isArray(steps.sort) && steps.sort.length) {
+    if (steps.sort.length > 5) fail('Ordenar admite hasta 5 columnas.');
+    const seen = new Set();
+    normalized.sort = steps.sort
+      .map((key) => {
+        if (!columnIds.has(key?.columnId)) fail('Ordenar: usa una columna que no existe en la plantilla.');
+        return { columnId: key.columnId, direction: oneOf(key.direction || 'ASC', SORT_DIRECTIONS, 'Ordenar: la dirección no es válida.') };
+      })
+      .filter((key) => !seen.has(key.columnId) && seen.add(key.columnId));
+  }
+
+  return Object.keys(normalized).length ? normalized : null;
+}
+
 function validateTemplateConfig(config) {
   if (!config || typeof config !== 'object') fail('La plantilla no es válida.');
   const output = normalizeOutput(config.output);
@@ -341,6 +408,7 @@ function validateTemplateConfig(config) {
   });
 
   const inputSheet = text(config.input?.sheet, 'la hoja sugerida', { max: 100 });
+  const rowSteps = normalizeRowSteps(config.rowSteps, normalizedColumns);
   return {
     name: text(config.name, 'el nombre de la plantilla', { required: true, max: 120 }),
     description: text(config.description, 'la descripción', { max: 500 }),
@@ -348,7 +416,8 @@ function validateTemplateConfig(config) {
     process: text(config.process, 'el proceso', { max: 80 }),
     input: { headerRow: 1, ...(inputSheet ? { sheet: inputSheet } : {}) },
     output,
-    columns: normalizedColumns
+    columns: normalizedColumns,
+    ...(rowSteps ? { rowSteps } : {})
   };
 }
 
@@ -361,7 +430,8 @@ function normalizeStoredTemplate(template) {
     process: template.process,
     input: template.input,
     output: template.output,
-    columns: template.columns
+    columns: template.columns,
+    rowSteps: template.rowSteps
   });
 }
 
@@ -377,6 +447,7 @@ module.exports = {
   CALC_OPERATIONS,
   CONDITION_OPERATORS,
   DATE_OPERATIONS,
+  AGGREGATES,
   outputReferences,
   MAX_COLUMNS
 };

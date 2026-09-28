@@ -133,6 +133,7 @@ export function hasTemplateChanges(base, draft) {
   if (!base) return true;
   const shape = (template) => JSON.stringify({
     output: template.output,
+    rowSteps: template.rowSteps || null,
     columns: template.columns.map(({ position, aliases, reviewed, ...column }) => column)
   });
   return shape(base) !== shape(draft);
@@ -159,4 +160,35 @@ export function isRutColumn(column) {
   return column.semanticType === 'CHILEAN_RUT'
     || (column.transformations || []).some((transformation) => transformation.type === 'RUT_FORMAT')
     || (column.validations || []).some((validation) => validation.type === 'VALID_RUT');
+}
+
+// Replaces the columns and drops row step references to columns that no longer exist,
+// so deleting a column never leaves the template invalid.
+export function withColumns(template, columns) {
+  const steps = template.rowSteps;
+  if (!steps) return { ...template, columns };
+  const ids = new Set(columns.map((column) => column.id));
+  const keep = (list) => list.filter((id) => ids.has(id));
+  const usesMissing = (condition) => [condition.left, condition.right].some((operand) => operand?.type === 'OUTPUT' && !ids.has(operand.columnId));
+  const next = { ...steps };
+  if (steps.filter) {
+    const conditions = steps.filter.conditions.filter((condition) => !usesMissing(condition));
+    if (conditions.length) next.filter = { ...steps.filter, conditions };
+    else delete next.filter;
+  }
+  if (steps.dedupe) {
+    if (keep(steps.dedupe.columnIds).length) next.dedupe = { ...steps.dedupe, columnIds: keep(steps.dedupe.columnIds) };
+    else delete next.dedupe;
+  }
+  if (steps.group) {
+    if (keep(steps.group.columnIds).length) next.group = { columnIds: keep(steps.group.columnIds), aggregates: steps.group.aggregates.filter((item) => ids.has(item.columnId)) };
+    else delete next.group;
+  }
+  if (steps.sort) {
+    const sort = steps.sort.filter((key) => ids.has(key.columnId));
+    if (sort.length) next.sort = sort;
+    else delete next.sort;
+  }
+  const { rowSteps, ...rest } = template;
+  return Object.keys(next).length ? { ...rest, columns, rowSteps: next } : { ...rest, columns };
 }

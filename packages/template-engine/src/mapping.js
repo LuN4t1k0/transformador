@@ -60,10 +60,21 @@ function resolveSource(source, headers, aliases) {
   return visit(source, true);
 }
 
+// Row steps name file columns too (fill down, filter conditions): they follow the file's spelling.
+function resolveRowSteps(steps, headers) {
+  if (!steps) return steps;
+  return {
+    ...steps,
+    ...(steps.fillDown ? { fillDown: steps.fillDown.map((name) => findHeader(name, headers, []) || name) } : {}),
+    ...(steps.filter ? { filter: resolveSource(steps.filter, headers, []) } : {})
+  };
+}
+
 function resolveTemplateForHeaders(template, headers) {
   return {
     ...template,
-    columns: template.columns.map((column) => ({ ...column, source: resolveSource(column.source, headers, column.aliases || []) }))
+    columns: template.columns.map((column) => ({ ...column, source: resolveSource(column.source, headers, column.aliases || []) })),
+    ...(template.rowSteps ? { rowSteps: resolveRowSteps(template.rowSteps, headers) } : {})
   };
 }
 

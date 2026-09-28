@@ -24,7 +24,7 @@ function serializeTemplateDetail(template) {
   const configuration = normalizeStoredTemplate(template);
   return {
     ...serializeTemplateSummary(template),
-    configuration: { input: configuration.input, output: configuration.output, columns: configuration.columns },
+    configuration: { input: configuration.input, output: configuration.output, columns: configuration.columns, ...(configuration.rowSteps ? { rowSteps: configuration.rowSteps } : {}) },
     versions: template.versions || []
   };
 }
