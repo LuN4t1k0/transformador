@@ -24,7 +24,13 @@ function serializeTemplateDetail(template) {
   const configuration = normalizeStoredTemplate(template);
   return {
     ...serializeTemplateSummary(template),
-    configuration: { input: configuration.input, output: configuration.output, columns: configuration.columns, ...(configuration.rowSteps ? { rowSteps: configuration.rowSteps } : {}) },
+    configuration: {
+      input: configuration.input,
+      output: configuration.output,
+      columns: configuration.columns,
+      ...(configuration.rowSteps ? { rowSteps: configuration.rowSteps } : {}),
+      ...(configuration.parameters ? { parameters: configuration.parameters } : {})
+    },
     versions: template.versions || []
   };
 }
@@ -41,6 +47,8 @@ function serializeJob(job, baseTemplate) {
     workingTemplate: job.workingTemplate || null,
     reusedFromJobId: job.reuseFromJobId || null,
     mode: job.mode,
+    runParameters: job.runParameters || {},
+    outputFileName: job.outputFileName || null,
     sheets: job.workbookAnalysis?.sheets || [],
     selectedSheet: job.selectedSheet,
     confirmedIds: job.confirmedIds || [],
