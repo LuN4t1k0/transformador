@@ -8,6 +8,7 @@ import { Shell } from '../../components/shell';
 import { formatDateTime } from '../../components/job-status';
 import { api } from '../../lib/api';
 import { outputFormatLabel } from '../../lib/templates';
+import { useAdvancedMode } from '../../lib/hooks/use-advanced-mode';
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState(null);
@@ -16,6 +17,7 @@ export default function TemplatesPage() {
   const [destination, setDestination] = useState('');
   const [process, setProcess] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [advanced] = useAdvancedMode();
 
   useEffect(() => {
     setTemplates(null);
@@ -42,10 +44,14 @@ export default function TemplatesPage() {
             <h1 className="text-2xl font-semibold text-ink-900">Plantillas</h1>
             <p className="mt-1 text-sm text-ink-500">Formatos que piden los destinos. Se comparten entre todos los usuarios y cada cambio queda como una versión nueva.</p>
           </div>
-          <Link href="/templates/new" className={buttonStyles.primary}>
-            <Plus size={16} aria-hidden="true" />
-            Nueva plantilla
-          </Link>
+          {advanced ? (
+            <Link href="/templates/new" className={buttonStyles.primary}>
+              <Plus size={16} aria-hidden="true" />
+              Nueva plantilla
+            </Link>
+          ) : (
+            <p className="max-w-xs text-xs text-ink-500">Para crear o editar plantillas, activa el modo avanzado arriba a la derecha.</p>
+          )}
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">

@@ -10,17 +10,17 @@ const tones = {
 };
 
 export const JOB_STATUS_VIEW = {
-  QUEUED_ANALYSIS: { label: 'En cola de análisis', tone: 'progress' },
-  ANALYZING: { label: 'Analizando', tone: 'progress' },
-  READY: { label: 'Por configurar', tone: 'neutral' },
-  QUEUED_TRANSFORMATION: { label: 'En cola', tone: 'progress' },
-  TRANSFORMING: { label: 'Transformando', tone: 'progress' },
+  QUEUED_ANALYSIS: { label: 'Leyendo archivo', tone: 'progress' },
+  ANALYZING: { label: 'Leyendo archivo', tone: 'progress' },
+  READY: { label: 'Listo para revisar', tone: 'neutral' },
+  QUEUED_TRANSFORMATION: { label: 'En espera', tone: 'progress' },
+  TRANSFORMING: { label: 'Generando', tone: 'progress' },
   VALIDATING: { label: 'Validando', tone: 'progress' },
   GENERATING: { label: 'Generando archivo', tone: 'progress' },
   READY_TO_DOWNLOAD: { label: 'Listo para descargar', tone: 'success' },
   DOWNLOADED: { label: 'Descargado', tone: 'success' },
   PURGED: { label: 'Descargado y eliminado', tone: 'success' },
-  FAILED: { label: 'Falló', tone: 'danger' },
+  FAILED: { label: 'Con error', tone: 'danger' },
   CANCELLED: { label: 'Cancelado', tone: 'muted' },
   EXPIRED: { label: 'Expirado', tone: 'expired' }
 };

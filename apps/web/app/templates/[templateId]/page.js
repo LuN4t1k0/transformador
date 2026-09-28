@@ -10,6 +10,7 @@ import { formatDateTime } from '../../../components/job-status';
 import { inputClass } from '../../../components/template-editor/source-editor';
 import { api } from '../../../lib/api';
 import { describeOutput, describeSource, describeTransformations } from '../../../lib/templates';
+import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 
 function DuplicateForm({ template, onCancel }) {
   const router = useRouter();
@@ -47,6 +48,7 @@ export default function TemplateDetailPage() {
   const [error, setError] = useState(null);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [advanced] = useAdvancedMode();
 
   useEffect(() => {
     api.getTemplate(templateId).then((loaded) => {
@@ -105,7 +107,7 @@ export default function TemplateDetailPage() {
                 <p className="mt-1 text-sm text-ink-500">{[template.destination, template.process].filter(Boolean).join(' · ') || 'Sin clasificar'}</p>
                 {template.description ? <p className="mt-1 text-sm text-ink-700">{template.description}</p> : null}
               </div>
-              <div className="flex flex-wrap gap-2">
+              {advanced ? <div className="flex flex-wrap gap-2">
                 {!template.archivedAt ? (
                   <Link href={`/templates/${template.id}/edit`} className={buttonStyles.primary}>
                     <Pencil size={16} aria-hidden="true" />
@@ -120,7 +122,7 @@ export default function TemplateDetailPage() {
                   {template.archivedAt ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />}
                   {template.archivedAt ? 'Restaurar' : 'Archivar'}
                 </button>
-              </div>
+              </div> : null}
             </div>
 
             {isDuplicating ? <DuplicateForm template={template} onCancel={() => setIsDuplicating(false)} /> : null}
@@ -132,7 +134,7 @@ export default function TemplateDetailPage() {
                     <h2 className="text-base font-semibold text-ink-900">Versión {shown.version}{isOldVersion ? ' (anterior)' : ' (vigente)'}</h2>
                     <p className="mt-1 text-sm text-ink-500">{describeOutput(shown.configuration.output)} · {shown.configuration.columns.length} columnas</p>
                   </div>
-                  {isOldVersion && !template.archivedAt ? (
+                  {isOldVersion && !template.archivedAt && advanced ? (
                     <Link href={`/templates/${template.id}/edit?version=${shown.versionId}`} className={buttonStyles.secondary}>
                       <History size={16} aria-hidden="true" />
                       Restaurar esta versión

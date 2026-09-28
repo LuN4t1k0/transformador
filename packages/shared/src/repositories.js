@@ -287,6 +287,17 @@ function createJobRepository(pool) {
       return toJob(rows[0]);
     },
 
+    // When each template last produced a file for this user: drives the "same as last time" suggestion.
+    async lastUsedTemplates(userId) {
+      const { rows } = await pool.query(
+        `select template_id, max(completed_at) as last_used_at from transformation_jobs
+         where user_id = $1 and template_id is not null and completed_at is not null
+         group by template_id`,
+        [userId]
+      );
+      return new Map(rows.map((row) => [row.template_id, row.last_used_at]));
+    },
+
     async countActiveForUser(userId, statuses) {
       const { rows } = await pool.query('select count(*)::int as count from transformation_jobs where user_id = $1 and status = any($2)', [userId, statuses]);
       return rows[0].count;

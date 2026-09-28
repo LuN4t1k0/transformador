@@ -148,7 +148,7 @@ export function TemplateStep({ job, onApply, isBusy }) {
       </button>
 
       {job.workingTemplate ? (
-        <p className="text-xs text-ink-500">Elegir otra plantilla reemplaza la configuración actual de este job.</p>
+        <p className="text-xs text-ink-500">Elegir otra plantilla reemplaza la configuración actual de esta conversión.</p>
       ) : null}
     </div>
   );

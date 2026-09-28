@@ -12,6 +12,7 @@ import { StatusPill } from '../../../components/status-pill';
 import { formatTime, JobStatusBadge } from '../../../components/job-status';
 import { GenerateStep } from '../../../components/job/generate-step';
 import { JobActivity } from '../../../components/job/job-activity';
+import { QuickFlow } from '../../../components/job/quick-flow';
 import { RunProgress, RunResult, RunTerminal } from '../../../components/job/run-section';
 import { SheetStep } from '../../../components/job/sheet-step';
 import { TemplateStep } from '../../../components/job/template-step';
@@ -22,6 +23,7 @@ import { api } from '../../../lib/api';
 import { formatFileSize } from '../../../lib/file-validation';
 import { useJob } from '../../../lib/hooks/use-job';
 import { useWorkingTemplate } from '../../../lib/hooks/use-working-template';
+import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 import { reviveSampleRows } from '../../../lib/template-editor';
 import { describeOutput } from '../../../lib/templates';
 
@@ -29,7 +31,7 @@ const SECTIONS = [
   { id: 'sheet', label: 'Hoja', title: 'Hoja de origen', description: 'Elige la hoja del Excel que contiene los datos.' },
   { id: 'template', label: 'Plantilla', title: 'Plantilla', description: 'Elige el formato que pide el destino, o crea uno nuevo a partir de este archivo.' },
   { id: 'columns', label: 'Columnas', title: 'Columnas del archivo final', description: 'Define qué columnas lleva el archivo, de dónde sale cada una y en qué formato.' },
-  { id: 'output', label: 'Salida', title: 'Formato del archivo', description: 'Tipo de archivo, separador, codificación y largos.' },
+  { id: 'output', label: 'Tipo de archivo', shortLabel: 'Tipo', title: 'Tipo de archivo', description: 'Excel, texto con separador o texto de ancho fijo.' },
   { id: 'preview', label: 'Vista previa', shortLabel: 'Previa', title: 'Vista previa', description: 'Así se verá el archivo final con las primeras filas.' },
   { id: 'generate', label: 'Generar', title: 'Generar archivo', description: 'Guarda la plantilla si quieres reutilizarla y genera el archivo con todas las filas.' }
 ];
@@ -75,7 +77,7 @@ function useSample(jobId, sheetName, enabled) {
 
 function SectionTabs({ activeId, onSelect, badges }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border border-ink-200 bg-white p-1" role="tablist" aria-label="Pasos del job">
+    <div className="flex gap-1 overflow-x-auto rounded-lg border border-ink-200 bg-white p-1" role="tablist" aria-label="Pasos">
       {SECTIONS.map((section, index) => {
         const isActive = section.id === activeId;
         const badge = badges[section.id];
@@ -123,7 +125,7 @@ function getNextStep(job, template, evaluation, activeId) {
   if (RUNNING.has(job.status)) return { hint: 'Procesando todas las filas.' };
   if (job.status === 'READY_TO_DOWNLOAD') return { hint: 'El archivo está listo. Descárgalo antes de que expire.' };
   if (job.status === 'DOWNLOADED') return { hint: 'Puedes volver a descargarlo hasta que expire, o eliminar los archivos ahora.' };
-  if (job.status !== 'READY') return { hint: 'Este job terminó. Crea uno nuevo para procesar otro archivo.' };
+  if (job.status !== 'READY') return { hint: 'Esta conversión terminó. Sube otro archivo para empezar una nueva.' };
   if (!job.selectedSheet) return { section: 'sheet', label: 'Elegir hoja', hint: 'El archivo tiene varias hojas con datos: elige con cuál trabajar.' };
   if (!template) return { section: 'template', label: 'Elegir plantilla', hint: 'Elige una plantilla guardada o crea una nueva desde este archivo.' };
   if (!evaluation.isComplete) {
@@ -183,7 +185,7 @@ function ContextPanel({ job, template, evaluation, saveState, activeId, onGo }) 
 
       <p className="flex items-start gap-2 px-1 text-xs leading-5 text-ink-500">
         <ShieldCheck size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Los archivos temporales de este job expiran a las {formatTime(job.expiresAt)}.
+        Tus archivos se eliminan automáticamente a las {formatTime(job.expiresAt)}.
       </p>
     </aside>
   );
@@ -206,6 +208,7 @@ function initialSection(job) {
 
 function JobWorkspace({ job, setJob }) {
   const { draft, update, flush, reset, saveState } = useWorkingTemplate(job, setJob);
+  const [advanced, setAdvanced] = useAdvancedMode();
   const [activeId, setActiveId] = useState(() => initialSection(job));
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -381,6 +384,51 @@ function JobWorkspace({ job, setJob }) {
     );
   }
 
+  function changeSource(column, header) {
+    const source = column.source.type.startsWith('SPLIT') ? { ...column.source, column: header } : { type: 'COLUMN', column: header };
+    changeColumns(template.columns.map((candidate) => (candidate.id === column.id ? { ...candidate, source, reviewed: false } : candidate)), { unconfirm: column.id });
+  }
+
+  if (!advanced) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-4">
+        {actionError ? <Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice> : null}
+        {isEditable && saveState.status === 'error' ? (
+          <Notice tone="danger" icon={CloudOff} role="alert">No se guardaron los últimos cambios: {saveState.error?.message}</Notice>
+        ) : null}
+        {isEditable ? (
+          <QuickFlow
+            job={job}
+            template={template}
+            evaluation={evaluation}
+            results={results}
+            sample={sample}
+            headers={headers || []}
+            isBusy={isBusy}
+            blockedReason={saveState.status === 'error'
+              ? generateBlocked
+              : evaluation && !evaluation.isComplete ? `Revisa ${pending === 1 ? 'la columna marcada' : `las ${pending} columnas marcadas`} arriba.` : null}
+            onSelectSheet={(name) => replaceFromServer(() => api.selectSheet(job.id, name))}
+            onApply={(selection) => replaceFromServer(() => api.applyTemplate(job.id, selection))}
+            onChangeSource={changeSource}
+            onConfirm={(id) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, id])] }))}
+            onConfirmAll={(ids) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, ...ids])] }))}
+            onGenerate={(mode) => transform(null, mode)}
+            onAdvanced={() => {
+              setAdvanced(true);
+              setActiveId('template');
+            }}
+          />
+        ) : (
+          <Panel headingRef={headingRef} title={ANALYZING.has(job.status) ? 'Analizando archivo' : RUNNING.has(job.status) ? 'Generando archivo' : 'Resultado'}>
+            {renderSection()}
+          </Panel>
+        )}
+        <JobActivity job={job} />
+      </div>
+    );
+  }
+
   const sectionIndex = SECTIONS.findIndex((candidate) => candidate.id === sectionId);
   const nextSection = isEditable ? SECTIONS[sectionIndex + 1] : null;
   const previousSection = isEditable ? SECTIONS[sectionIndex - 1] : null;
@@ -432,36 +480,40 @@ function JobWorkspace({ job, setJob }) {
 
 export default function JobPage() {
   const { jobId } = useParams();
+  const [advanced] = useAdvancedMode();
   const { job, error, isLoading, setJob, isRealtimeConnected } = useJob(jobId);
 
   return (
     <Shell>
       <div className="mx-auto max-w-6xl">
-        <Link href="/jobs" className="inline-flex items-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-900">
-          <ArrowLeft size={15} aria-hidden="true" />
-          Historial
-        </Link>
+        <div className={advanced ? '' : 'mx-auto max-w-4xl'}>
+          <Link href="/jobs" className="inline-flex items-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-900">
+            <ArrowLeft size={15} aria-hidden="true" />
+            Historial
+          </Link>
+        </div>
 
         {isLoading ? (
           <p className="mt-6 flex items-center gap-2 text-sm text-ink-500">
             <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-            Cargando job…
+            Cargando…
           </p>
         ) : error ? (
           <div className="mt-6 max-w-xl">
             <Notice tone="danger" icon={AlertCircle} role="alert">
-              <p className="font-semibold">No encontramos este job</p>
+              <p className="font-semibold">No encontramos esta conversión</p>
               <p className="mt-0.5">{error.message}</p>
             </Notice>
-            <Link href="/jobs/new" className={`${buttonStyles.primary} mt-4`}>Crear un nuevo job</Link>
+            <Link href="/jobs/new" className={`${buttonStyles.primary} mt-4`}>Convertir un archivo</Link>
           </div>
         ) : (
           <>
-            <div className="mb-5 mt-3 flex flex-wrap items-start justify-between gap-3">
+            <div className={`mb-5 mt-3 flex flex-wrap items-start justify-between gap-3 ${advanced ? '' : 'mx-auto max-w-4xl'}`}>
               <div className="min-w-0">
                 <h1 className="truncate text-2xl font-semibold text-ink-900">{job.fileName}</h1>
                 <p className="mt-1 text-sm text-ink-500">
-                  Creado a las {formatTime(job.createdAt)} · <span className="font-mono text-xs">{job.id}</span>
+                  Subido a las {formatTime(job.createdAt)}
+                  {advanced ? <> · <span className="font-mono text-xs">{job.id}</span></> : null}
                 </p>
               </div>
               <JobStatusBadge status={job.status} />

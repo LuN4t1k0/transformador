@@ -22,11 +22,11 @@ export default function JobsPage() {
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-ink-900">Historial</h1>
-            <p className="mt-1 text-sm text-ink-500">Tus últimos jobs. Solo se guarda metadata: nunca el contenido de las filas.</p>
+            <p className="mt-1 text-sm text-ink-500">Tus últimas conversiones. Solo guardamos datos del proceso, nunca el contenido de las filas.</p>
           </div>
           <Link href="/jobs/new" className={buttonStyles.primary}>
             <FilePlus2 size={16} aria-hidden="true" />
-            Nuevo job
+            Convertir archivo
           </Link>
         </div>
 
@@ -40,8 +40,8 @@ export default function JobsPage() {
         ) : jobs.length === 0 ? (
           <div className="flex flex-col items-center rounded-lg border border-dashed border-ink-300 bg-white px-4 py-12 text-center">
             <History className="text-ink-400" size={26} aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-ink-900">Todavía no hay jobs</p>
-            <p className="mt-1 text-sm text-ink-500">Sube un Excel para crear el primero.</p>
+            <p className="mt-2 text-sm font-semibold text-ink-900">Todavía no has convertido archivos</p>
+            <p className="mt-1 text-sm text-ink-500">Sube un Excel para empezar.</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-ink-200 bg-white shadow-panel">

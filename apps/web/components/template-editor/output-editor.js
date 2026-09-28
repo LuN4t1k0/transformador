@@ -65,6 +65,7 @@ export function OutputEditor({ template, onChange }) {
           <input id="output-sheet" maxLength={31} className={inputClass} value={output.sheetName} onChange={(event) => setOutput({ sheetName: event.target.value })} />
         </div>
       ) : (
+        <div className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {output.format === 'DELIMITED' ? (
             <div>
@@ -77,6 +78,14 @@ export function OutputEditor({ template, onChange }) {
               </select>
             </div>
           ) : null}
+          <label className="inline-flex items-center gap-2 self-end pb-2 text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+            <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={output.includeHeaders} onChange={(event) => setOutput({ includeHeaders: event.target.checked })} />
+            Incluir una primera línea con los nombres de columna
+          </label>
+        </div>
+        <details className="rounded-lg border border-ink-200">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50">Opciones avanzadas del archivo</summary>
+          <div className="grid gap-3 border-t border-ink-100 p-3 sm:grid-cols-3">
           <div>
             <label className={labelClass} htmlFor="output-extension">Extensión</label>
             <select id="output-extension" className={inputClass} value={output.extension} onChange={(event) => setOutput({ extension: event.target.value })}>
@@ -98,10 +107,9 @@ export function OutputEditor({ template, onChange }) {
               <option value="LF">Unix (LF)</option>
             </select>
           </div>
-          <label className="inline-flex items-center gap-2 text-sm text-ink-700 sm:col-span-2">
-            <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={output.includeHeaders} onChange={(event) => setOutput({ includeHeaders: event.target.checked })} />
-            Incluir una primera línea con los nombres de columna
-          </label>
+          <p className="text-xs text-ink-500 sm:col-span-3">Cámbialas solo si el destino lo pide (por ejemplo, sistemas antiguos que exigen Latin-1 o fin de línea Unix).</p>
+          </div>
+        </details>
         </div>
       )}
 

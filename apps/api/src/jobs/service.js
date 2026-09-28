@@ -150,13 +150,18 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       return view(updated);
     },
 
+    // Templates ranked for this sheet: full matches first, then the one this user used most recently.
     async templateMatches(jobId, user) {
       const job = await requireJob(jobId, user);
       const headers = selectedHeaders(job);
-      const list = await templates.list();
+      const [list, lastUsed] = await Promise.all([templates.list(), jobs.lastUsedTemplates(user.id)]);
+      const isFull = (match) => match.requiredMissing === 0 && match.matched === match.total;
       return list
-        .map((template) => ({ templateId: template.id, ...matchTemplate(normalizeStoredTemplate(template), headers) }))
-        .sort((a, b) => (a.requiredMissing - b.requiredMissing) || (b.matched / Math.max(b.total, 1) - a.matched / Math.max(a.total, 1)));
+        .map((template) => ({ templateId: template.id, lastUsedAt: lastUsed.get(template.id) || null, ...matchTemplate(normalizeStoredTemplate(template), headers) }))
+        .sort((a, b) => (Number(isFull(b)) - Number(isFull(a)))
+          || (new Date(b.lastUsedAt || 0) - new Date(a.lastUsedAt || 0))
+          || (a.requiredMissing - b.requiredMissing)
+          || (b.matched / Math.max(b.total, 1) - a.matched / Math.max(a.total, 1)));
     },
 
     async applyTemplate(jobId, user, { templateId, blank }) {

@@ -1,6 +1,7 @@
 import { FileSpreadsheet } from 'lucide-react';
 import { MainNav } from './main-nav';
 import { UserBadge } from './user-badge';
+import { AdvancedToggle } from './advanced-toggle';
 
 export function Shell({ children }) {
   return (
@@ -16,7 +17,10 @@ export function Shell({ children }) {
               <p className="truncate text-xs text-ink-500">Excel a plantillas previsionales</p>
             </div>
           </div>
-          <UserBadge />
+          <div className="flex min-w-0 items-center gap-2">
+            <AdvancedToggle />
+            <UserBadge />
+          </div>
         </div>
       </header>
       <MainNav />

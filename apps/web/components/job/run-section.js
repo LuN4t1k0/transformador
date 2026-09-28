@@ -7,7 +7,7 @@ import { buttonStyles, Notice } from '../panel';
 
 const STAGES = [
   { id: 'QUEUED', label: 'En cola' },
-  { id: 'TRANSFORMING', label: 'Transformando filas' },
+  { id: 'TRANSFORMING', label: 'Convirtiendo filas' },
   { id: 'VALIDATING', label: 'Validando resultado' },
   { id: 'GENERATING', label: 'Generando archivo' }
 ];
@@ -171,8 +171,8 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
 }
 
 const TERMINAL_MESSAGES = {
-  PURGED: { tone: 'success', icon: CheckCircle2, title: 'Archivos eliminados', text: 'Los archivos temporales de este job ya no están en el servidor. Si necesitas el archivo otra vez, crea un nuevo job.' },
-  CANCELLED: { tone: 'warning', icon: XCircle, title: 'Transformación cancelada', text: 'No se generó ningún archivo. Crea un nuevo job para volver a intentarlo.' },
+  PURGED: { tone: 'success', icon: CheckCircle2, title: 'Archivos eliminados', text: 'Los archivos temporales de este job ya no están en el servidor. Si necesitas el archivo otra vez, vuelve a convertirlo.' },
+  CANCELLED: { tone: 'warning', icon: XCircle, title: 'Transformación cancelada', text: 'No se generó ningún archivo. Vuelve a subir el archivo para intentarlo de nuevo.' },
   EXPIRED: { tone: 'warning', icon: Clock, title: 'El job expiró', text: 'Los archivos temporales se eliminaron por tiempo. Vuelve a subir el Excel para continuar.' },
   FAILED: { tone: 'danger', icon: AlertCircle, title: 'No pudimos procesar el archivo', text: 'No se generó ningún archivo y los temporales se eliminaron.' }
 };
@@ -196,7 +196,7 @@ export function RunTerminal({ job }) {
       <div className="mt-5 flex justify-end">
         <Link href="/jobs/new" className={buttonStyles.primary}>
           <FilePlus2 size={16} aria-hidden="true" />
-          Nuevo job
+          Convertir otro archivo
         </Link>
       </div>
     </div>
