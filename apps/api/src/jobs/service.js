@@ -94,7 +94,19 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
 
     async create(request, user) {
       await requireCapacity(user);
-      const { file } = await receiveUpload(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes });
+      const { file, fields } = await receiveUpload(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes });
+
+      // Optional starting configuration, applied by the worker once the file is analyzed.
+      let reuseFromJobId = null;
+      let requestedTemplateId = null;
+      try {
+        if (fields.reuseFromJobId) reuseFromJobId = (await requireJob(fields.reuseFromJobId, user)).id;
+        if (fields.templateId) requestedTemplateId = (await templateService.getActiveConfiguration(fields.templateId)).template.id;
+      } catch (error) {
+        await storage.delete(file.key);
+        throw error;
+      }
+
       const job = await jobs.create({
         id: crypto.randomUUID(),
         userId: user.id,
@@ -104,7 +116,9 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         fileSizeBytes: file.size,
         inputStorageKey: file.key,
         status: JOB_STATUSES.QUEUED_ANALYSIS,
-        expiresAt: new Date(Date.now() + config.tempFileTtlMs)
+        expiresAt: new Date(Date.now() + config.tempFileTtlMs),
+        reuseFromJobId,
+        requestedTemplateId
       });
 
       try {
@@ -114,7 +128,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         await storage.delete(file.key);
         throw error;
       }
-      await auditJob(job, user, 'JOB_CREATED', { fileName: file.fileName, fileSizeBytes: file.size });
+      await auditJob(job, user, 'JOB_CREATED', { fileName: file.fileName, fileSizeBytes: file.size, reuseFromJobId, requestedTemplateId });
       await publish(job.id, 'job:queued');
       return view(job);
     },

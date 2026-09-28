@@ -88,6 +88,16 @@ Estados por columna: `OK`; `REQUIERE_CONFIRMACION` (separar por palabras, o una 
 - `POST /jobs/:id/template/save` (`{ mode: 'NEW_VERSION' }` o `{ mode: 'NEW_TEMPLATE', name, destination, process, description }`)
 - `GET /jobs/:id/sample`, `POST /jobs/:id/transform`, `POST /jobs/:id/cancel`, `GET /jobs/:id/download`
 
+## Uso frecuente (modo simple)
+
+- Inicio (`/`): zona de carga (uno o varios archivos), últimas conversiones con «Repetir con otro archivo» y plantillas del usuario con «Usar con un archivo» y «Excel de ejemplo».
+- Un archivo puede subirse con `reuseFromJobId` (copia hoja, plantilla de trabajo y confirmaciones de una conversión anterior) o con `templateId` (aplica la versión vigente de una plantilla). El worker lo aplica al terminar el análisis.
+- Si la plantilla usada la última vez reconoce todas las columnas, se aplica sola. Si no, se recomiendan las que calzan completas.
+- Filas rechazadas: se descargan con motivo y pista de corrección, y al subirlas corregidas («Subir corregidas») se procesan con la misma configuración.
+- Carga múltiple: varios archivos con la misma plantilla, uno tras otro; los que requieren revisión quedan marcados con enlace.
+- `GET /templates/:id/example` entrega un Excel de ejemplo con los encabezados esperados, una fila de ejemplo y una hoja de instrucciones.
+- El modo avanzado (preferencia por navegador) muestra el editor de 6 pasos y la edición de plantillas; debería pasar a depender del rol cuando exista el SSO.
+
 ## Etapas
 
 1. Motor y API de plantillas: esquema, validación, versiones, formatos de salida.

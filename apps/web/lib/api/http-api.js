@@ -92,6 +92,10 @@ export function createHttpApi(baseUrl) {
     async duplicateTemplate(templateId, name) {
       return (await getJson(`/templates/${templateId}/duplicate`, { method: 'POST', json: { name } })).template;
     },
+    async downloadTemplateExample(templateId) {
+      const response = await request(`/templates/${templateId}/example`);
+      return { fileName: parseFileName(response.headers.get('content-disposition'), 'ejemplo.xlsx'), blob: await response.blob() };
+    },
     async setTemplateArchived(templateId, archived) {
       return (await getJson(`/templates/${templateId}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' })).template;
     },
@@ -104,8 +108,10 @@ export function createHttpApi(baseUrl) {
     async getJob(jobId) {
       return (await getJson(`/jobs/${encodeURIComponent(jobId)}`)).job;
     },
-    async createJob({ file }) {
+    async createJob({ file, reuseFromJobId, templateId }) {
       const form = new FormData();
+      if (reuseFromJobId) form.append('reuseFromJobId', reuseFromJobId);
+      if (templateId) form.append('templateId', templateId);
       form.append('file', file, file.name);
       return (await getJson('/jobs', { method: 'POST', body: form })).job;
     },

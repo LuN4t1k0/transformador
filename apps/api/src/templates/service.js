@@ -1,5 +1,6 @@
 const { TemplateNameTakenError } = require('../../../../packages/shared/src/repositories');
 const { HttpError } = require('../http');
+const { buildExampleWorkbook } = require('../../../../packages/excel-engine/src/example');
 const {
   normalizeStoredTemplate,
   serializeTemplateDetail,
@@ -75,6 +76,12 @@ function createTemplateService({ templates, audit = { record: async () => {} } }
       const source = await requireTemplate(templateId);
       const configuration = normalizeStoredTemplate(source);
       return this.create({ ...configuration, name: name || `${configuration.name} (copia)` }, user);
+    },
+
+    async example(templateId) {
+      const template = await requireTemplate(templateId);
+      const configuration = normalizeStoredTemplate(template);
+      return { fileName: `ejemplo-${template.name}.xlsx`, buffer: await buildExampleWorkbook(configuration) };
     },
 
     async setArchived(templateId, archived, user) {

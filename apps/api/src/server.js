@@ -54,6 +54,16 @@ async function main() {
     ['GET', '/templates/facets', async () => templateService.facets()],
     ['POST', '/templates', async ({ user, request }) => ({ status: 201, body: { template: await templateService.create((await readJson(request)).configuration, user) } })],
     ['GET', '/templates/:templateId', async ({ params }) => ({ template: await templateService.get(params.templateId) })],
+    ['GET', '/templates/:templateId/example', async ({ params, response }) => {
+      const { fileName, buffer } = await templateService.example(params.templateId);
+      response.writeHead(200, {
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-disposition': `attachment; filename="${fileName.replace(/[^\w.-]+/g, '_')}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'cache-control': 'no-store'
+      });
+      response.end(buffer);
+      return { handled: true };
+    }],
     ['GET', '/templates/:templateId/versions/:versionId', async ({ params }) => ({ template: await templateService.getVersion(params.templateId, params.versionId) })],
     ['POST', '/templates/:templateId/versions', async ({ user, params, request }) => ({ template: await templateService.addVersion(params.templateId, (await readJson(request)).configuration, user) })],
     ['POST', '/templates/:templateId/duplicate', async ({ user, params, request }) => ({ status: 201, body: { template: await templateService.duplicate(params.templateId, await readJson(request), user) } })],

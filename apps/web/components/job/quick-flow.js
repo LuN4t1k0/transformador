@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Play, Sparkles, Table2 } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Loader2, Play, Sparkles, Table2 } from 'lucide-react';
+import { downloadBlob } from '../../lib/download';
 import { api } from '../../lib/api';
 import { maskRut } from '../../lib/preview';
 import { formatCell, isRutColumn } from '../../lib/template-editor';
@@ -260,6 +261,7 @@ export function QuickFlow({ job, template, evaluation, results, sample, headers,
         ) : (
           <div className="space-y-1 text-sm text-ink-700">
             {autoApplied ? <p className="flex items-center gap-1.5 text-mint-600"><Sparkles size={14} aria-hidden="true" />Usamos la misma plantilla que la última vez.</p> : null}
+            {!autoApplied && job.reusedFromJobId ? <p className="flex items-center gap-1.5 text-mint-600"><Sparkles size={14} aria-hidden="true" />Usamos la misma configuración de tu conversión anterior.</p> : null}
             <p>
               Hoja «{job.selectedSheet}» · {sheet?.rowCount} filas
               {withData.length > 1 ? <> · <button type="button" className="font-medium text-cobalt-700 hover:underline" onClick={() => setChangingSheet(true)}>cambiar hoja</button></> : null}
@@ -269,6 +271,12 @@ export function QuickFlow({ job, template, evaluation, results, sample, headers,
                 ? `Todas las columnas (${evaluation.counts.total}) están listas.`
                 : `${evaluation.counts.ok} de ${evaluation.counts.total} columnas listas.`}
             </p>
+            {job.template ? (
+              <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-cobalt-700 hover:underline" onClick={async () => downloadBlob(await api.downloadTemplateExample(job.template.id))}>
+                <Download size={13} aria-hidden="true" />
+                Excel de ejemplo de esta plantilla
+              </button>
+            ) : null}
           </div>
         )}
       </Step>

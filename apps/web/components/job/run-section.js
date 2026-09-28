@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { AlertCircle, Check, CheckCircle2, Clock, Download, FileWarning, FilePlus2, Loader2, Trash2, XCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Clock, Download, FileWarning, FilePlus2, Loader2, Repeat, Trash2, Upload, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { formatTime } from '../job-status';
-import { describeIssue } from '../../lib/templates';
+import { describeIssue, describeIssueHint } from '../../lib/templates';
+import { ReuseUploadButton } from '../reuse-upload-button';
 import { buttonStyles, Notice } from '../panel';
 
 const STAGES = [
@@ -85,7 +86,7 @@ function IssuesTable({ groups }) {
               <td className="px-3 py-2 font-medium text-ink-900">{group.column}</td>
               <td className={`px-3 py-2 ${group.severity === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>
                 {describeIssue(group)}
-                <span className="ml-1 font-mono text-xs text-ink-400">{group.code}</span>
+                {describeIssueHint(group) ? <span className="block text-xs text-ink-500">{describeIssueHint(group)}</span> : null}
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-ink-900">{group.count}</td>
               <td className="px-3 py-2 tabular-nums text-ink-500">
@@ -138,13 +139,26 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
         </>
       ) : null}
 
+      {files?.rejects ? (
+        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-sm">
+          <h3 className="font-semibold text-ink-900">Corregir las filas rechazadas</h3>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-700">
+            <li>Descarga las filas rechazadas: cada una trae el motivo y cómo corregirlo.</li>
+            <li>Corrígelas en Excel. Puedes dejar las columnas «Fila en el Excel» y «Problemas».</li>
+            <li>Súbelas aquí: usaremos la misma configuración y te entregaremos un archivo solo con esas filas.</li>
+          </ol>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={buttonStyles.secondary} disabled={isBusy} onClick={() => onDownload('rejects')}>
+              <FileWarning size={16} aria-hidden="true" />
+              Descargar rechazadas ({files.rejectedRows})
+            </button>
+            <ReuseUploadButton reuseFromJobId={job.id} icon={Upload} className={buttonStyles.secondary}>Subir corregidas</ReuseUploadButton>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-        {files?.rejects ? (
-          <button type="button" className={buttonStyles.secondary} disabled={isBusy} onClick={() => onDownload('rejects')}>
-            <FileWarning size={16} aria-hidden="true" />
-            Filas rechazadas ({files.rejectedRows})
-          </button>
-        ) : null}
+        <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={buttonStyles.secondary}>Repetir con otro archivo</ReuseUploadButton>
         <button type="button" className={buttonStyles.primary} disabled={isBusy} onClick={() => onDownload('output')}>
           <Download size={16} aria-hidden="true" />
           {job.status === 'DOWNLOADED' ? 'Descargar de nuevo' : 'Descargar archivo'}
@@ -193,8 +207,11 @@ export function RunTerminal({ job }) {
           Resultado: {job.summary.validRows} de {job.summary.totalRows} filas válidas.
         </p>
       ) : null}
-      <div className="mt-5 flex justify-end">
-        <Link href="/jobs/new" className={buttonStyles.primary}>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        {job.workingTemplate && ['PURGED', 'EXPIRED'].includes(job.status) ? (
+          <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={buttonStyles.secondary}>Repetir con otro archivo</ReuseUploadButton>
+        ) : null}
+        <Link href="/" className={buttonStyles.primary}>
           <FilePlus2 size={16} aria-hidden="true" />
           Convertir otro archivo
         </Link>

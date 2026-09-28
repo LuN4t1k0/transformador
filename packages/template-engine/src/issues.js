@@ -9,8 +9,23 @@ const ISSUE_MESSAGES = {
   INVALID_RUT_FORMAT: 'No se reconoce como RUT'
 };
 
+// What a valid value looks like, so users know how to fix the cell.
+const ISSUE_HINTS = {
+  REQUIRED: 'Esta celda no puede venir vacía.',
+  INVALID_RUT: 'Revisa el dígito verificador (lo que va después del guion).',
+  INVALID_INTEGER: 'Escribe solo números, sin letras ni símbolos.',
+  TOO_LONG: 'Acorta el valor o pide que se amplíe el largo de la columna en la plantilla.',
+  INVALID_DATE: 'Usa una fecha real, por ejemplo 03-05-2024 o 2024-05-03.',
+  INVALID_NUMBER: 'Usa un número como 1.234.567 o 1234,50, sin letras.',
+  INVALID_RUT_FORMAT: 'Usa un RUT como 12.345.678-5 o 12345678-5.'
+};
+
 function describeIssue(issue) {
   return ISSUE_MESSAGES[issue.code] || issue.message || issue.code;
 }
 
-module.exports = { ISSUE_MESSAGES, describeIssue };
+function describeIssueHint(issue) {
+  return ISSUE_HINTS[issue.code] || '';
+}
+
+module.exports = { ISSUE_MESSAGES, ISSUE_HINTS, describeIssue, describeIssueHint };

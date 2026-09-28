@@ -5,7 +5,7 @@ import { AlertCircle } from 'lucide-react';
 import { formatFixedWidthValue } from '@previley-transformer/template-engine/src/run.js';
 import { maskRut } from '../../lib/preview';
 import { formatCell, isRutColumn } from '../../lib/template-editor';
-import { describeIssue } from '../../lib/templates';
+import { describeIssue, describeIssueHint } from '../../lib/templates';
 
 function cellText(column, value) {
   const text = formatCell(value);
@@ -105,7 +105,7 @@ export function FilePreview({ template, results }) {
             <li key={result.rowNumber} className="flex flex-wrap items-center gap-x-2 text-rose-700">
               <AlertCircle size={14} aria-hidden="true" />
               <span className="font-medium">Fila {result.rowNumber}:</span>
-              {result.issues.map((issue) => `${issue.column} — ${describeIssue(issue)}`).join(' · ')}
+              {result.issues.map((issue) => `${issue.column} — ${describeIssue(issue)}. ${describeIssueHint(issue)}`.trim()).join(' · ')}
             </li>
           ))}
         </ul>

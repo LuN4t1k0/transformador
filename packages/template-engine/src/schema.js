@@ -190,8 +190,22 @@ function validateTemplateConfig(config) {
   };
 }
 
+// Stored versions may predate the current schema (e.g. the original seed); normalize them on read.
+function normalizeStoredTemplate(template) {
+  return validateTemplateConfig({
+    name: template.name,
+    description: template.description,
+    destination: template.destination,
+    process: template.process,
+    input: template.input,
+    output: template.output,
+    columns: template.columns
+  });
+}
+
 module.exports = {
   validateTemplateConfig,
+  normalizeStoredTemplate,
   TemplateValidationError,
   OUTPUT_FORMATS,
   DELIMITERS,

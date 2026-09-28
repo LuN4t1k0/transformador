@@ -51,6 +51,8 @@ function toJob(row) {
     outputStorageKey: row.output_storage_key,
     rejectsStorageKey: row.rejects_storage_key,
     rejectedRows: row.rejected_rows,
+    reuseFromJobId: row.reuse_from_job_id,
+    requestedTemplateId: row.requested_template_id,
     workbookAnalysis: row.workbook_analysis,
     selectedSheet: row.selected_sheet,
     workingTemplate: row.working_template,
@@ -240,12 +242,12 @@ function createTemplateRepository(pool) {
 
 function createJobRepository(pool) {
   return {
-    async create({ id, userId, templateId, templateVersionId, fileName, fileSizeBytes, inputStorageKey, status, expiresAt }) {
+    async create({ id, userId, templateId, templateVersionId, fileName, fileSizeBytes, inputStorageKey, status, expiresAt, reuseFromJobId = null, requestedTemplateId = null }) {
       const { rows } = await pool.query(
         `insert into transformation_jobs
-           (id, user_id, template_id, template_version_id, status, file_name, file_size_bytes, input_storage_key, expires_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
-        [id, userId, templateId, templateVersionId, status, fileName, fileSizeBytes, inputStorageKey, expiresAt]
+           (id, user_id, template_id, template_version_id, status, file_name, file_size_bytes, input_storage_key, expires_at, reuse_from_job_id, requested_template_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`,
+        [id, userId, templateId, templateVersionId, status, fileName, fileSizeBytes, inputStorageKey, expiresAt, reuseFromJobId, requestedTemplateId]
       );
       return toJob(rows[0]);
     },

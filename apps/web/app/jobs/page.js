@@ -7,6 +7,7 @@ import { formatDateTime, JobStatusBadge } from '../../components/job-status';
 import { buttonStyles, Notice } from '../../components/panel';
 import { Shell } from '../../components/shell';
 import { api } from '../../lib/api';
+import { ReuseUploadButton } from '../../components/reuse-upload-button';
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState(null);
@@ -45,13 +46,14 @@ export default function JobsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-ink-200 bg-white shadow-panel">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-ink-50 text-xs text-ink-500">
                 <tr>
                   <th scope="col" className="px-4 py-2.5 font-medium">Archivo</th>
                   <th scope="col" className="px-4 py-2.5 font-medium">Plantilla</th>
                   <th scope="col" className="px-4 py-2.5 font-medium">Estado</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Creado</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Fecha</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium"><span className="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
@@ -63,6 +65,11 @@ export default function JobsPage() {
                     <td className="px-4 py-3 text-ink-700">{job.template ? `${job.template.name} v${job.template.version}` : job.workingTemplate ? <span className="text-ink-500">Nueva, sin guardar</span> : <span className="text-ink-400">Sin elegir</span>}</td>
                     <td className="px-4 py-3"><JobStatusBadge status={job.status} /></td>
                     <td className="px-4 py-3 tabular-nums text-ink-500">{formatDateTime(job.createdAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {job.workingTemplate ? (
+                        <ReuseUploadButton reuseFromJobId={job.id} className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-cobalt-700 hover:underline">Repetir con otro archivo</ReuseUploadButton>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

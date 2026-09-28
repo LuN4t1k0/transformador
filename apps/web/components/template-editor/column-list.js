@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertCircle, ArrowDown, ArrowUp, Check, ChevronDown, Copy, ListFilter, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Check, CheckCircle2, ChevronDown, Copy, LayoutList, ListFilter, Plus, Rows3, Trash2 } from 'lucide-react';
 import { maskRut } from '../../lib/preview';
 import { createColumn, duplicateColumn, formatCell, isRutColumn, moveColumn } from '../../lib/template-editor';
 import { describeIssue, describeSource, describeTransformations } from '../../lib/templates';
@@ -72,6 +72,41 @@ function FixedWidthEditor({ idPrefix, column, onChange }) {
   );
 }
 
+// One-line summary of a column; expands into the full editor.
+function CompactRow({ column, index, row, sample, onToggle, onConfirm }) {
+  const status = row?.status;
+  const mask = (value) => (isRutColumn(column) && value ? maskRut(formatCell(value)) : formatCell(value));
+  const output = sample ? mask(sample.result.output[column.outputName]) : '';
+  const hasError = sample?.result.issues.some((issue) => issue.column === column.outputName && issue.severity === 'error');
+  const tone = status === 'FALTANTE' ? 'bg-rose-50/60' : status === 'REQUIERE_CONFIRMACION' ? 'bg-amber-50/60' : 'bg-white';
+
+  return (
+    <li className={`grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 sm:grid-cols-[28px_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_216px] ${tone}`}>
+      <span className="text-right text-xs tabular-nums text-ink-400">{index + 1}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-ink-900">{column.outputName}{column.required ? <span className="ml-1 text-ink-400" title="Obligatoria">*</span> : null}</span>
+        <span className="block truncate text-xs text-ink-500 sm:hidden">{describeSource(column.source)}</span>
+      </span>
+      <span className="hidden min-w-0 truncate text-xs text-ink-500 sm:block" title={[describeSource(column.source), ...describeTransformations(column)].join(' · ')}>
+        {describeSource(column.source)}{describeTransformations(column).length ? ` · ${describeTransformations(column).join(' · ')}` : ''}
+      </span>
+      <span className={`hidden min-w-0 truncate font-mono text-xs sm:block ${hasError ? 'text-rose-700' : 'text-ink-900'}`}>{output || <span className="text-ink-300">—</span>}</span>
+      <span className="flex items-center justify-end gap-1">
+        {status && status !== 'OK' ? <StatusPill value={status} /> : null}
+        {status === 'REQUIERE_CONFIRMACION' && onConfirm ? (
+          <button type="button" className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-xs font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirm(column.id)}>
+            <Check size={13} aria-hidden="true" />Confirmar
+          </button>
+        ) : null}
+        <button type="button" className={iconButton} aria-label={`Editar ${column.outputName}`} aria-expanded={false} onClick={onToggle}>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+      </span>
+      {row?.reason ? <span className="col-span-full pl-10 text-xs text-ink-700">{row.reason}</span> : null}
+    </li>
+  );
+}
+
 function ColumnCard({ column, index, total, row, sample, headers, suggestions, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onRemove, onConfirm }) {
   const idPrefix = `column-${column.id}`;
   const status = row?.status;
@@ -138,9 +173,11 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, i
 }
 
 // Editable list of output columns. `evaluation`, `sample` and `onConfirm` are optional (not available without a file).
-export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, sample = null, isFixedWidth = false }) {
+export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, isFixedWidth = false }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [compact, setCompact] = useState(columns.length > 8);
+  const pendingIds = (evaluation?.rows || []).filter((row) => row.status === 'REQUIERE_CONFIRMACION').map((row) => row.column.id);
   const rowsById = new Map((evaluation?.rows || []).map((row) => [row.column.id, row]));
   const pendingCount = evaluation ? evaluation.counts.pending + evaluation.counts.missing : 0;
 
@@ -161,6 +198,20 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-ink-500">{columns.length} columnas en el archivo final, en este orden.</p>
         <div className="flex flex-wrap gap-2">
+          <div className="inline-flex rounded-md border border-ink-200 p-0.5" role="group" aria-label="Vista de columnas">
+            <button type="button" aria-pressed={compact} title="Vista compacta" className={`flex h-8 w-8 items-center justify-center rounded ${compact ? 'bg-cobalt-50 text-cobalt-700' : 'text-ink-500 hover:bg-ink-50'}`} onClick={() => setCompact(true)}>
+              <Rows3 size={15} aria-hidden="true" /><span className="sr-only">Vista compacta</span>
+            </button>
+            <button type="button" aria-pressed={!compact} title="Vista detallada" className={`flex h-8 w-8 items-center justify-center rounded ${!compact ? 'bg-cobalt-50 text-cobalt-700' : 'text-ink-500 hover:bg-ink-50'}`} onClick={() => setCompact(false)}>
+              <LayoutList size={15} aria-hidden="true" /><span className="sr-only">Vista detallada</span>
+            </button>
+          </div>
+          {onConfirmAll && pendingIds.length > 1 ? (
+            <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirmAll(pendingIds)}>
+              <CheckCircle2 size={15} aria-hidden="true" />
+              Confirmar todas ({pendingIds.length})
+            </button>
+          ) : null}
           {evaluation ? (
             <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-ink-200 px-3 text-sm font-medium text-ink-700 hover:bg-ink-50">
               <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} />
@@ -175,10 +226,13 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
         </div>
       </div>
 
-      <ul className="space-y-2">
+      <ul className={compact ? 'divide-y divide-ink-100 overflow-hidden rounded-lg border border-ink-200' : 'space-y-2'}>
         {columns.map((column, index) => {
           const row = rowsById.get(column.id);
           if (pendingOnly && row?.status === 'OK') return null;
+          if (compact && expandedId !== column.id) {
+            return <CompactRow key={column.id} column={column} index={index} row={row} sample={sample} onConfirm={onConfirm} onToggle={() => setExpandedId(column.id)} />;
+          }
           return (
             <ColumnCard
               key={column.id}

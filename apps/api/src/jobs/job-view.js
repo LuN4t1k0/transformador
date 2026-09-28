@@ -1,5 +1,5 @@
 const { HttpError } = require('../http');
-const { validateTemplateConfig, TemplateValidationError } = require('../../../../packages/template-engine/src/schema');
+const { normalizeStoredTemplate, validateTemplateConfig, TemplateValidationError } = require('../../../../packages/template-engine/src/schema');
 
 const RUNNING_STATUSES = new Set(['QUEUED_TRANSFORMATION', 'TRANSFORMING', 'VALIDATING', 'GENERATING']);
 
@@ -29,19 +29,6 @@ function serializeTemplateDetail(template) {
   };
 }
 
-// Stored versions may predate the current schema (e.g. the original seed); normalize them on read.
-function normalizeStoredTemplate(template) {
-  return validateTemplateConfig({
-    name: template.name,
-    description: template.description,
-    destination: template.destination,
-    process: template.process,
-    input: template.input,
-    output: template.output,
-    columns: template.columns
-  });
-}
-
 // Public job shape: metadata only. Storage keys and owner ids never leave the API.
 function serializeJob(job, baseTemplate) {
   return {
@@ -52,6 +39,7 @@ function serializeJob(job, baseTemplate) {
     fileSize: job.fileSizeBytes,
     template: baseTemplate ? serializeTemplateSummary(baseTemplate) : null,
     workingTemplate: job.workingTemplate || null,
+    reusedFromJobId: job.reuseFromJobId || null,
     mode: job.mode,
     sheets: job.workbookAnalysis?.sheets || [],
     selectedSheet: job.selectedSheet,

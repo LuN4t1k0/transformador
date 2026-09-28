@@ -4,14 +4,16 @@ import { useState } from 'react';
 import { AlertCircle, FileSpreadsheet, FileUp } from 'lucide-react';
 import { formatFileSize, MAX_FILE_SIZE_BYTES } from '../lib/file-validation';
 
-export function FileDropzone({ file, error, onFile }) {
+// `multiple` + `onFiles` accept several files at once; otherwise `onFile` receives a single file.
+export function FileDropzone({ file, error, onFile, multiple = false, onFiles }) {
   const [isDragging, setIsDragging] = useState(false);
 
   function handleDrop(event) {
     event.preventDefault();
     setIsDragging(false);
-    const dropped = event.dataTransfer.files?.[0];
-    if (dropped) onFile(dropped);
+    const dropped = [...(event.dataTransfer.files || [])];
+    if (multiple && dropped.length > 1) onFiles(dropped);
+    else if (dropped[0]) onFile(dropped[0]);
   }
 
   return (
@@ -36,11 +38,13 @@ export function FileDropzone({ file, error, onFile }) {
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           aria-describedby="file-help"
+          multiple={multiple}
           onChange={(event) => {
-            const selected = event.target.files?.[0];
-            // Cancelling the picker yields no file: keep the previous selection.
-            if (selected) onFile(selected);
+            const selected = [...(event.target.files || [])];
             event.target.value = '';
+            // Cancelling the picker yields no file: keep the previous selection.
+            if (multiple && selected.length > 1) onFiles(selected);
+            else if (selected[0]) onFile(selected[0]);
           }}
         />
         <span className="flex h-11 w-11 items-center justify-center rounded-md bg-white text-cobalt-600 ring-1 ring-ink-200">
@@ -53,8 +57,8 @@ export function FileDropzone({ file, error, onFile }) {
           </>
         ) : (
           <>
-            <span className="mt-3 text-sm font-semibold text-ink-900">Arrastra tu Excel aquí o <span className="text-cobalt-600">elige un archivo</span></span>
-            <span id="file-help" className="mt-1 text-xs text-ink-500">Solo .xlsx, hasta {formatFileSize(MAX_FILE_SIZE_BYTES)}.</span>
+            <span className="mt-3 text-sm font-semibold text-ink-900">Arrastra tu Excel aquí o <span className="text-cobalt-600">{multiple ? 'elige uno o varios archivos' : 'elige un archivo'}</span></span>
+            <span id="file-help" className="mt-1 text-xs text-ink-500">Solo .xlsx, hasta {formatFileSize(MAX_FILE_SIZE_BYTES)} cada uno.</span>
           </>
         )}
       </label>

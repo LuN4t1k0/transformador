@@ -54,4 +54,4 @@ export function outputFormatLabel(format) {
   return OUTPUT_FORMATS[format] || format;
 }
 
-export { describeIssue } from '@previley-transformer/template-engine/src/issues.js';
+export { describeIssue, describeIssueHint } from '@previley-transformer/template-engine/src/issues.js';

@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, Copy, History, Loader2, Pencil } from 'lucide-react';
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, Copy, Download, History, Loader2, Pencil, Upload } from 'lucide-react';
+import { downloadBlob } from '../../../lib/download';
+import { ReuseUploadButton } from '../../../components/reuse-upload-button';
 import { buttonStyles, Notice } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { formatDateTime } from '../../../components/job-status';
@@ -107,9 +109,16 @@ export default function TemplateDetailPage() {
                 <p className="mt-1 text-sm text-ink-500">{[template.destination, template.process].filter(Boolean).join(' · ') || 'Sin clasificar'}</p>
                 {template.description ? <p className="mt-1 text-sm text-ink-700">{template.description}</p> : null}
               </div>
+              <div className="flex flex-wrap gap-2">
+                {!template.archivedAt ? <ReuseUploadButton templateId={template.id} icon={Upload} className={buttonStyles.primary}>Usar con un archivo</ReuseUploadButton> : null}
+                <button type="button" className={buttonStyles.secondary} onClick={async () => downloadBlob(await api.downloadTemplateExample(template.id))}>
+                  <Download size={16} aria-hidden="true" />
+                  Excel de ejemplo
+                </button>
+              </div>
               {advanced ? <div className="flex flex-wrap gap-2">
                 {!template.archivedAt ? (
-                  <Link href={`/templates/${template.id}/edit`} className={buttonStyles.primary}>
+                  <Link href={`/templates/${template.id}/edit`} className={buttonStyles.secondary}>
                     <Pencil size={16} aria-hidden="true" />
                     Editar
                   </Link>

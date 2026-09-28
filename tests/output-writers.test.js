@@ -59,3 +59,21 @@ test('describes file name, extension and content type per format', () => {
   assert.deepEqual(outputFileInfo({ format: 'DELIMITED', extension: 'txt', encoding: 'LATIN1' }), { extension: 'txt', contentType: 'text/plain; charset=iso-8859-1' });
   assert.deepEqual(outputFileInfo({ format: 'FIXED_WIDTH', extension: 'txt', encoding: 'UTF-8' }), { extension: 'txt', contentType: 'text/plain; charset=utf-8' });
 });
+
+test('builds an example input workbook with expected headers and instructions', async () => {
+  const { buildExampleWorkbook } = require('../packages/excel-engine/src/example');
+  const { validateTemplateConfig } = require('../packages/template-engine/src/schema');
+  const { planVitalPagexTemplate } = require('../packages/shared/templates');
+  const buffer = await buildExampleWorkbook(validateTemplateConfig(planVitalPagexTemplate));
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+
+  const data = workbook.getWorksheet('RESUMEN');
+  const headers = data.getRow(1).values.slice(1);
+  assert.deepEqual(headers.slice(0, 3), ['RUT', 'Nombre completo', 'Periodo']);
+  assert.equal(headers.filter((header) => header === 'AFP').length, 1, 'shared origin columns appear once');
+  assert.equal(data.getRow(2).getCell(1).value, '12.345.678-5');
+  const help = workbook.getWorksheet('Instrucciones');
+  assert.deepEqual(help.getRow(4).values.slice(1), ['Columna del Excel', 'Obligatoria', 'Qué debe contener', 'Se usa para']);
+  assert.match(help.getRow(6).values.slice(1).join('|'), /Nombre completo\|Sí\|.*\|APELLIDO PATERNO, APELLIDO MATERNO, NOMBRE/);
+});

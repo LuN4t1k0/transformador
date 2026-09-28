@@ -5,8 +5,8 @@ import { usePathname } from 'next/navigation';
 import { FilePlus2, History, LayoutTemplate } from 'lucide-react';
 
 const links = [
-  { href: '/jobs/new', label: 'Convertir archivo', icon: FilePlus2, isActive: (path) => path === '/jobs/new' },
-  { href: '/jobs', label: 'Historial', icon: History, isActive: (path) => path === '/jobs' || (path.startsWith('/jobs/') && path !== '/jobs/new') },
+  { href: '/', label: 'Convertir archivo', icon: FilePlus2, isActive: (path) => path === '/' },
+  { href: '/jobs', label: 'Historial', icon: History, isActive: (path) => path.startsWith('/jobs') },
   { href: '/templates', label: 'Plantillas', icon: LayoutTemplate, isActive: (path) => path.startsWith('/templates') }
 ];
 

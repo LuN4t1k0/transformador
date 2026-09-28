@@ -26,6 +26,8 @@ import { useWorkingTemplate } from '../../../lib/hooks/use-working-template';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 import { reviveSampleRows } from '../../../lib/template-editor';
 import { describeOutput } from '../../../lib/templates';
+import { downloadBlob } from '../../../lib/download';
+import { notifyIfHidden, requestNotificationPermission } from '../../../lib/notify';
 
 const SECTIONS = [
   { id: 'sheet', label: 'Hoja', title: 'Hoja de origen', description: 'Elige la hoja del Excel que contiene los datos.' },
@@ -95,7 +97,7 @@ function SectionTabs({ activeId, onSelect, badges }) {
           >
             <span className="hidden text-xs tabular-nums text-ink-400 lg:inline">{index + 1}</span>
             <span className="sm:hidden" aria-hidden="true">{section.shortLabel || section.label}</span>
-            <span className="sr-only sm:not-sr-only">{section.label}</span>
+            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">{section.label}</span>
             {badge === true ? <Check size={14} className="text-mint-600" aria-label="completo" /> : null}
             {typeof badge === 'number' ? (
               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-700">{badge}<span className="sr-only"> pendientes</span></span>
@@ -191,15 +193,6 @@ function ContextPanel({ job, template, evaluation, saveState, activeId, onGo }) 
   );
 }
 
-function downloadBlob({ fileName, blob }) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 function initialSection(job) {
   if (!job.selectedSheet) return 'sheet';
   if (!job.workingTemplate) return 'template';
@@ -236,6 +229,16 @@ function JobWorkspace({ job, setJob }) {
   }, [template, sampleRows]);
   const sampleAt = Math.min(sampleIndex, (sampleRows?.length || 1) - 1);
   const sample = results?.length ? { values: sampleRows[sampleAt].values, result: results[sampleAt] } : null;
+
+  // Tell the user when a conversion they started finishes while they are in another tab.
+  const previousStatus = useRef(job.status);
+  useEffect(() => {
+    const wasRunning = RUNNING.has(previousStatus.current);
+    previousStatus.current = job.status;
+    if (!wasRunning) return;
+    if (job.status === 'READY_TO_DOWNLOAD') notifyIfHidden('Tu archivo está listo', `${job.fileName}: ${job.summary?.validRows ?? ''} filas convertidas.`);
+    if (job.status === 'FAILED') notifyIfHidden('No pudimos generar el archivo', job.error?.message || job.fileName);
+  }, [job.status, job.fileName, job.summary, job.error]);
 
   const sectionId = isEditable ? activeId : 'run';
   const section = SECTIONS.find((candidate) => candidate.id === sectionId);
@@ -287,6 +290,7 @@ function JobWorkspace({ job, setJob }) {
   }
 
   async function transform(payload, mode) {
+    requestNotificationPermission();
     if (!(await flush())) return;
     if (payload) {
       const saved = await run(() => api.saveJobTemplate(job.id, payload));
@@ -360,6 +364,7 @@ function JobWorkspace({ job, setJob }) {
             headers={headers}
             evaluation={evaluation}
             onConfirm={(id) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, id])] }))}
+            onConfirmAll={(ids) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, ...ids])] }))}
             sample={sample}
             isFixedWidth={template.output.format === 'FIXED_WIDTH'}
           />

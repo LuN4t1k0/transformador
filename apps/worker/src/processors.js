@@ -1,8 +1,9 @@
 const { analyzeWorkbook, createXlsxWriter, readSheetRows, WorkbookLimitError } = require('../../../packages/excel-engine/src');
-const { describeIssue } = require('../../../packages/template-engine/src/issues');
+const { describeIssue, describeIssueHint } = require('../../../packages/template-engine/src/issues');
 const { writeOutput, outputFileInfo } = require('../../../packages/excel-engine/src/output');
 const { createSummaryAccumulator, orderedColumns, transformTemplateRow } = require('../../../packages/template-engine/src/run');
 const { resolveTemplateForHeaders } = require('../../../packages/template-engine/src/mapping');
+const { normalizeStoredTemplate } = require('../../../packages/template-engine/src/schema');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
 
 class JobCancelledError extends Error {}
@@ -20,7 +21,7 @@ function pickDefaultSheet(sheets) {
 }
 
 // Pure job processors. Infrastructure (PostgreSQL, Redis, BullMQ) is injected so they can be tested in isolation.
-function createProcessors({ jobs, storage, publish, isCancelled, limits, progressIntervalMs = 250, log = () => {}, audit = { record: async () => {} } }) {
+function createProcessors({ jobs, storage, publish, isCancelled, limits, templates = null, progressIntervalMs = 250, log = () => {}, audit = { record: async () => {} } }) {
   function auditJob(job, eventType, metadata) {
     return audit.record({ userId: job.userId, jobId: job.id, templateId: job.templateId, templateVersionId: job.templateVersionId, eventType, metadata });
   }
@@ -45,6 +46,43 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     await publish(job.id, eventType);
   }
 
+  // Configuration requested at upload: an earlier conversion (repeat / reprocess rejects) or a saved template.
+  // Returns the job fields to set, or {} when there is nothing to apply.
+  async function initialConfiguration(job, sheets, defaultSheet) {
+    const headersOf = (name) => sheets.find((sheet) => sheet.name === name)?.headers;
+
+    if (job.reuseFromJobId) {
+      const source = await jobs.get(job.reuseFromJobId);
+      if (source?.workingTemplate && source.userId === job.userId) {
+        const selectedSheet = headersOf(source.selectedSheet) ? source.selectedSheet : defaultSheet;
+        const headers = headersOf(selectedSheet);
+        const ids = new Set(source.workingTemplate.columns.map((column) => column.id));
+        return {
+          selectedSheet,
+          templateId: source.templateId,
+          templateVersionId: source.templateVersionId,
+          workingTemplate: headers ? resolveTemplateForHeaders(source.workingTemplate, headers) : source.workingTemplate,
+          confirmedIds: (source.confirmedIds || []).filter((id) => ids.has(id))
+        };
+      }
+    }
+
+    if (job.requestedTemplateId && templates) {
+      const template = await templates.getActive(job.requestedTemplateId);
+      if (template && !template.archivedAt) {
+        const configuration = normalizeStoredTemplate(template);
+        const headers = headersOf(defaultSheet);
+        return {
+          templateId: template.id,
+          templateVersionId: template.versionId,
+          workingTemplate: headers ? resolveTemplateForHeaders(configuration, headers) : configuration,
+          confirmedIds: []
+        };
+      }
+    }
+    return {};
+  }
+
   // `headerRows` ({ sheetName: rowNumber }) re-analyzes with user-chosen header rows, keeping earlier choices.
   async function analyze(jobId, { headerRows = {} } = {}) {
     const job = await jobs.update(jobId, { status: JOB_STATUSES.ANALYZING, stage: 'ANALYZING', startedAt: new Date() }, {
@@ -59,13 +97,16 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
       const { sheets } = await analyzeWorkbook(storage.resolvePath(job.inputStorageKey), { limits, sampleRows: limits.maxSampleRows, headerRows: overrides });
       const selectedSheet = job.selectedSheet && sheets.some((sheet) => sheet.name === job.selectedSheet) ? job.selectedSheet : pickDefaultSheet(sheets);
       const headers = sheets.find((sheet) => sheet.name === selectedSheet)?.headers || [];
+      const isFirstAnalysis = !job.workbookAnalysis;
+      const initial = isFirstAnalysis ? await initialConfiguration(job, sheets, selectedSheet) : {};
       const updated = await jobs.update(jobId, {
         status: JOB_STATUSES.READY,
         stage: null,
         workbookAnalysis: { sheets, headerRows: overrides },
         selectedSheet,
         workingTemplate: job.workingTemplate ? resolveTemplateForHeaders(job.workingTemplate, headers) : null,
-        confirmedIds: []
+        confirmedIds: [],
+        ...initial
       }, { expectStatus: JOB_STATUSES.ANALYZING });
       if (updated) {
         const durationMs = Date.now() - startedAt;
@@ -103,7 +144,10 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
         rejects = { ...reserved, count: 0, writer: createXlsxWriter(reserved.path, { sheetName: 'RECHAZADAS', headers: ['Fila en el Excel', 'Problemas', ...sheet.headers] }) };
       }
       rejects.count += 1;
-      const problems = issues.filter((issue) => issue.severity === 'error').map((issue) => `${issue.column}: ${describeIssue(issue)}`).join('; ');
+      const problems = issues
+        .filter((issue) => issue.severity === 'error')
+        .map((issue) => `${issue.column}: ${describeIssue(issue)}. ${describeIssueHint(issue)}`.trim())
+        .join(' | ');
       rejects.writer.addRow([row.rowNumber, problems, ...sheet.headers.map((header) => row.values[header] ?? null)]);
     }
 

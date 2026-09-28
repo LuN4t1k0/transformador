@@ -58,6 +58,7 @@ async function setup(jobOverrides = {}, options = {}) {
   const auditEvents = [];
   const processors = createProcessors({
     audit: { record: async (entry) => auditEvents.push(entry) },
+    templates: options.templates,
     jobs,
     storage,
     publish: async (jobId, type) => events.push(type),
@@ -135,7 +136,7 @@ test('transformation writes valid rows, reports progress and summarizes issues',
   await rejects.xlsx.readFile(storage.resolvePath(job.rejectsStorageKey));
   const rejected = rejects.getWorksheet('RECHAZADAS');
   assert.deepEqual(rejected.getRow(1).values.slice(1, 4), ['Fila en el Excel', 'Problemas', 'RUT']);
-  assert.deepEqual(rejected.getRow(2).values.slice(1, 4), [3, 'RUT: RUT con dígito verificador inválido', '17.654.321-0']);
+  assert.deepEqual(rejected.getRow(2).values.slice(1, 4), [3, 'RUT: RUT con dígito verificador inválido. Revisa el dígito verificador (lo que va después del guion).', '17.654.321-0']);
 });
 
 test('transformation extends the expiry within the hard limit', async () => {
@@ -211,4 +212,34 @@ test('re-analysis with a header row override keeps the sheet and re-resolves the
   assert.equal(reanalyzed.workbookAnalysis.sheets[0].headerRow, 2);
   assert.deepEqual(reanalyzed.workbookAnalysis.headerRows, { RESUMEN: 2 });
   assert.ok(reanalyzed.workingTemplate.columns.length > 0);
+});
+
+test('analysis re-applies an earlier conversion configuration (repeat / reprocess rejects)', async () => {
+  const context = await setup();
+  await context.processors.analyze('job-1');
+  const source = context.jobs.jobs.get('job-1');
+  source.workingTemplate = resolveTemplateForHeaders(validateTemplateConfig(planVitalPagexTemplate), source.workbookAnalysis.sheets[0].headers);
+  Object.assign(source, { templateId: 't1', templateVersionId: 'v1', confirmedIds: ['apellido_paterno', 'desconocida'], userId: 'u1' });
+
+  const inputStorageKey = await createInput(context.storage);
+  context.jobs.jobs.set('job-2', { id: 'job-2', userId: 'u1', status: 'QUEUED_ANALYSIS', inputStorageKey, reuseFromJobId: 'job-1', confirmedIds: [], expiresAt: new Date(Date.now() + 60000) });
+  await context.processors.analyze('job-2');
+  const reused = context.jobs.jobs.get('job-2');
+
+  assert.equal(reused.status, 'READY');
+  assert.equal(reused.selectedSheet, 'RESUMEN');
+  assert.equal(reused.templateId, 't1');
+  assert.equal(reused.workingTemplate.columns.length, 17);
+  assert.deepEqual(reused.confirmedIds, ['apellido_paterno']);
+});
+
+test('analysis applies a requested saved template', async () => {
+  const context = await setup({ requestedTemplateId: 'tpl-1' }, {
+    templates: { getActive: async () => ({ id: 'tpl-1', versionId: 'ver-9', archivedAt: null, ...planVitalPagexTemplate }) }
+  });
+  await context.processors.analyze('job-1');
+  const job = context.jobs.jobs.get('job-1');
+  assert.equal(job.templateId, 'tpl-1');
+  assert.equal(job.templateVersionId, 'ver-9');
+  assert.deepEqual(job.workingTemplate.columns.find((column) => column.id === 'fecha_fin').source, { type: 'COLUMN', column: 'Fecha Término' });
 });

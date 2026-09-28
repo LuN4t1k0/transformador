@@ -1,7 +1,7 @@
 const { Worker } = require('bullmq');
 const { config } = require('../../../packages/shared/src/config');
 const { createPool, migrate } = require('../../../packages/shared/src/db');
-const { createAuditRepository, createJobRepository } = require('../../../packages/shared/src/repositories');
+const { createAuditRepository, createJobRepository, createTemplateRepository } = require('../../../packages/shared/src/repositories');
 const { LocalTemporaryStorage } = require('../../../packages/storage/src');
 const {
   QUEUE_NAMES,
@@ -28,6 +28,7 @@ async function main() {
   const storage = new LocalTemporaryStorage({ rootDir: process.env.TEMP_DIR || '/tmp/previley-excel-transformer', ttlMs: config.tempFileTtlMs });
   const processors = createProcessors({
     jobs,
+    templates: createTemplateRepository(pool),
     storage,
     publish: createEventPublisher(connection),
     isCancelled: async (jobId) => (await connection.exists(cancelFlagKey(jobId))) === 1,
