@@ -42,7 +42,7 @@ async function main() {
     devUser: { email: process.env.DEV_USER_EMAIL, name: process.env.DEV_USER_NAME }
   });
   const audit = createAuditRepository(pool, { log });
-  const templateService = createTemplateService({ templates, audit });
+  const templateService = createTemplateService({ templates, storage, config, audit });
   const jobService = createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config, audit });
 
   const match = createRouter([
@@ -52,6 +52,7 @@ async function main() {
     }],
     ['GET', '/templates', async ({ url }) => ({ templates: await templateService.list({ includeArchived: url.searchParams.get('archived') === 'true' }) })],
     ['GET', '/templates/facets', async () => templateService.facets()],
+    ['POST', '/templates/draft', async ({ request }) => templateService.draft(request)],
     ['POST', '/templates', async ({ user, request }) => ({ status: 201, body: { template: await templateService.create((await readJson(request)).configuration, user) } })],
     ['GET', '/templates/:templateId', async ({ params }) => ({ template: await templateService.get(params.templateId) })],
     ['GET', '/templates/:templateId/example', async ({ params, response }) => {

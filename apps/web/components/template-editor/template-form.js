@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, Save } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { AlertCircle, FileSpreadsheet, Loader2, Save, Sparkles } from 'lucide-react';
+import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
+import { runRows } from '@previley-transformer/template-engine/src/run.js';
 import { api } from '../../lib/api';
+import { reviveSampleRows } from '../../lib/template-editor';
 import { buttonStyles, Notice, Panel } from '../panel';
 import { ColumnList } from './column-list';
+import { FilePreview } from './file-preview';
 import { OutputEditor } from './output-editor';
 import { inputClass } from './source-editor';
 
@@ -21,12 +25,54 @@ function knownHeaderNames(columns) {
   return [...names].sort();
 }
 
-// Template editor without a source file: metadata, columns (sources typed as header names) and output format.
-export function TemplateForm({ initial, submitLabel, onSubmit, note }) {
+// Loads an Excel only to try the template on real rows; nothing is saved.
+function SampleLoader({ sample, onLoaded }) {
+  const inputId = useId();
+  const [state, setState] = useState({ loading: false, error: '' });
+
+  async function load(file) {
+    setState({ loading: true, error: '' });
+    try {
+      const draft = await api.createTemplateDraft({ input: file });
+      onLoaded({ fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows) });
+      setState({ loading: false, error: '' });
+    } catch (error) {
+      setState({ loading: false, error: error.message });
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      {sample ? <span className="inline-flex items-center gap-1 text-ink-700"><FileSpreadsheet size={15} className="text-cobalt-600" aria-hidden="true" />Probando con «{sample.fileName}» (hoja {sample.sheet})</span> : null}
+      <label htmlFor={inputId} className={`${buttonStyles.secondary} cursor-pointer ${state.loading ? 'pointer-events-none opacity-60' : ''}`}>
+        {state.loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <FileSpreadsheet size={16} aria-hidden="true" />}
+        {sample ? 'Probar con otro Excel' : 'Probar con un Excel'}
+      </label>
+      <input id={inputId} type="file" className="sr-only" accept=".xlsx" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) load(file); }} />
+      {state.error ? <span role="alert" className="text-xs text-rose-700">{state.error}</span> : null}
+    </div>
+  );
+}
+
+// Template editor: metadata, columns and output format. With a sample Excel it offers real headers, examples and a preview.
+export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSample = null, report = null }) {
   const [template, setTemplate] = useState(initial);
+  const [sample, setSample] = useState(initialSample);
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
   const [state, setState] = useState({ saving: false, error: null });
   const suggestions = useMemo(() => knownHeaderNames(template.columns), [template.columns]);
+  const evaluation = useMemo(
+    () => (sample ? evaluateColumns(template.columns, sample.headers, new Set(template.columns.map((column) => column.id))) : null),
+    [template.columns, sample]
+  );
+  const results = useMemo(() => {
+    if (!sample?.rows?.length) return null;
+    try {
+      return runRows(sample.rows, template);
+    } catch {
+      return null;
+    }
+  }, [template, sample]);
 
   useEffect(() => {
     api.getTemplateFacets().then(setFacets).catch(() => {});
@@ -69,18 +115,38 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note }) {
         </div>
       </Panel>
 
-      <Panel title="Columnas" description="Sin un archivo cargado, el origen se escribe con el nombre del encabezado que tendrá el Excel. La vista previa está disponible al usar la plantilla en un job.">
+      {report?.mode === 'BY_EXAMPLE' || report?.mode === 'OUTPUT_ONLY' ? (
+        <Notice tone={report.unresolved.length ? 'warning' : 'success'} icon={Sparkles}>
+          <p className="font-semibold">Deducimos {report.learned} de {report.learned + report.unresolved.length} columnas a partir de tus ejemplos.</p>
+          {report.unresolved.length ? <p className="mt-0.5">Define el origen de: {report.unresolved.join(', ')}. Si deben ir vacías, déjalas así.</p> : <p className="mt-0.5">Revisa la vista previa y guarda.</p>}
+        </Notice>
+      ) : null}
+
+      <Panel
+        title="Columnas"
+        description={sample ? 'Elige el origen entre las columnas del Excel de prueba y revisa el resultado de ejemplo de cada una.' : 'Sin un Excel de prueba, el origen se escribe con el nombre del encabezado que tendrá el archivo. Carga uno para ver ejemplos y la vista previa.'}
+        actions={<SampleLoader sample={sample} onLoaded={setSample} />}
+      >
         <ColumnList
           columns={template.columns}
           onChange={(columns) => setTemplate({ ...template, columns })}
+          headers={sample ? sample.headers : null}
           suggestions={suggestions}
+          evaluation={evaluation}
+          sample={results?.length ? { values: sample.rows[0].values, result: results[0] } : null}
           isFixedWidth={template.output.format === 'FIXED_WIDTH'}
         />
       </Panel>
 
-      <Panel title="Formato del archivo">
+      <Panel title="Tipo de archivo">
         <OutputEditor template={template} onChange={setTemplate} />
       </Panel>
+
+      {results ? (
+        <Panel title="Vista previa" description={`Así quedaría el archivo con las primeras filas de «${sample.fileName}».`}>
+          <FilePreview template={template} results={results} />
+        </Panel>
+      ) : null}
 
       {state.error ? <Notice tone="danger" icon={AlertCircle} role="alert">{state.error.message}</Notice> : null}
 

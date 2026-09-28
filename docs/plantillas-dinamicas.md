@@ -88,6 +88,16 @@ Estados por columna: `OK`; `REQUIERE_CONFIRMACION` (separar por palabras, o una 
 - `POST /jobs/:id/template/save` (`{ mode: 'NEW_VERSION' }` o `{ mode: 'NEW_TEMPLATE', name, destination, process, description }`)
 - `GET /jobs/:id/sample`, `POST /jobs/:id/transform`, `POST /jobs/:id/cancel`, `GET /jobs/:id/download`
 
+## Crear plantillas
+
+`/templates/new` ofrece tres caminos:
+
+1. **Desde un ejemplo** (`POST /templates/draft`, multipart `input` y/o `output`): con el Excel que se recibe y un ejemplo del archivo que pide el destino (mismas filas), `template-engine/src/infer.js` deduce por cada columna de salida el formato (RUT, fecha, número, mayúsculas, valor fijo) y el origen que reproduce el ejemplo fila a fila (columna, palabra N o desde la palabra N), con al menos 80% de coincidencia. Lo que no se puede deducir queda vacío y se informa. Con solo el Excel de origen, parte con una columna por encabezado; con solo el ejemplo de destino, usa sus nombres. Los archivos se borran al terminar; las filas de muestra solo vuelven al navegador para la vista previa.
+2. **A partir de otra plantilla** (`/templates/new?from=<id>`): copia la versión vigente para modificarla y guardarla como plantilla nueva; la original no cambia.
+3. **Desde cero.**
+
+En cualquier formulario de plantilla, «Probar con un Excel» carga encabezados y filas de muestra para elegir orígenes reales y ver la vista previa.
+
 ## Uso frecuente (modo simple)
 
 - Inicio (`/`): zona de carga (uno o varios archivos), últimas conversiones con «Repetir con otro archivo» y plantillas del usuario con «Usar con un archivo» y «Excel de ejemplo».

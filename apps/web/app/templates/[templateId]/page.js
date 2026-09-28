@@ -2,53 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, Copy, Download, History, Loader2, Pencil, Upload } from 'lucide-react';
 import { downloadBlob } from '../../../lib/download';
 import { ReuseUploadButton } from '../../../components/reuse-upload-button';
 import { buttonStyles, Notice } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { formatDateTime } from '../../../components/job-status';
-import { inputClass } from '../../../components/template-editor/source-editor';
 import { api } from '../../../lib/api';
 import { describeOutput, describeSource, describeTransformations } from '../../../lib/templates';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
-
-function DuplicateForm({ template, onCancel }) {
-  const router = useRouter();
-  const [name, setName] = useState(`${template.name} (copia)`);
-  const [state, setState] = useState({ saving: false, error: null });
-
-  async function submit(event) {
-    event.preventDefault();
-    setState({ saving: true, error: null });
-    try {
-      const copy = await api.duplicateTemplate(template.id, name);
-      router.push(`/templates/${copy.id}/edit`);
-    } catch (error) {
-      setState({ saving: false, error });
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="mt-4 rounded-lg border border-ink-200 bg-white p-4 shadow-panel">
-      <label htmlFor="duplicate-name" className="mb-1 block text-xs font-medium text-ink-500">Nombre de la copia</label>
-      <div className="flex flex-wrap gap-2">
-        <input id="duplicate-name" className={`${inputClass} flex-1 basis-60`} value={name} maxLength={120} required onChange={(event) => setName(event.target.value)} />
-        <button type="submit" className={buttonStyles.primary} disabled={state.saving}>Duplicar y editar</button>
-        <button type="button" className={buttonStyles.secondary} onClick={onCancel}>Cancelar</button>
-      </div>
-      {state.error ? <p role="alert" className="mt-2 text-sm text-rose-700">{state.error.message}</p> : null}
-    </form>
-  );
-}
 
 export default function TemplateDetailPage() {
   const { templateId } = useParams();
   const [template, setTemplate] = useState(null);
   const [shown, setShown] = useState(null);
   const [error, setError] = useState(null);
-  const [isDuplicating, setIsDuplicating] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [advanced] = useAdvancedMode();
 
@@ -123,10 +92,10 @@ export default function TemplateDetailPage() {
                     Editar
                   </Link>
                 ) : null}
-                <button type="button" className={buttonStyles.secondary} onClick={() => setIsDuplicating(true)}>
+                <Link href={`/templates/new?from=${template.id}`} className={buttonStyles.secondary}>
                   <Copy size={16} aria-hidden="true" />
-                  Duplicar
-                </button>
+                  Crear otra a partir de esta
+                </Link>
                 <button type="button" className={buttonStyles.secondary} disabled={isBusy} onClick={toggleArchived}>
                   {template.archivedAt ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />}
                   {template.archivedAt ? 'Restaurar' : 'Archivar'}
@@ -134,7 +103,6 @@ export default function TemplateDetailPage() {
               </div> : null}
             </div>
 
-            {isDuplicating ? <DuplicateForm template={template} onCancel={() => setIsDuplicating(false)} /> : null}
 
             <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
               <section className="min-w-0 rounded-lg border border-ink-200 bg-white shadow-panel">

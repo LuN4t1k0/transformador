@@ -92,6 +92,12 @@ export function createHttpApi(baseUrl) {
     async duplicateTemplate(templateId, name) {
       return (await getJson(`/templates/${templateId}/duplicate`, { method: 'POST', json: { name } })).template;
     },
+    async createTemplateDraft({ input, output }) {
+      const form = new FormData();
+      if (input) form.append('input', input, input.name);
+      if (output) form.append('output', output, output.name);
+      return getJson('/templates/draft', { method: 'POST', body: form });
+    },
     async downloadTemplateExample(templateId) {
       const response = await request(`/templates/${templateId}/example`);
       return { fileName: parseFileName(response.headers.get('content-disposition'), 'ejemplo.xlsx'), blob: await response.blob() };
