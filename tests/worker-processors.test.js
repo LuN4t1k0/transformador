@@ -174,6 +174,24 @@ test('row steps: filtered rows are neither validated nor rejected, and output is
   assert.deepEqual([2, 3].map((row) => output.getWorksheet('DATOS').getRow(row).getCell(2).value), ['GONZALEZ', 'SOTO']);
 });
 
+test('parameters and output design: values typed when generating reach the rows and the file name', async () => {
+  const template = {
+    parameters: [{ id: 'periodo', name: 'Periodo', type: 'TEXT' }],
+    output: { format: 'XLSX', sheetName: 'DATOS', fileName: 'carga {$Periodo}', split: { columnId: 'afp_origen', mode: 'SHEETS' } },
+    columns: [...planVitalPagexTemplate.columns.slice(0, 2), { id: 'afp_origen', outputName: 'AFP', source: { type: 'COLUMN', column: 'AFP' } }, { id: 'p', outputName: 'PERIODO CARGA', source: { type: 'PARAM', paramId: 'periodo' } }]
+  };
+  const { jobs, storage, processors } = await readyJob({ fileName: 'mayo.xlsx', runParameters: { periodo: '202405' } }, { template });
+  await processors.transform('job-1');
+  const job = jobs.jobs.get('job-1');
+
+  assert.equal(job.status, 'READY_TO_DOWNLOAD');
+  assert.equal(job.outputFileName, 'carga 202405.xlsx');
+  assert.deepEqual(job.validationSummary.parts, [{ name: 'PlanVital', rows: 2 }]);
+  const output = new ExcelJS.Workbook();
+  await output.xlsx.readFile(storage.resolvePath(job.outputStorageKey));
+  assert.deepEqual(output.getWorksheet('PlanVital').getRow(2).values.slice(1), ['123456785', 'SOTO', 'PlanVital', '202405']);
+});
+
 test('transformation writes delimited latin1 text when the template asks for it', async () => {
   const { jobs, storage, processors } = await readyJob({}, { template: { output: { format: 'DELIMITED', delimiter: '|', encoding: 'LATIN1', extension: 'txt' } } });
   await processors.transform('job-1');

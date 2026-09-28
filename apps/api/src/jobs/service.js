@@ -10,6 +10,7 @@ const {
   prepareVersionForSave,
   resolveTemplateForHeaders
 } = require('../../../../packages/template-engine/src/mapping');
+const { validateRunParameters, ParameterError } = require('../../../../packages/template-engine/src/params');
 const { cancelFlagKey } = require('../../../../packages/queue/src');
 const { HttpError } = require('../http');
 const { RUNNING_STATUSES, normalizeStoredTemplate, serializeJob, validateTemplatePayload, validateWorkingTemplatePayload } = require('./job-view');
@@ -251,7 +252,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       return { rows };
     },
 
-    async transform(jobId, user, { mode = 'LENIENT' } = {}) {
+    async transform(jobId, user, { mode = 'LENIENT', parameters = {} } = {}) {
       const job = await requireJob(jobId, user);
       requireEditable(job);
       if (!['LENIENT', 'STRICT'].includes(mode)) throw new HttpError(400, 'INVALID_MODE', 'El modo de validación no es válido.');
@@ -261,12 +262,20 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       if (!evaluateColumns(template.columns, headers, new Set(job.confirmedIds)).isComplete) {
         throw new HttpError(409, 'MAPPING_INCOMPLETE', 'Resuelve las columnas pendientes antes de transformar.');
       }
+      let runParameters;
+      try {
+        runParameters = validateRunParameters(template.parameters, parameters && typeof parameters === 'object' ? parameters : {});
+      } catch (error) {
+        if (error instanceof ParameterError) throw new HttpError(400, error.code, error.message);
+        throw error;
+      }
 
       const sheet = job.workbookAnalysis.sheets.find((candidate) => candidate.name === job.selectedSheet);
       const queued = await update(job, {
         status: JOB_STATUSES.QUEUED_TRANSFORMATION,
         stage: 'QUEUED',
         mode,
+        runParameters,
         processedRows: 0,
         totalRows: sheet.rowCount,
         validationSummary: null
@@ -311,7 +320,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         const { output, name } = job.workingTemplate;
         const info = outputFileInfo(output);
         key = job.outputStorageKey;
-        fileName = `${baseName}-${name}.${info.extension}`;
+        fileName = job.outputFileName || `${baseName}-${name}.${info.extension}`;
         contentType = info.contentType;
       }
 

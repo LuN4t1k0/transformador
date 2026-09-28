@@ -13,18 +13,22 @@ const columns = [
   { outputName: 'MONTO', fixedWidth: { length: 6, align: 'RIGHT', padChar: ' ' } }
 ];
 
+const asRow = ([RUT, NOMBRE, MONTO]) => ({ output: { RUT, NOMBRE, MONTO }, raw: { RUT, NOMBRE, MONTO } });
+
 async function* rows() {
-  yield ['12345678', 'MUÑOZ; "A"', 1500];
-  yield ['9876543', null, 20];
+  yield asRow(['12345678', 'MUÑOZ; "A"', 1500]);
+  yield asRow(['9876543', null, 20]);
 }
 
 async function tempFile(name) {
   return path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'output-')), name);
 }
 
+const template = (output) => ({ name: 'Prueba', output });
+
 test('writes delimited text with escaping, encoding and line endings', async () => {
   const filePath = await tempFile('out.csv');
-  await writeOutput(filePath, { output: { format: 'DELIMITED', delimiter: ';', includeHeaders: true, encoding: 'LATIN1', lineEnding: 'CRLF' }, columns, rows: rows() });
+  await writeOutput(filePath, { template: template({ format: 'DELIMITED', delimiter: ';', includeHeaders: true, encoding: 'LATIN1', lineEnding: 'CRLF' }), columns, rows: rows() });
 
   const buffer = await fs.readFile(filePath);
   assert.equal(buffer.toString('latin1'), 'RUT;NOMBRE;MONTO\r\n12345678;"MUÑOZ; ""A""";1500\r\n9876543;;20\r\n');
@@ -34,15 +38,15 @@ test('writes delimited text with escaping, encoding and line endings', async () 
 test('writes fixed width lines padded per column', async () => {
   const filePath = await tempFile('out.txt');
   async function* fixedRows() {
-    yield ['12345678', 'SOTO', 1500];
+    yield asRow(['12345678', 'SOTO', 1500]);
   }
-  await writeOutput(filePath, { output: { format: 'FIXED_WIDTH', includeHeaders: false, encoding: 'UTF-8', lineEnding: 'LF' }, columns, rows: fixedRows() });
+  await writeOutput(filePath, { template: template({ format: 'FIXED_WIDTH', includeHeaders: false, encoding: 'UTF-8', lineEnding: 'LF' }), columns, rows: fixedRows() });
   assert.equal(await fs.readFile(filePath, 'utf8'), '012345678SOTO        1500\n');
 });
 
 test('writes xlsx with headers', async () => {
   const filePath = await tempFile('out.xlsx');
-  await writeOutput(filePath, { output: { format: 'XLSX', sheetName: 'DATOS' }, columns, rows: rows() });
+  await writeOutput(filePath, { template: template({ format: 'XLSX', sheetName: 'DATOS' }), columns, rows: rows() });
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(filePath);
   assert.deepEqual(workbook.getWorksheet('DATOS').getRow(1).values.slice(1), ['RUT', 'NOMBRE', 'MONTO']);

@@ -3,6 +3,7 @@ const { describeIssue, describeIssueHint } = require('../../../packages/template
 const { writeOutput, outputFileInfo } = require('../../../packages/excel-engine/src/output');
 const { createSummaryAccumulator, orderedColumns } = require('../../../packages/template-engine/src/run');
 const { createRowPipeline } = require('../../../packages/template-engine/src/rows');
+const { runtimeParameters } = require('../../../packages/template-engine/src/params');
 const { resolveTemplateForHeaders } = require('../../../packages/template-engine/src/mapping');
 const { normalizeStoredTemplate } = require('../../../packages/template-engine/src/schema');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
@@ -160,8 +161,10 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, templat
       await publish(jobId, 'job:progress');
     }
 
-    const pipeline = createRowPipeline(template);
-    const toValues = (row) => columns.map((column) => row.output[column.outputName] ?? null);
+    const now = new Date();
+    const params = runtimeParameters(template.parameters, job.runParameters);
+    const pipeline = createRowPipeline(template, { now, params });
+    const toValues = (row) => ({ output: row.output, raw: row.raw });
 
     async function* outputRows() {
       let processed = 0;
@@ -195,8 +198,14 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, templat
       summary.setRowSteps(pipeline.stats());
     }
 
+    let written;
     try {
-      await writeOutput(output.path, { output: template.output, columns, rows: outputRows() });
+      written = await writeOutput(output.path, {
+        template,
+        columns,
+        rows: outputRows(),
+        vars: { inputName: (job.fileName || 'archivo').replace(/\.xlsx$/i, ''), sheet: job.selectedSheet, now, params }
+      });
       if (rejects) await rejects.writer.close();
     } catch (error) {
       await deleteFiles(output.key, rejects?.key);
@@ -211,11 +220,13 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, templat
       return;
     }
 
-    const result = summary.result();
+    // Parts of a split output (sheets or files) are listed with their row counts; only names chosen by the template.
+    const result = { ...summary.result(), ...(template.output.split ? { parts: written.parts.slice(0, 200) } : {}) };
     const completed = await jobs.update(jobId, {
       status: JOB_STATUSES.READY_TO_DOWNLOAD,
       stage: null,
       outputStorageKey: output.key,
+      outputFileName: written.fileName,
       rejectsStorageKey: rejects?.key || null,
       rejectedRows: rejects?.count || 0,
       validationSummary: result,

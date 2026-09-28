@@ -26,9 +26,11 @@ const JOB_FIELDS = {
   startedAt: 'started_at',
   completedAt: 'completed_at',
   downloadedAt: 'downloaded_at',
-  purgedAt: 'purged_at'
+  purgedAt: 'purged_at',
+  runParameters: 'run_parameters',
+  outputFileName: 'output_file_name'
 };
-const JSON_FIELDS = new Set(['workbookAnalysis', 'mapping', 'confirmedIds', 'validationSummary', 'workingTemplate']);
+const JSON_FIELDS = new Set(['workbookAnalysis', 'mapping', 'confirmedIds', 'validationSummary', 'workingTemplate', 'runParameters']);
 const TERMINAL_STATUSES = ['PURGED', 'EXPIRED', 'CANCELLED', 'FAILED'];
 
 function toJob(row) {
@@ -57,6 +59,8 @@ function toJob(row) {
     selectedSheet: row.selected_sheet,
     workingTemplate: row.working_template,
     confirmedIds: row.confirmed_ids || [],
+    runParameters: row.run_parameters || {},
+    outputFileName: row.output_file_name,
     validationSummary: row.validation_summary,
     errorCode: row.error_code,
     errorMessage: row.error_message,

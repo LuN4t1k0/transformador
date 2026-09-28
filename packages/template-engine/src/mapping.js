@@ -37,7 +37,7 @@ function sourceColumns(source) {
       return;
     }
     if (SINGLE_COLUMN_TYPES.has(node.type) && node.column) columns.push(node.column);
-    if (node.type === 'TEMPLATE') for (const match of node.text.matchAll(/\{(?!@)([^{}]+)\}/g)) columns.push(match[1].trim());
+    if (node.type === 'TEMPLATE') for (const match of node.text.matchAll(/\{(?![@$])([^{}]+)\}/g)) columns.push(match[1].trim());
     Object.values(node).forEach(visit);
   };
   visit(source);
@@ -54,7 +54,7 @@ function resolveSource(source, headers, aliases) {
     const next = {};
     for (const [key, value] of Object.entries(node)) next[key] = typeof value === 'object' ? visit(value, false) : value;
     if (SINGLE_COLUMN_TYPES.has(node.type) && node.column) next.column = resolveName(node.column, topLevel);
-    if (node.type === 'TEMPLATE') next.text = node.text.replace(/\{(?!@)([^{}]+)\}/g, (_, name) => `{${resolveName(name.trim(), false)}}`);
+    if (node.type === 'TEMPLATE') next.text = node.text.replace(/\{(?![@$])([^{}]+)\}/g, (_, name) => `{${resolveName(name.trim(), false)}}`);
     return next;
   };
   return visit(source, true);

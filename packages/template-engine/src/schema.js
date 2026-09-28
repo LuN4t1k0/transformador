@@ -1,4 +1,5 @@
 const { DATE_INPUT_FORMATS, DATE_OUTPUT_FORMATS } = require('../../transformations/src/date');
+const { PARAMETER_TYPES, ParameterError, parseParameterValue, parameterReferences } = require('./params');
 
 // Whitelist-based validation for user-authored templates. Anything not listed here is rejected or dropped,
 // so a template can never carry code, formulas or unknown operations.
@@ -22,6 +23,11 @@ const DATE_OPERATIONS = { DAYS_BETWEEN: 2, ADD_DAYS: 2, ADD_MONTHS: 2, YEAR: 1, 
 const MAX_MAP_ENTRIES = 1000;
 const ROUND_MODES = ['ROUND', 'FLOOR', 'CEIL', 'NONE'];
 const AGGREGATES = ['SUM', 'COUNT', 'AVERAGE', 'MIN', 'MAX', 'FIRST', 'LAST', 'CONCAT'];
+const TOTAL_OPERATIONS = ['SUM', 'COUNT', 'AVERAGE', 'MIN', 'MAX'];
+const CELL_FORMATS = ['NUMBER', 'NUMBER_2', 'PERCENT', 'DATE', 'TEXT'];
+const SPLIT_MODES = ['SHEETS', 'FILES'];
+const MAX_PARAMETERS = 20;
+const MAX_DESIGN_LINES = 10;
 const SORT_DIRECTIONS = ['ASC', 'DESC'];
 
 class TemplateValidationError extends Error {
@@ -98,6 +104,7 @@ function normalizeOperand(operand, label, { allowText = false, allowEmpty = fals
   if (operand?.type === 'COLUMN') return { type: 'COLUMN', column: normalizeSourceColumn(operand.column, label) };
   if (operand?.type === 'OUTPUT') return { type: 'OUTPUT', columnId: text(operand.columnId, `la columna usada en ${label}`, { required: true, max: 64 }) };
   if (operand?.type === 'NUMBER') return { type: 'NUMBER', value: finiteNumber(operand.value, `Un número de ${label}`) };
+  if (operand?.type === 'PARAM') return { type: 'PARAM', paramId: text(operand.paramId, `el parámetro usado en ${label}`, { required: true, max: 64 }) };
   if (allowText && operand?.type === 'TEXT') return { type: 'TEXT', value: typeof operand.value === 'string' ? operand.value.slice(0, 500) : String(operand.value ?? '') };
   if (allowEmpty && (!operand || operand.type === 'EMPTY')) return { type: 'EMPTY' };
   return fail(`${label}: cada operando debe ser una columna${allowText ? ', un texto' : ''} o un número.`);
@@ -191,6 +198,7 @@ function normalizeSource(source, label) {
   if (type === 'EMPTY') return { type };
   if (type === 'COLUMN') return { type, column: normalizeSourceColumn(source.column, label) };
   if (type === 'CONSTANT') return { type, value: text(source.value ?? '', `el valor fijo de ${label}`) };
+  if (type === 'PARAM') return normalizeOperand(source, label);
   const delimiter = source.delimiter ? { delimiter: text(source.delimiter, `el separador de ${label}`, { max: 5 }) || undefined } : {};
   if (delimiter.delimiter === undefined) delete delimiter.delimiter;
   if (type === 'SPLIT_WORD') return { type, column: normalizeSourceColumn(source.column, label), index: integer(source.index, `La palabra de ${label}`), ...delimiter };
@@ -359,6 +367,73 @@ function normalizeRowSteps(steps, columns) {
   return Object.keys(normalized).length ? normalized : null;
 }
 
+function normalizeParameters(parameters) {
+  if (parameters === undefined || parameters === null) return [];
+  if (!Array.isArray(parameters) || parameters.length > MAX_PARAMETERS) fail(`La plantilla admite hasta ${MAX_PARAMETERS} parámetros.`);
+  const ids = new Set();
+  const names = new Set();
+  return parameters.map((parameter, index) => {
+    const name = text(parameter?.name, `el nombre del parámetro ${index + 1}`, { required: true, max: 60 });
+    if (/[{}|:]/.test(name)) fail(`El nombre del parámetro «${name}» no puede tener { } | :`);
+    const id = text(parameter.id, `el identificador del parámetro «${name}»`, { required: true, max: 64 });
+    if (ids.has(id) || names.has(name.toLowerCase())) fail(`El parámetro «${name}» está repetido.`);
+    ids.add(id);
+    names.add(name.toLowerCase());
+    const normalized = {
+      id,
+      name,
+      type: oneOf(parameter.type || 'TEXT', PARAMETER_TYPES, `El tipo del parámetro «${name}» no es válido.`),
+      required: parameter.required === true,
+      defaultValue: text(parameter.defaultValue === undefined || parameter.defaultValue === null ? '' : String(parameter.defaultValue), `el valor por defecto de «${name}»`)
+    };
+    try {
+      parseParameterValue(normalized, normalized.defaultValue);
+    } catch (error) {
+      if (error instanceof ParameterError) fail(`El valor por defecto de ${error.message.charAt(0).toLowerCase()}${error.message.slice(1)}`);
+      throw error;
+    }
+    return normalized;
+  });
+}
+
+function designLines(lines, label) {
+  if (lines === undefined || lines === null) return [];
+  if (!Array.isArray(lines) || lines.length > MAX_DESIGN_LINES) fail(`${label} admite hasta ${MAX_DESIGN_LINES} líneas.`);
+  return lines.map((line) => text(String(line ?? ''), label, { max: 500 }));
+}
+
+// File name, lines above and below the table, totals row and splitting. Only what is set is stored.
+function normalizeOutputDesign(output, raw = {}, columnIds) {
+  const design = {};
+  const fileName = text(raw.fileName, 'el nombre del archivo', { max: 150 });
+  if (fileName) design.fileName = fileName;
+  const headerLines = designLines(raw.headerLines, 'El encabezado del archivo');
+  if (headerLines.some(Boolean)) design.headerLines = headerLines;
+  const footerLines = designLines(raw.footerLines, 'El pie del archivo');
+  if (footerLines.some(Boolean)) design.footerLines = footerLines;
+
+  if (raw.totals && Array.isArray(raw.totals.columns) && raw.totals.columns.length) {
+    const seen = new Set();
+    design.totals = {
+      label: text(raw.totals.label ?? 'TOTAL', 'la etiqueta de la fila de totales', { max: 60 }),
+      columns: raw.totals.columns
+        .map((total) => {
+          if (!columnIds.has(total?.columnId)) fail('La fila de totales usa una columna que no existe en la plantilla.');
+          return { columnId: total.columnId, op: oneOf(total.op || 'SUM', TOTAL_OPERATIONS, 'La operación de la fila de totales no es válida.') };
+        })
+        .filter((total) => !seen.has(total.columnId) && seen.add(total.columnId))
+    };
+  }
+
+  if (raw.split?.columnId) {
+    if (!columnIds.has(raw.split.columnId)) fail('Dividir el archivo usa una columna que no existe en la plantilla.');
+    const mode = oneOf(raw.split.mode || 'FILES', SPLIT_MODES, 'El modo de división no es válido.');
+    if (mode === 'SHEETS' && output.format !== 'XLSX') fail('Solo un Excel puede dividirse en hojas; para texto elige un archivo por valor.');
+    design.split = { columnId: raw.split.columnId, mode };
+  }
+  return { ...output, ...design };
+}
+
 function validateTemplateConfig(config) {
   if (!config || typeof config !== 'object') fail('La plantilla no es válida.');
   const output = normalizeOutput(config.output);
@@ -394,6 +469,8 @@ function validateTemplateConfig(config) {
     };
     if (column.semanticType) normalized.semanticType = text(column.semanticType, `el tipo de ${label}`, { max: 40 });
     if (output.format === 'FIXED_WIDTH') normalized.fixedWidth = normalizeFixedWidth(column.fixedWidth, label);
+    // How the value is written in an Excel cell (a real number, percent or date); kept only for Excel output.
+    if (output.format === 'XLSX' && column.cellFormat) normalized.cellFormat = oneOf(column.cellFormat, CELL_FORMATS, `${label}: el formato de celda no es válido.`);
     return normalized;
   });
 
@@ -409,15 +486,25 @@ function validateTemplateConfig(config) {
 
   const inputSheet = text(config.input?.sheet, 'la hoja sugerida', { max: 100 });
   const rowSteps = normalizeRowSteps(config.rowSteps, normalizedColumns);
+  const parameters = normalizeParameters(config.parameters);
+  const designedOutput = normalizeOutputDesign(output, config.output || {}, new Set(normalizedColumns.map((column) => column.id)));
+
+  // Every parameter used by a column, a filter or the output texts must be declared.
+  const references = parameterReferences([normalizedColumns.map((column) => column.source), rowSteps, designedOutput]);
+  const missingId = references.ids.find((id) => !parameters.some((parameter) => parameter.id === id));
+  const missingName = references.names.find((name) => !parameters.some((parameter) => parameter.name === name));
+  if (missingId || missingName) fail(`Se usa el parámetro «${missingName || missingId}», que no existe en la plantilla.`);
+
   return {
     name: text(config.name, 'el nombre de la plantilla', { required: true, max: 120 }),
     description: text(config.description, 'la descripción', { max: 500 }),
     destination: text(config.destination, 'el destino', { max: 80 }),
     process: text(config.process, 'el proceso', { max: 80 }),
     input: { headerRow: 1, ...(inputSheet ? { sheet: inputSheet } : {}) },
-    output,
+    output: designedOutput,
     columns: normalizedColumns,
-    ...(rowSteps ? { rowSteps } : {})
+    ...(rowSteps ? { rowSteps } : {}),
+    ...(parameters.length ? { parameters } : {})
   };
 }
 
@@ -431,7 +518,8 @@ function normalizeStoredTemplate(template) {
     input: template.input,
     output: template.output,
     columns: template.columns,
-    rowSteps: template.rowSteps
+    rowSteps: template.rowSteps,
+    parameters: template.parameters
   });
 }
 
@@ -448,6 +536,8 @@ module.exports = {
   CONDITION_OPERATORS,
   DATE_OPERATIONS,
   AGGREGATES,
+  TOTAL_OPERATIONS,
+  CELL_FORMATS,
   outputReferences,
   MAX_COLUMNS
 };

@@ -1,4 +1,4 @@
-const { CellIssue, isBlank, normalizeText, toNumber, compare, conditionHolds, applyTransformation, displayText } = require('./engine');
+const { NO_PARAMETERS, CellIssue, isBlank, normalizeText, toNumber, compare, conditionHolds, applyTransformation, displayText } = require('./engine');
 const { orderedColumns, transformTemplateRow, checkFixedWidth } = require('./run');
 
 const NUMERIC_AGGREGATES = ['SUM', 'AVERAGE'];
@@ -21,19 +21,19 @@ function createFillDown(columns = []) {
   };
 }
 
-function rowContext(columns, output) {
+function rowContext(columns, output, params) {
   const outputsById = new Map();
   const outputsByName = new Map();
   for (const column of columns) {
     outputsById.set(column.id, output[column.outputName]);
     outputsByName.set(column.outputName, output[column.outputName]);
   }
-  return { outputsById, outputsByName, rowIndex: 0, now: new Date() };
+  return { outputsById, outputsByName, rowIndex: 0, now: new Date(), params };
 }
 
-function passesFilter(filter, values, columns, output) {
+function passesFilter(filter, values, columns, output, params) {
   if (!filter) return true;
-  const context = rowContext(columns, output);
+  const context = rowContext(columns, output, params);
   const checks = filter.conditions.map((condition) => conditionHolds(values, condition, context));
   const matched = filter.match === 'ANY' ? checks.some(Boolean) : checks.every(Boolean);
   return filter.mode === 'EXCLUDE' ? !matched : matched;
@@ -108,7 +108,7 @@ function sortRows(rows, keys, columnsById) {
 // Applies the template's row steps around the per-row column evaluation. Rows go through `transform`
 // (fill down, columns, filter); valid rows are handed to `accept`, which yields rows that can be written
 // right away (no buffering steps) and `finish` yields the rest in their final order.
-function createRowPipeline(template, { now = new Date() } = {}) {
+function createRowPipeline(template, { now = new Date(), params = NO_PARAMETERS } = {}) {
   const steps = template.rowSteps || {};
   const columns = orderedColumns(template);
   const columnsById = new Map(columns.map((column) => [column.id, column]));
@@ -130,8 +130,8 @@ function createRowPipeline(template, { now = new Date() } = {}) {
   function transform(rowNumber, values) {
     const filled = fillDown(values);
     // Correlatives count written rows; when rows are buffered they are renumbered in `finish`.
-    const result = transformTemplateRow(filled, template, { rowIndex: stats.outputRows, now });
-    if (!passesFilter(steps.filter, filled, columns, result.output)) {
+    const result = transformTemplateRow(filled, template, { rowIndex: stats.outputRows, now, params });
+    if (!passesFilter(steps.filter, filled, columns, result.output, params)) {
       stats.excludedRows += 1;
       return { rowNumber, values: filled, excluded: true, output: result.output, raw: result.raw, issues: [] };
     }
@@ -224,8 +224,8 @@ function createRowPipeline(template, { now = new Date() } = {}) {
 
 // Runs a template over sample rows the way the worker does, for previews. Excluded rows are listed apart
 // so the preview can explain them; rows with errors are kept (with their issues) to show what to fix.
-function previewRows(rows, template, now = new Date()) {
-  const pipeline = createRowPipeline(template, { now });
+function previewRows(rows, template, now = new Date(), params = NO_PARAMETERS) {
+  const pipeline = createRowPipeline(template, { now, params });
   const results = [];
   const excluded = [];
   for (const { rowNumber, values } of rows) {
@@ -238,4 +238,4 @@ function previewRows(rows, template, now = new Date()) {
   return { results, excluded, stats: pipeline.stats() };
 }
 
-module.exports = { createRowPipeline, createFillDown, previewRows };
+module.exports = { createRowPipeline, createFillDown, previewRows, formatAggregate };

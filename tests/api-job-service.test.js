@@ -15,11 +15,11 @@ const baseJob = {
 };
 const config = { tempFileTtlMs: 2 * 60 * 60 * 1000, hardTempFileTtlMs: 24 * 60 * 60 * 1000, maxActiveJobsPerUser: 2 };
 
-function setup({ active = 0 } = {}) {
+function setup({ active = 0, job = baseJob } = {}) {
   const updates = [];
   const service = createJobService({
     jobs: {
-      getForUser: async () => ({ ...baseJob }),
+      getForUser: async () => ({ ...job }),
       countActiveForUser: async () => active,
       update: async (id, changes) => {
         updates.push(changes);
@@ -47,4 +47,13 @@ test('transform stores the chosen mode and extends expiry within the hard limit'
   const expiresIn = updates[0].expiresAt.getTime() - Date.now();
   assert.ok(expiresIn > 1.9 * 60 * 60 * 1000 && expiresIn <= 2 * 60 * 60 * 1000);
   await assert.rejects(service.transform(baseJob.id, user, { mode: 'OTHER' }), { code: 'INVALID_MODE' });
+});
+
+test('transform validates and stores the values of the template parameters', async () => {
+  const parameters = [{ id: 'periodo', name: 'Periodo', type: 'DATE', required: true, defaultValue: '' }, { id: 'tasa', name: 'Tasa', type: 'NUMBER', required: false, defaultValue: '5' }];
+  const { service, updates } = setup({ job: { ...baseJob, workingTemplate: { ...baseJob.workingTemplate, parameters } } });
+  await assert.rejects(service.transform(baseJob.id, user, {}), { status: 400, code: 'INVALID_PARAMETERS', message: 'Falta el valor de «Periodo».' });
+  await assert.rejects(service.transform(baseJob.id, user, { parameters: { periodo: 'mayo' } }), { status: 400, code: 'INVALID_PARAMETERS' });
+  await service.transform(baseJob.id, user, { parameters: { periodo: '31/05/2024', otro: 'x' } });
+  assert.deepEqual(updates[0].runParameters, { periodo: '2024-05-31', tasa: 5 });
 });

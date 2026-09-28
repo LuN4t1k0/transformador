@@ -38,8 +38,10 @@ function normalizeText(value) {
   return displayText(value).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+const NO_PARAMETERS = { byId: new Map(), byName: new Map() };
+
 function emptyContext() {
-  return { outputsById: new Map(), outputsByName: new Map(), rowIndex: 0, now: new Date() };
+  return { outputsById: new Map(), outputsByName: new Map(), rowIndex: 0, now: new Date(), params: NO_PARAMETERS };
 }
 
 function resolveOperand(row, operand, context) {
@@ -47,6 +49,7 @@ function resolveOperand(row, operand, context) {
   if (operand.type === 'COLUMN') return row[operand.column] ?? null;
   if (operand.type === 'OUTPUT') return context.outputsById.get(operand.columnId) ?? null;
   if (operand.type === 'NUMBER' || operand.type === 'TEXT') return operand.value;
+  if (operand.type === 'PARAM') return context.params.byId.get(operand.paramId) ?? null;
   return resolveSource(row, operand, context);
 }
 
@@ -190,6 +193,7 @@ function resolveSource(row, source, context = emptyContext()) {
   if (!source || source.type === 'EMPTY') return null;
   if (source.type === 'COLUMN') return row[source.column];
   if (source.type === 'CONSTANT') return source.value;
+  if (source.type === 'PARAM') return context.params.byId.get(source.paramId) ?? null;
   if (source.type === 'CONCAT') {
     const values = source.parts
       .map((part) => resolveOperand(row, part.type === 'CONSTANT' ? { type: 'TEXT', value: part.value } : part, context))
@@ -222,7 +226,8 @@ function resolveSource(row, source, context = emptyContext()) {
     return input;
   }
   if (source.type === 'TEMPLATE') {
-    const text = source.text.replace(/\{(@?)([^{}]+)\}/g, (_, isOutput, name) => displayText(isOutput ? context.outputsByName.get(name.trim()) : row[name.trim()]));
+    const lookup = { '@': (name) => context.outputsByName.get(name), $: (name) => context.params.byName.get(name), '': (name) => row[name] };
+    const text = source.text.replace(/\{([@$]?)([^{}]+)\}/g, (_, kind, name) => displayText(lookup[kind](name.trim())));
     return text.trim() === '' ? null : text;
   }
   if (source.type === 'ROW_NUMBER') return (source.start ?? 1) + context.rowIndex;
@@ -276,10 +281,11 @@ const CONVERSION_ISSUES = {
 };
 
 // `context.rowIndex` (0-based position among processed rows) and `context.now` feed correlatives and TODAY.
-function transformRow(row, template, { rowIndex = 0, now = new Date() } = {}) {
+// `params` holds the values typed for the template's parameters when generating ({ byId, byName }).
+function transformRow(row, template, { rowIndex = 0, now = new Date(), params = NO_PARAMETERS } = {}) {
   const issues = [];
   const columns = [...template.columns].sort((a, b) => a.position - b.position);
-  const context = { outputsById: new Map(), outputsByName: new Map(), rowIndex, now };
+  const context = { outputsById: new Map(), outputsByName: new Map(), rowIndex, now, params };
   const output = {};
   // Values before transformations (numbers stay numbers), used to sum, compare and sort rows.
   const raw = {};
@@ -326,6 +332,7 @@ function transformRow(row, template, { rowIndex = 0, now = new Date() } = {}) {
 }
 
 module.exports = {
+  NO_PARAMETERS,
   CellIssue,
   isBlank,
   normalizeText,
