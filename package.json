@@ -9,8 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "docker compose up --build",
-    "dev:detached": "docker compose up --build -d",
+    "dev": "docker compose up --build --renew-anon-volumes",
+    "dev:detached": "docker compose up --build --renew-anon-volumes -d",
     "dev:api": "node apps/api/src/server.js",
     "dev:web": "npm --workspace @previley-transformer/web run dev",
     "dev:worker": "node apps/worker/src/worker.js",
