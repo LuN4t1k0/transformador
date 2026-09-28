@@ -1,0 +1,12 @@
+node_modules
+.git
+.DS_Store
+.env
+.env.*
+docker-data
+coverage
+.next
+dist
+build
+tmp
+temp

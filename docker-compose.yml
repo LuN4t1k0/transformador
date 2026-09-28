@@ -1,0 +1,74 @@
+services:
+  api:
+    build:
+      context: .
+    command: npm run dev:api
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgres://transformador:transformador@postgres:5432/transformador
+      REDIS_URL: redis://redis:6379
+      TEMP_DIR: /tmp/previley-excel-transformer
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+      - temp-files:/tmp/previley-excel-transformer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+    command: npm run dev:worker
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://transformador:transformador@postgres:5432/transformador
+      REDIS_URL: redis://redis:6379
+      TEMP_DIR: /tmp/previley-excel-transformer
+    volumes:
+      - .:/app
+      - temp-files:/tmp/previley-excel-transformer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: transformador
+      POSTGRES_USER: transformador
+      POSTGRES_PASSWORD: transformador
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./packages/shared/db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transformador -d transformador"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:
+  temp-files:

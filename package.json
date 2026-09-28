@@ -1,0 +1,24 @@
+{
+  "name": "previley-excel-transformer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic Excel transformation platform foundation for Previley.",
+  "type": "commonjs",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:detached": "docker compose up --build -d",
+    "dev:api": "node apps/api/src/server.js",
+    "dev:worker": "node apps/worker/src/worker.js",
+    "stop": "docker compose down",
+    "logs": "docker compose logs -f",
+    "test": "node --test tests/*.test.js",
+    "lint": "node -e \"console.log('No lint configured yet')\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
