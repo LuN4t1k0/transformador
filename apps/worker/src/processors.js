@@ -1,10 +1,17 @@
-const { analyzeWorkbook, readSheetRows, WorkbookLimitError } = require('../../../packages/excel-engine/src');
+const { analyzeWorkbook, createXlsxWriter, readSheetRows, WorkbookLimitError } = require('../../../packages/excel-engine/src');
+const { describeIssue } = require('../../../packages/template-engine/src/issues');
 const { writeOutput, outputFileInfo } = require('../../../packages/excel-engine/src/output');
 const { createSummaryAccumulator, orderedColumns, transformTemplateRow } = require('../../../packages/template-engine/src/run');
 const { resolveTemplateForHeaders } = require('../../../packages/template-engine/src/mapping');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
 
 class JobCancelledError extends Error {}
+
+// Keeps temporary files alive for another TTL window, never beyond the hard limit from creation.
+function extendedExpiry(job, limits, now = Date.now()) {
+  if (!limits.tempFileTtlMs || !limits.hardTempFileTtlMs) return undefined;
+  return new Date(Math.min(now + limits.tempFileTtlMs, new Date(job.createdAt).getTime() + limits.hardTempFileTtlMs));
+}
 
 // Only an unambiguous sheet is selected automatically; otherwise the user must choose.
 function pickDefaultSheet(sheets) {
@@ -19,6 +26,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
   }
 
   async function fail(job, error, eventType = 'job:failed') {
+    const current = (await jobs.get(job.id)) || job;
     await jobs.update(job.id, {
       status: JOB_STATUSES.FAILED,
       stage: null,
@@ -26,7 +34,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
       errorMessage: error instanceof WorkbookLimitError ? error.message : 'Ocurrió un error inesperado al procesar el archivo.',
       purgedAt: new Date()
     });
-    await deleteFiles(job.inputStorageKey, job.outputStorageKey);
+    await deleteFiles(current.inputStorageKey, current.outputStorageKey, current.rejectsStorageKey);
     await publish(job.id, eventType);
   }
 
@@ -70,7 +78,20 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     const sheet = job.workbookAnalysis.sheets.find((candidate) => candidate.name === job.selectedSheet);
     const summary = createSummaryAccumulator();
     const output = await storage.reserve({ extension: outputFileInfo(template.output).extension });
+    const writesRejects = job.mode !== 'STRICT';
+    let rejects = null;
     let lastReport = 0;
+
+    // Rejected rows keep their original values so they can be fixed and reprocessed; created on first rejection.
+    async function addReject(row, issues) {
+      if (!rejects) {
+        const reserved = await storage.reserve({ extension: 'xlsx' });
+        rejects = { ...reserved, count: 0, writer: createXlsxWriter(reserved.path, { sheetName: 'RECHAZADAS', headers: ['Fila en el Excel', 'Problemas', ...sheet.headers] }) };
+      }
+      rejects.count += 1;
+      const problems = issues.filter((issue) => issue.severity === 'error').map((issue) => `${issue.column}: ${describeIssue(issue)}`).join('; ');
+      rejects.writer.addRow([row.rowNumber, problems, ...sheet.headers.map((header) => row.values[header] ?? null)]);
+    }
 
     async function reportProgress(processed, force = false) {
       if (!force && Date.now() - lastReport < progressIntervalMs) return;
@@ -87,6 +108,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
         processed += 1;
         const isValid = summary.add(row.rowNumber, issues);
         if (isValid) yield columns.map((column) => values[column.outputName] ?? null);
+        else if (writesRejects) await addReject(row, issues);
         await reportProgress(processed);
       }
       await reportProgress(processed, true);
@@ -103,8 +125,9 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
 
     try {
       await writeOutput(output.path, { output: template.output, columns, rows: outputRows() });
+      if (rejects) await rejects.writer.close();
     } catch (error) {
-      await deleteFiles(output.key);
+      await deleteFiles(output.key, rejects?.key);
       if (error instanceof JobCancelledError) {
         log({ event: 'transformation:cancelled', jobId });
         return;
@@ -121,17 +144,20 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
       status: JOB_STATUSES.READY_TO_DOWNLOAD,
       stage: null,
       outputStorageKey: output.key,
+      rejectsStorageKey: rejects?.key || null,
+      rejectedRows: rejects?.count || 0,
       validationSummary: result,
       totalRows: result.totalRows,
       processedRows: result.totalRows,
       errorCount: result.errorCount,
       warningCount: result.warningCount,
-      completedAt: new Date()
+      completedAt: new Date(),
+      ...(extendedExpiry(job, limits) ? { expiresAt: extendedExpiry(job, limits) } : {})
     }, { expectStatus: JOB_STATUSES.GENERATING });
 
     if (!completed) {
       // Cancelled between the last check and completion.
-      await deleteFiles(output.key);
+      await deleteFiles(output.key, rejects?.key);
       return;
     }
     await publish(jobId, 'job:completed');
@@ -142,7 +168,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     for (const job of expired) {
       const updated = await jobs.update(job.id, { status: JOB_STATUSES.EXPIRED, stage: null, purgedAt: now }, { expectStatus: job.status });
       if (!updated) continue;
-      await deleteFiles(job.inputStorageKey, job.outputStorageKey);
+      await deleteFiles(job.inputStorageKey, job.outputStorageKey, job.rejectsStorageKey);
       await publish(job.id, 'job:purged');
     }
     const { deleted } = await storage.cleanup(now);

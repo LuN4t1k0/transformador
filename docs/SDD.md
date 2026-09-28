@@ -242,13 +242,13 @@ El progreso visual debe representar trabajo real reportado por worker. No usar b
 
 ### Descarga y purga
 
-La descarga debe usar URL o endpoint autenticado de un output temporal. Al completar descarga:
+La descarga usa un endpoint autenticado sobre archivos temporales. Politica vigente (2026-09-28):
 
-- marcar job como `DOWNLOADED`;
-- solicitar purga del output si la politica del job es eliminar post-descarga;
-- actualizar UI a estado descargado/purgado.
-
-Si el usuario no descarga, el output expira por TTL y la UI debe mostrar `EXPIRED`.
+- la primera descarga marca el job como `DOWNLOADED`; el archivo se puede volver a descargar hasta que el job expire;
+- las filas excluidas por validacion (modo `LENIENT`) se entregan en un Excel aparte (`?file=rejects`) con el numero de fila y el motivo;
+- el usuario puede eliminar los archivos en cualquier momento (`POST /jobs/:jobId/purge` → `PURGED`);
+- la expiracion se extiende con cada actividad del usuario y al completar la transformacion (`TEMP_FILE_TTL_MS`), nunca mas alla de `HARD_TEMP_FILE_TTL_MS` desde la creacion;
+- al expirar se eliminan entrada, salida y rechazos, y la UI muestra `EXPIRED`.
 
 ### Contratos API consumidos por frontend
 

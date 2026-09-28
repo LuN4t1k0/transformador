@@ -17,6 +17,8 @@ const { receiveUpload } = require('./upload');
 
 const SAMPLE_ROWS = 5;
 const CANCELLABLE = new Set([JOB_STATUSES.QUEUED_ANALYSIS, JOB_STATUSES.ANALYZING, ...RUNNING_STATUSES]);
+const ACTIVE_STATUSES = [...CANCELLABLE];
+const DOWNLOADABLE = [JOB_STATUSES.READY_TO_DOWNLOAD, JOB_STATUSES.DOWNLOADED];
 
 // Dates cannot travel as JSON; they are tagged so the web can revive them before running the engine.
 function encodeCell(value) {
@@ -53,14 +55,26 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
     return job.workingTemplate;
   }
 
+  // Activity keeps a job's temporary files alive for another TTL window, never beyond the hard limit.
+  function extendedExpiry(job) {
+    return new Date(Math.min(Date.now() + config.tempFileTtlMs, new Date(job.createdAt).getTime() + config.hardTempFileTtlMs));
+  }
+
+  async function requireCapacity(user) {
+    const active = await jobs.countActiveForUser(user.id, ACTIVE_STATUSES);
+    if (active >= config.maxActiveJobsPerUser) {
+      throw new HttpError(429, 'TOO_MANY_ACTIVE_JOBS', `Tienes ${active} procesos en curso. Espera a que terminen para iniciar otro.`);
+    }
+  }
+
   async function update(job, changes) {
-    const updated = await jobs.update(job.id, changes, { expectStatus: job.status });
+    const updated = await jobs.update(job.id, { ...changes, expiresAt: extendedExpiry(job) }, { expectStatus: job.status });
     if (!updated) throw new HttpError(409, 'INVALID_STATE', 'El job cambió de estado. Recarga para ver la información actual.');
     return updated;
   }
 
   async function purgeFiles(job) {
-    await Promise.all([job.inputStorageKey, job.outputStorageKey].filter(Boolean).map((key) => storage.delete(key).catch(() => {})));
+    await Promise.all([job.inputStorageKey, job.outputStorageKey, job.rejectsStorageKey].filter(Boolean).map((key) => storage.delete(key).catch(() => {})));
   }
 
   return {
@@ -75,6 +89,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
     },
 
     async create(request, user) {
+      await requireCapacity(user);
       const { file } = await receiveUpload(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes });
       const job = await jobs.create({
         id: crypto.randomUUID(),
@@ -197,9 +212,11 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       return { rows };
     },
 
-    async transform(jobId, user) {
+    async transform(jobId, user, { mode = 'LENIENT' } = {}) {
       const job = await requireJob(jobId, user);
       requireEditable(job);
+      if (!['LENIENT', 'STRICT'].includes(mode)) throw new HttpError(400, 'INVALID_MODE', 'El modo de validación no es válido.');
+      await requireCapacity(user);
       const headers = selectedHeaders(job);
       const template = requireWorkingTemplate(job);
       if (!evaluateColumns(template.columns, headers, new Set(job.confirmedIds)).isComplete) {
@@ -210,6 +227,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       const queued = await update(job, {
         status: JOB_STATUSES.QUEUED_TRANSFORMATION,
         stage: 'QUEUED',
+        mode,
         processedRows: 0,
         totalRows: sheet.rowCount,
         validationSummary: null
@@ -236,13 +254,25 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       return view(cancelled);
     },
 
-    async download(jobId, user, response) {
+    async download(jobId, user, response, { file = 'output' } = {}) {
       const job = await requireJob(jobId, user);
-      requireStatus(job, JOB_STATUSES.READY_TO_DOWNLOAD, 'El archivo no está disponible para descarga.');
-      const { output, name } = job.workingTemplate;
-      const { extension, contentType } = outputFileInfo(output);
+      requireStatus(job, DOWNLOADABLE, 'El archivo ya no está disponible. Los archivos temporales se eliminan al expirar el job.');
       const baseName = job.fileName.replace(/\.xlsx$/i, '');
-      const fileName = `${baseName}-${name}.${extension}`;
+      let key;
+      let fileName;
+      let contentType;
+      if (file === 'rejects') {
+        if (!job.rejectsStorageKey) throw new HttpError(404, 'NOT_FOUND', 'Este job no tiene filas rechazadas.');
+        key = job.rejectsStorageKey;
+        fileName = `${baseName}-rechazadas.xlsx`;
+        contentType = outputFileInfo({ format: 'XLSX' }).contentType;
+      } else {
+        const { output, name } = job.workingTemplate;
+        const info = outputFileInfo(output);
+        key = job.outputStorageKey;
+        fileName = `${baseName}-${name}.${info.extension}`;
+        contentType = info.contentType;
+      }
 
       response.writeHead(200, {
         'content-type': contentType,
@@ -251,7 +281,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       });
 
       await new Promise((resolve, reject) => {
-        const stream = fs.createReadStream(storage.resolvePath(job.outputStorageKey));
+        const stream = fs.createReadStream(storage.resolvePath(key));
         stream.on('error', reject);
         response.on('finish', resolve);
         response.on('close', resolve);
@@ -259,13 +289,21 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       });
       if (!response.writableFinished) return;
 
-      // Delete-after-download policy: the output and the upload are purged once the file was sent.
-      const downloaded = await jobs.update(job.id, { status: JOB_STATUSES.DOWNLOADED, downloadedAt: new Date() }, { expectStatus: JOB_STATUSES.READY_TO_DOWNLOAD });
-      if (!downloaded) return;
-      await publish(job.id, 'job:stage');
+      // Files stay available for re-download until the job expires or the user purges them.
+      if (file === 'output' && job.status === JOB_STATUSES.READY_TO_DOWNLOAD) {
+        const downloaded = await jobs.update(job.id, { status: JOB_STATUSES.DOWNLOADED, downloadedAt: new Date() }, { expectStatus: JOB_STATUSES.READY_TO_DOWNLOAD });
+        if (downloaded) await publish(job.id, 'job:stage');
+      }
+    },
+
+    async purge(jobId, user) {
+      const job = await requireJob(jobId, user);
+      requireStatus(job, DOWNLOADABLE, 'Solo se pueden eliminar los archivos de un job terminado.');
+      const purged = await jobs.update(job.id, { status: JOB_STATUSES.PURGED, purgedAt: new Date() }, { expectStatus: DOWNLOADABLE });
+      if (!purged) throw new HttpError(409, 'INVALID_STATE', 'El job cambió de estado. Recarga para ver la información actual.');
       await purgeFiles(job);
-      await jobs.update(job.id, { status: JOB_STATUSES.PURGED, purgedAt: new Date() }, { expectStatus: JOB_STATUSES.DOWNLOADED });
       await publish(job.id, 'job:purged');
+      return view(purged);
     }
   };
 }

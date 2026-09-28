@@ -121,6 +121,7 @@ function getNextStep(job, template, evaluation, activeId) {
   if (ANALYZING.has(job.status)) return { hint: 'Estamos leyendo las hojas y encabezados del archivo.' };
   if (RUNNING.has(job.status)) return { hint: 'Procesando todas las filas.' };
   if (job.status === 'READY_TO_DOWNLOAD') return { hint: 'El archivo está listo. Descárgalo antes de que expire.' };
+  if (job.status === 'DOWNLOADED') return { hint: 'Puedes volver a descargarlo hasta que expire, o eliminar los archivos ahora.' };
   if (job.status !== 'READY') return { hint: 'Este job terminó. Crea uno nuevo para procesar otro archivo.' };
   if (!job.selectedSheet) return { section: 'sheet', label: 'Elegir hoja', hint: 'El archivo tiene varias hojas con datos: elige con cuál trabajar.' };
   if (!template) return { section: 'template', label: 'Elegir plantilla', hint: 'Elige una plantilla guardada o crea una nueva desde este archivo.' };
@@ -281,14 +282,14 @@ function JobWorkspace({ job, setJob }) {
     });
   }
 
-  async function transform(payload) {
+  async function transform(payload, mode) {
     if (!(await flush())) return;
     if (payload) {
       const saved = await run(() => api.saveJobTemplate(job.id, payload));
       if (!saved?.id) return;
       reset(saved);
     }
-    const queued = await run(() => api.transformJob(job.id));
+    const queued = await run(() => api.transformJob(job.id, { mode }));
     if (queued?.id) setJob(queued);
   }
 
@@ -309,7 +310,16 @@ function JobWorkspace({ job, setJob }) {
         return <p className="flex items-center gap-2 text-sm text-ink-700"><Loader2 size={16} className="animate-spin text-cobalt-600" aria-hidden="true" />Analizando hojas, encabezados y tipos de columna…</p>;
       }
       if (RUNNING.has(job.status)) return <RunProgress job={job} isBusy={isBusy} onCancel={() => run(async () => setJob(await api.cancelJob(job.id)))} />;
-      if (job.status === 'READY_TO_DOWNLOAD') return <RunResult job={job} isBusy={isBusy} onDownload={() => run(async () => downloadBlob(await api.downloadJob(job.id)))} />;
+      if (['READY_TO_DOWNLOAD', 'DOWNLOADED'].includes(job.status)) {
+        return (
+          <RunResult
+            job={job}
+            isBusy={isBusy}
+            onDownload={(file) => run(async () => downloadBlob(await api.downloadJob(job.id, file)))}
+            onPurge={() => run(async () => setJob(await api.purgeJob(job.id)))}
+          />
+        );
+      }
       return <RunTerminal job={job} />;
     }
 

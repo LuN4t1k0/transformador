@@ -60,6 +60,9 @@ function serializeJob(job, baseTemplate) {
       ? { processed: job.processedRows, total: job.totalRows }
       : null,
     summary: job.validationSummary,
+    files: ['READY_TO_DOWNLOAD', 'DOWNLOADED'].includes(job.status)
+      ? { output: Boolean(job.outputStorageKey), rejects: Boolean(job.rejectsStorageKey), rejectedRows: job.rejectedRows || 0 }
+      : null,
     error: job.errorCode ? { code: job.errorCode, message: job.errorMessage } : null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,

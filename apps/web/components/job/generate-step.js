@@ -92,6 +92,7 @@ export function GenerateStep({ job, template, evaluation, onSave, onTransform, i
   const [choice, setChoice] = useState('NONE');
   const [meta, setMeta] = useState({ name: '', destination: job.template?.destination || '', process: job.template?.process || '', description: '' });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
+  const [mode, setMode] = useState('LENIENT');
   const selectedSheet = job.sheets.find((sheet) => sheet.name === job.selectedSheet);
 
   useEffect(() => {
@@ -118,11 +119,27 @@ export function GenerateStep({ job, template, evaluation, onSave, onTransform, i
         <div className="rounded-md border border-ink-200 bg-ink-50 p-3">
           <dt className="text-xs font-medium text-ink-500">Archivo final</dt>
           <dd className="mt-1 text-sm font-semibold text-ink-900">{describeOutput(template.output)}</dd>
-          <dd className="text-xs text-ink-500">Las filas con errores se excluyen y se informan.</dd>
+
         </div>
       </dl>
 
       <SaveOptions job={job} template={template} choice={choice} setChoice={setChoice} meta={meta} setMeta={setMeta} facets={facets} />
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold text-ink-900">Si hay filas con errores</legend>
+        {[
+          { value: 'LENIENT', label: 'Excluirlas y generar el archivo con el resto', description: 'Las filas excluidas se entregan en un Excel aparte, con el motivo, para corregirlas.' },
+          { value: 'STRICT', label: 'No generar el archivo', description: 'Útil cuando el destino exige que todas las filas estén correctas.' }
+        ].map((option) => (
+          <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${mode === option.value ? 'border-cobalt-500 bg-cobalt-50' : 'border-ink-200 bg-white hover:bg-ink-50'}`}>
+            <input type="radio" name="validation-mode" className="mt-0.5 h-4 w-4 accent-cobalt-600" checked={mode === option.value} onChange={() => setMode(option.value)} />
+            <span>
+              <span className="block text-sm font-medium text-ink-900">{option.label}</span>
+              <span className="mt-0.5 block text-xs text-ink-500">{option.description}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         {reason ? <p id="generate-blocked-reason" className="text-sm text-ink-500">{reason}</p> : null}
@@ -137,7 +154,7 @@ export function GenerateStep({ job, template, evaluation, onSave, onTransform, i
           className={buttonStyles.primary}
           disabled={isBusy || Boolean(reason)}
           aria-describedby={reason ? 'generate-blocked-reason' : undefined}
-          onClick={() => onTransform(payload)}
+          onClick={() => onTransform(payload, mode)}
         >
           <Play size={16} aria-hidden="true" />
           {payload ? 'Guardar y generar archivo' : 'Generar archivo'}

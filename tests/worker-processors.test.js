@@ -124,6 +124,30 @@ test('transformation writes valid rows, reports progress and summarizes issues',
   assert.equal(sheet.rowCount, 3);
   assert.equal(sheet.getRow(2).getCell(1).value, '123456785');
   assert.equal(sheet.getRow(2).getCell(8).value, '09/05/2024');
+
+  assert.equal(job.rejectedRows, 1);
+  const rejects = new ExcelJS.Workbook();
+  await rejects.xlsx.readFile(storage.resolvePath(job.rejectsStorageKey));
+  const rejected = rejects.getWorksheet('RECHAZADAS');
+  assert.deepEqual(rejected.getRow(1).values.slice(1, 4), ['Fila en el Excel', 'Problemas', 'RUT']);
+  assert.deepEqual(rejected.getRow(2).values.slice(1, 4), [3, 'RUT: RUT con dígito verificador inválido', '17.654.321-0']);
+});
+
+test('transformation extends the expiry within the hard limit', async () => {
+  const context = await readyJob();
+  const job = context.jobs.jobs.get('job-1');
+  job.createdAt = new Date(Date.now() - 23.5 * 60 * 60 * 1000);
+  const processors = createProcessors({
+    jobs: context.jobs,
+    storage: context.storage,
+    publish: async () => {},
+    isCancelled: async () => false,
+    limits: { ...limits, tempFileTtlMs: 2 * 60 * 60 * 1000, hardTempFileTtlMs: 24 * 60 * 60 * 1000 },
+    progressIntervalMs: 0
+  });
+  await processors.transform('job-1');
+  const expiresIn = job.expiresAt.getTime() - Date.now();
+  assert.ok(expiresIn > 25 * 60 * 1000 && expiresIn <= 30 * 60 * 1000, `expires in ${expiresIn}`);
 });
 
 test('transformation writes delimited latin1 text when the template asks for it', async () => {

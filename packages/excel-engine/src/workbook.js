@@ -239,13 +239,26 @@ async function* readSheetRows(filePath, sheetName, { limits, headerRow }) {
   }
 }
 
-async function writeWorkbook(filePath, { sheetName, headers, rows }) {
+// Incremental xlsx writer for files filled while another stream is being consumed (e.g. the rejects file).
+function createXlsxWriter(filePath, { sheetName, headers }) {
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: filePath, useStyles: false, useSharedStrings: false });
   const sheet = workbook.addWorksheet(sheetName);
   sheet.addRow(headers).commit();
-  for await (const values of rows) sheet.addRow(values).commit();
-  sheet.commit();
-  await workbook.commit();
+  return {
+    addRow(values) {
+      sheet.addRow(values).commit();
+    },
+    async close() {
+      sheet.commit();
+      await workbook.commit();
+    }
+  };
+}
+
+async function writeWorkbook(filePath, { sheetName, headers, rows }) {
+  const writer = createXlsxWriter(filePath, { sheetName, headers });
+  for await (const values of rows) writer.addRow(values);
+  await writer.close();
 }
 
 module.exports = {
@@ -254,5 +267,6 @@ module.exports = {
   analyzeWorkbook,
   readSheetRows,
   writeWorkbook,
+  createXlsxWriter,
   normalizeCellValue
 };

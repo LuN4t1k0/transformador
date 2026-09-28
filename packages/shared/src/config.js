@@ -14,6 +14,7 @@ const config = Object.freeze({
   maxColumns: intEnv('MAX_COLUMNS', 200),
   maxSheets: intEnv('MAX_SHEETS', 20),
   maxConcurrentJobs: intEnv('MAX_CONCURRENT_JOBS', 2),
+  maxActiveJobsPerUser: intEnv('MAX_ACTIVE_JOBS_PER_USER', 3),
   maxJobDurationMs: intEnv('MAX_JOB_DURATION_MS', 30 * 60 * 1000),
   maxSampleRows: intEnv('MAX_SAMPLE_ROWS', 200),
   tempFileTtlMs: intEnv('TEMP_FILE_TTL_MS', 2 * HOURS),

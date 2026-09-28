@@ -124,14 +124,17 @@ export function createHttpApi(baseUrl) {
     async getSample(jobId) {
       return getJson(`/jobs/${jobId}/sample`);
     },
-    async transformJob(jobId) {
-      return (await getJson(`/jobs/${jobId}/transform`, { method: 'POST' })).job;
+    async transformJob(jobId, { mode = 'LENIENT' } = {}) {
+      return (await getJson(`/jobs/${jobId}/transform`, { method: 'POST', json: { mode } })).job;
+    },
+    async purgeJob(jobId) {
+      return (await getJson(`/jobs/${jobId}/purge`, { method: 'POST' })).job;
     },
     async cancelJob(jobId) {
       return (await getJson(`/jobs/${jobId}/cancel`, { method: 'POST' })).job;
     },
-    async downloadJob(jobId) {
-      const response = await request(`/jobs/${jobId}/download`);
+    async downloadJob(jobId, file = 'output') {
+      const response = await request(`/jobs/${jobId}/download${file === 'rejects' ? '?file=rejects' : ''}`);
       return {
         fileName: parseFileName(response.headers.get('content-disposition'), 'resultado.xlsx'),
         blob: await response.blob()

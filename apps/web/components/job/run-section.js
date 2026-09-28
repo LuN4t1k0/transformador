@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { AlertCircle, Check, CheckCircle2, Clock, Download, FilePlus2, Loader2, XCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Clock, Download, FileWarning, FilePlus2, Loader2, Trash2, XCircle } from 'lucide-react';
+import { useState } from 'react';
+import { formatTime } from '../job-status';
 import { describeIssue } from '../../lib/templates';
 import { buttonStyles, Notice } from '../panel';
 
@@ -98,18 +100,25 @@ function IssuesTable({ groups }) {
   );
 }
 
-export function RunResult({ job, onDownload, isBusy }) {
-  const { summary } = job;
+export function RunResult({ job, onDownload, onPurge, isBusy }) {
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const { summary, files } = job;
   const invalidRows = summary.totalRows - summary.validRows;
   const stats = [
     { label: 'Filas totales', value: summary.totalRows },
-    { label: 'Filas válidas', value: summary.validRows, tone: 'text-mint-600' },
-    { label: 'Filas excluidas', value: invalidRows, tone: invalidRows ? 'text-rose-700' : undefined },
+    { label: 'Filas en el archivo', value: summary.validRows, tone: 'text-mint-600' },
+    { label: 'Filas rechazadas', value: invalidRows, tone: invalidRows ? 'text-rose-700' : undefined },
     { label: 'Advertencias', value: summary.warningCount, tone: summary.warningCount ? 'text-amber-700' : undefined }
   ];
 
   return (
     <div>
+      {job.status === 'DOWNLOADED' ? (
+        <div className="mb-4">
+          <Notice tone="success" icon={CheckCircle2} role="status">Archivo descargado. Puedes volver a descargarlo hasta las {formatTime(job.expiresAt)}.</Notice>
+        </div>
+      ) : null}
+
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stats.map((stat) => (
           <div key={stat.label} className="rounded-md border border-ink-200 bg-ink-50 p-3">
@@ -130,19 +139,39 @@ export function RunResult({ job, onDownload, isBusy }) {
       ) : null}
 
       <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-        <p className="text-xs text-ink-500">Al descargar, el archivo temporal se elimina del servidor.</p>
-        <button type="button" className={buttonStyles.primary} disabled={isBusy} onClick={onDownload}>
+        {files?.rejects ? (
+          <button type="button" className={buttonStyles.secondary} disabled={isBusy} onClick={() => onDownload('rejects')}>
+            <FileWarning size={16} aria-hidden="true" />
+            Filas rechazadas ({files.rejectedRows})
+          </button>
+        ) : null}
+        <button type="button" className={buttonStyles.primary} disabled={isBusy} onClick={() => onDownload('output')}>
           <Download size={16} aria-hidden="true" />
-          Descargar archivo
+          {job.status === 'DOWNLOADED' ? 'Descargar de nuevo' : 'Descargar archivo'}
         </button>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 pt-4 text-sm">
+        <p className="text-ink-500">Los archivos se eliminan automáticamente a las {formatTime(job.expiresAt)}.</p>
+        {confirmPurge ? (
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-ink-700">¿Eliminar el archivo generado, los rechazos y el Excel original?</span>
+            <button type="button" className={buttonStyles.danger} disabled={isBusy} onClick={onPurge}>Sí, eliminar</button>
+            <button type="button" className={buttonStyles.secondary} onClick={() => setConfirmPurge(false)}>Cancelar</button>
+          </span>
+        ) : (
+          <button type="button" className={buttonStyles.danger} disabled={isBusy} onClick={() => setConfirmPurge(true)}>
+            <Trash2 size={16} aria-hidden="true" />
+            Eliminar archivos ahora
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 const TERMINAL_MESSAGES = {
-  DOWNLOADED: { tone: 'success', icon: CheckCircle2, title: 'Archivo descargado', text: 'La copia temporal se eliminará del servidor.' },
-  PURGED: { tone: 'success', icon: CheckCircle2, title: 'Archivo descargado', text: 'La copia temporal ya fue eliminada del servidor. Si necesitas el archivo otra vez, crea un nuevo job.' },
+  PURGED: { tone: 'success', icon: CheckCircle2, title: 'Archivos eliminados', text: 'Los archivos temporales de este job ya no están en el servidor. Si necesitas el archivo otra vez, crea un nuevo job.' },
   CANCELLED: { tone: 'warning', icon: XCircle, title: 'Transformación cancelada', text: 'No se generó ningún archivo. Crea un nuevo job para volver a intentarlo.' },
   EXPIRED: { tone: 'warning', icon: Clock, title: 'El job expiró', text: 'Los archivos temporales se eliminaron por tiempo. Vuelve a subir el Excel para continuar.' },
   FAILED: { tone: 'danger', icon: AlertCircle, title: 'No pudimos procesar el archivo', text: 'No se generó ningún archivo y los temporales se eliminaron.' }

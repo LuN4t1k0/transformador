@@ -47,7 +47,8 @@ async function main() {
   const workers = Object.entries(handlers).map(([name, handler]) => {
     const worker = new Worker(name, handler, {
       connection,
-      concurrency: workerConcurrency[name]
+      // MAX_CONCURRENT_JOBS bounds simultaneous transformations (the memory/CPU heavy queue).
+      concurrency: name === QUEUE_NAMES.TRANSFORMATION ? config.maxConcurrentJobs : workerConcurrency[name]
     });
 
     worker.on('failed', async (job, error) => {

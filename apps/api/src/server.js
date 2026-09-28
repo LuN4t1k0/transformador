@@ -66,10 +66,11 @@ async function main() {
     ['PATCH', '/jobs/:jobId/working-template', async ({ user, params, request }) => ({ job: await jobService.saveWorkingTemplate(params.jobId, user, await readJson(request)) })],
     ['POST', '/jobs/:jobId/template/save', async ({ user, params, request }) => ({ job: await jobService.saveTemplate(params.jobId, user, await readJson(request)) })],
     ['GET', '/jobs/:jobId/sample', async ({ user, params }) => jobService.sample(params.jobId, user)],
-    ['POST', '/jobs/:jobId/transform', async ({ user, params }) => ({ job: await jobService.transform(params.jobId, user) })],
+    ['POST', '/jobs/:jobId/transform', async ({ user, params, request }) => ({ job: await jobService.transform(params.jobId, user, await readJson(request)) })],
+    ['POST', '/jobs/:jobId/purge', async ({ user, params }) => ({ job: await jobService.purge(params.jobId, user) })],
     ['POST', '/jobs/:jobId/cancel', async ({ user, params }) => ({ job: await jobService.cancel(params.jobId, user) })],
-    ['GET', '/jobs/:jobId/download', async ({ user, params, response }) => {
-      await jobService.download(params.jobId, user, response);
+    ['GET', '/jobs/:jobId/download', async ({ user, params, response, url }) => {
+      await jobService.download(params.jobId, user, response, { file: url.searchParams.get('file') === 'rejects' ? 'rejects' : 'output' });
       return { handled: true };
     }]
   ]);

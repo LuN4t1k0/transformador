@@ -12,6 +12,9 @@ const JOB_FIELDS = {
   errorCount: 'error_count',
   inputStorageKey: 'input_storage_key',
   outputStorageKey: 'output_storage_key',
+  rejectsStorageKey: 'rejects_storage_key',
+  rejectedRows: 'rejected_rows',
+  expiresAt: 'expires_at',
   mode: 'mode',
   workbookAnalysis: 'workbook_analysis',
   selectedSheet: 'selected_sheet',
@@ -46,6 +49,8 @@ function toJob(row) {
     errorCount: row.error_count,
     inputStorageKey: row.input_storage_key,
     outputStorageKey: row.output_storage_key,
+    rejectsStorageKey: row.rejects_storage_key,
+    rejectedRows: row.rejected_rows,
     workbookAnalysis: row.workbook_analysis,
     selectedSheet: row.selected_sheet,
     workingTemplate: row.working_template,
@@ -280,6 +285,11 @@ function createJobRepository(pool) {
         values
       );
       return toJob(rows[0]);
+    },
+
+    async countActiveForUser(userId, statuses) {
+      const { rows } = await pool.query('select count(*)::int as count from transformation_jobs where user_id = $1 and status = any($2)', [userId, statuses]);
+      return rows[0].count;
     },
 
     async findExpired(now = new Date(), limit = 100) {
