@@ -8,7 +8,7 @@ Incluye:
 
 - SDD inicial en `docs/SDD.md`.
 - Diseño frontend MVP: rutas, pantallas, estados, contratos API, realtime y criterios de aceptacion.
-- App web Next.js + Tailwind en `apps/web`.
+- App web Next.js + Tailwind en `apps/web`: rutas `/jobs/new`, `/jobs/:jobId` (hoja, mapeo, vista previa, generación con progreso y descarga), `/jobs` y `/templates`. Mientras la API no expone los endpoints de jobs, `apps/web/lib/api` usa un mock en navegador con el mismo contrato y eventos que guarda solo metadata en `sessionStorage`.
 - Motor de transformacion por plantilla en `packages/template-engine`.
 - Transformaciones reutilizables de RUT, texto, numero y fecha.
 - Detectores deterministicos fisicos y semanticos.

@@ -48,3 +48,13 @@ export function describeSource(entry) {
   if (entry.type === 'EMPTY') return 'Quedará vacía en el archivo final';
   return null;
 }
+
+const ISSUE_MESSAGES = {
+  REQUIRED: 'Falta un valor requerido',
+  INVALID_RUT: 'RUT con dígito verificador inválido',
+  INVALID_INTEGER: 'Debe ser un número entero'
+};
+
+export function describeIssue(issue) {
+  return ISSUE_MESSAGES[issue.code] || issue.message;
+}

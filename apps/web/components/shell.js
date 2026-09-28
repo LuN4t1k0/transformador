@@ -1,4 +1,5 @@
 import { FileSpreadsheet, UserCircle } from 'lucide-react';
+import { MainNav } from './main-nav';
 
 export function Shell({ user, children }) {
   return (
@@ -22,6 +23,7 @@ export function Shell({ user, children }) {
           ) : null}
         </div>
       </header>
+      <MainNav />
 
       <main className="px-4 py-6 sm:px-5">{children}</main>
     </div>
