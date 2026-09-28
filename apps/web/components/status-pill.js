@@ -1,15 +1,20 @@
-const styles = {
-  OK: 'bg-mint-50 text-mint-600 ring-mint-100',
-  CONFIRMAR: 'bg-amber-50 text-amber-700 ring-amber-200',
-  FALTANTE: 'bg-rose-50 text-rose-600 ring-rose-50',
-  READY: 'bg-mint-50 text-mint-600 ring-mint-100',
-  default: 'bg-ink-100 text-ink-700 ring-ink-200'
+import { AlertCircle, CheckCircle2, CircleDashed, HelpCircle } from 'lucide-react';
+
+const variants = {
+  OK: { label: 'Listo', icon: CheckCircle2, className: 'bg-mint-50 text-mint-600 ring-mint-100' },
+  REQUIERE_CONFIRMACION: { label: 'Por confirmar', icon: HelpCircle, className: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  FALTANTE: { label: 'Falta origen', icon: AlertCircle, className: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  default: { label: null, icon: CircleDashed, className: 'bg-ink-100 text-ink-700 ring-ink-200' }
 };
 
-export function StatusPill({ value }) {
+export function StatusPill({ value, label }) {
+  const variant = variants[value] || variants.default;
+  const Icon = variant.icon;
+
   return (
-    <span className={`inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold ring-1 ring-inset ${styles[value] || styles.default}`}>
-      {value}
+    <span className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-semibold ring-1 ring-inset ${variant.className}`}>
+      <Icon size={13} aria-hidden="true" />
+      {label || variant.label || value}
     </span>
   );
 }

@@ -1,10 +1,10 @@
 import { FileSpreadsheet, UserCircle } from 'lucide-react';
 
-export function Shell({ children }) {
+export function Shell({ user, children }) {
   return (
     <div className="min-h-screen text-ink-900">
       <header className="border-b border-ink-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-ink-900 text-white">
               <FileSpreadsheet size={17} aria-hidden="true" />
@@ -14,14 +14,16 @@ export function Shell({ children }) {
               <p className="truncate text-xs text-ink-500">Excel a plantillas previsionales</p>
             </div>
           </div>
-          <div className="flex h-9 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-medium text-ink-700">
-            <UserCircle size={17} aria-hidden="true" />
-            C. Venegas
-          </div>
+          {user ? (
+            <div className="flex h-9 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-medium text-ink-700">
+              <UserCircle size={17} aria-hidden="true" />
+              {user.name}
+            </div>
+          ) : null}
         </div>
       </header>
 
-      <main className="px-5 py-6">{children}</main>
+      <main className="px-4 py-6 sm:px-5">{children}</main>
     </div>
   );
 }

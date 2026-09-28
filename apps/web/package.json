@@ -9,6 +9,7 @@
     "start": "next start --hostname 0.0.0.0 --port 3000"
   },
   "dependencies": {
+    "@previley-transformer/shared": "0.1.0",
     "lucide-react": "^0.468.0",
     "next": "^16.3.6",
     "react": "^19.0.0",

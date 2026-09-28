@@ -6,10 +6,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        canvas: '#f4f6f5',
         ink: {
           50: '#f7f8f8',
           100: '#ecefed',
           200: '#d5ddd8',
+          300: '#b9c5bd',
+          400: '#8c9b91',
           500: '#64746a',
           700: '#35443a',
           900: '#17221b'
@@ -28,12 +31,15 @@ module.exports = {
         },
         amber: {
           50: '#fff8e5',
+          100: '#fdefc7',
           200: '#f5dda0',
           700: '#8a5d09'
         },
         rose: {
           50: '#fff1f1',
-          600: '#c43d4b'
+          200: '#f5c2c7',
+          600: '#c43d4b',
+          700: '#a3303d'
         }
       },
       boxShadow: {
