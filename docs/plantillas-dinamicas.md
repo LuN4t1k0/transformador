@@ -49,7 +49,11 @@ El transformador recibe un Excel, identifica la hoja y sus encabezados, y genera
       { type: 'EMPTY' } |
       { type: 'CONCAT', parts: [{ type: 'COLUMN', column } | { type: 'CONSTANT', value }], separator } |
       { type: 'SPLIT_WORD', column, index } |
-      { type: 'SPLIT_WORD_RANGE', column, start, end? },
+      { type: 'SPLIT_WORD_RANGE', column, start, end? } |
+      { type: 'CALC', op: 'PERCENT' | 'SUM' | 'SUBTRACT' | 'MULTIPLY' | 'DIVIDE' | 'AVERAGE',
+        value?,                                        // porcentaje, solo en PERCENT (ej. 10 o 1.44)
+        operands: [{ type: 'COLUMN', column } | { type: 'OUTPUT', columnId } | { type: 'NUMBER', value }],
+        round: { mode: 'ROUND' | 'FLOOR' | 'CEIL' | 'NONE', decimals } },
     transformations: [
       { type: 'RUT_FORMAT', format: 'NO_DOTS_NO_DASH' | 'NO_DOTS_DASH' | 'DOTS_DASH' | 'BODY' | 'DV' },
       { type: 'DATE_FORMAT', inputFormat: 'AUTO' | …, outputFormat: 'DD/MM/YYYY' | … },
@@ -61,6 +65,8 @@ El transformador recibe un Excel, identifica la hoja y sus encabezados, y genera
   }]
 }
 ```
+
+Cálculos: sin fórmulas libres, solo esas operaciones. `OUTPUT` referencia a una columna anterior de la misma plantilla (sin ciclos); el motor evalúa primero los orígenes simples y luego los cálculos en orden. Operandos no numéricos generan `INVALID_NUMBER` y la división por cero `DIVISION_BY_ZERO`.
 
 Reglas: `outputName` único; como máximo 200 columnas; `id` único; el orden del arreglo define la posición. `VALID_RUT` valida el RUT de origen, aunque la salida conserve solo el número o el dígito verificador. En ancho fijo, un valor más largo que `length` es un error de validación (`TOO_LONG`), no se trunca.
 
@@ -92,7 +98,7 @@ Estados por columna: `OK`; `REQUIERE_CONFIRMACION` (separar por palabras, o una 
 
 `/templates/new` ofrece tres caminos:
 
-1. **Desde un ejemplo** (`POST /templates/draft`, multipart `input` y/o `output`): con el Excel que se recibe y un ejemplo del archivo que pide el destino (mismas filas), `template-engine/src/infer.js` deduce por cada columna de salida el formato (RUT, fecha, número, mayúsculas, valor fijo) y el origen que reproduce el ejemplo fila a fila (columna, palabra N o desde la palabra N), con al menos 80% de coincidencia. Lo que no se puede deducir queda vacío y se informa. Con solo el Excel de origen, parte con una columna por encabezado; con solo el ejemplo de destino, usa sus nombres. Los archivos se borran al terminar; las filas de muestra solo vuelven al navegador para la vista previa.
+1. **Desde un ejemplo** (`POST /templates/draft`, multipart `input` y/o `output`): con el Excel que se recibe y un ejemplo del archivo que pide el destino (mismas filas), `template-engine/src/infer.js` deduce por cada columna de salida el formato (RUT, fecha, número, mayúsculas, valor fijo) y el origen que reproduce el ejemplo fila a fila (columna, palabra N o desde la palabra N), con al menos 80% de coincidencia. Si las filas no corresponden a las mismas personas, se alinean por RUT; si no hay RUT en común, se sugiere el origen por nombres de columna parecidos (abreviaturas y sinónimos) con formato compatible. Las columnas numéricas del ejemplo de destino se prueban como cálculos entre sí (suma de dos columnas o porcentaje constante de otra, con tolerancia ±1 por redondeo); si la relación se cumple en todas las filas se aplica, y si se cumple en al menos 85% se sugiere indicando las excepciones. Lo que no se puede deducir queda vacío y se informa; cada columna se puede asignar a mano desde su fila. Con solo el Excel de origen, parte con una columna por encabezado; con solo el ejemplo de destino, usa sus nombres. Los archivos se borran al terminar; las filas de muestra solo vuelven al navegador para la vista previa.
 2. **A partir de otra plantilla** (`/templates/new?from=<id>`): copia la versión vigente para modificarla y guardarla como plantilla nueva; la original no cambia.
 3. **Desde cero.**
 

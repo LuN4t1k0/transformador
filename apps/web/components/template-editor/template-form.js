@@ -134,7 +134,12 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
           {report.alignment === 'NONE' && report.mode === 'BY_EXAMPLE' ? (
             <p className="mt-0.5">Los ejemplos no tienen personas (RUT) en común, así que no pudimos comparar fila a fila. Si tienes un Excel de origen con algunas de esas personas, úsalo para deducir con más precisión.</p>
           ) : null}
-          {report.suggested?.length ? <p className="mt-0.5"><span className="font-medium">Revisa las sugeridas:</span> {report.suggested.join(', ')}.</p> : null}
+          {report.suggested?.length ? (
+            <p className="mt-0.5">
+              <span className="font-medium">Revisa las sugeridas:</span>{' '}
+              {report.suggested.map((name) => (report.byName?.[name]?.exceptions ? `${name} (cálculo que no calza en ${report.byName[name].exceptions} ${report.byName[name].exceptions === 1 ? 'fila' : 'filas'} del ejemplo)` : name)).join(', ')}.
+            </p>
+          ) : null}
           {report.unresolved.length ? <p className="mt-0.5"><span className="font-medium">Define el origen de:</span> {report.unresolved.join(', ')}. Si son cálculos (sumas, porcentajes), por ahora se completan a mano o quedan vacías.</p> : null}
           {report.ignored?.length ? <p className="mt-0.5 text-ink-500">Ignoramos del ejemplo: {report.ignored.join(', ')} (columnas ocultas o vacías).</p> : null}
         </Notice>

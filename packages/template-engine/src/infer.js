@@ -1,6 +1,7 @@
 const { transformRow } = require('./engine');
 const { createTemplateFromHeaders, findHeader, normalizeHeader } = require('./mapping');
 const { isValidRut } = require('../../transformations/src/rut');
+const { parseNumber } = require('../../transformations/src/number');
 
 // Learns a template by example: given rows of the file users receive (input) and rows of the file the
 // destination expects (output), finds for every output column the source and format that reproduce it.
@@ -230,6 +231,71 @@ function slug(value, index) {
   return `${normalizeHeader(value).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'columna'}_${index + 1}`;
 }
 
+function numericSeries(values) {
+  if (values.length < 3) return null;
+  const numbers = values.map((value) => (typeof value === 'number' ? value : isBlank(value) ? null : parseNumber(value)));
+  return numbers.every((number) => number !== null && Number.isFinite(number)) ? numbers : null;
+}
+
+function decimalsOf(numbers) {
+  return Math.max(0, ...numbers.map((number) => (String(number).split('.')[1] || '').length));
+}
+
+const MIN_CALC_FIT = 0.85;
+
+// Relations between columns of the destination example: X = A + B, or X = p% of A (rounded, ±1 tolerance).
+// Returns { source, fit } where fit is the share of rows that match (exceptions such as zeros are tolerated).
+function detectCalculation(targetIndex, series, columns, confident) {
+  const target = series[targetIndex];
+  const decimals = decimalsOf(target);
+  const tolerance = decimals ? 1 / 10 ** decimals : 1;
+  const round = { mode: 'ROUND', decimals };
+  const rounded = (value) => Math.round(value * 10 ** decimals) / 10 ** decimals;
+  const fits = (predict, row) => Math.abs(predict(row) - target[row]) <= tolerance;
+  const fitOf = (predict) => target.filter((_, row) => fits(predict, row)).length / target.length;
+
+  // Operands must come earlier in the file, or be later columns confidently read from the input file.
+  const operand = (index) => {
+    if (index < targetIndex) return { type: 'OUTPUT', columnId: columns[index].id };
+    return columns[index].source.type === 'COLUMN' && confident(columns[index]) ? { type: 'COLUMN', column: columns[index].source.column } : null;
+  };
+  // Constant columns are not evidence of a relation: any similar number would "fit" them.
+  const varies = (values) => new Set(values).size > 1;
+  if (!varies(target)) return null;
+  const candidates = series
+    .map((values, index) => ({ values, index }))
+    .filter((item) => item.values && item.index !== targetIndex && varies(item.values) && operand(item.index));
+
+  let best = null;
+  const consider = (fit, error, source) => {
+    if (fit < MIN_CALC_FIT) return;
+    if (!best || fit > best.fit || (fit === best.fit && error < best.error)) best = { fit, error, source };
+  };
+
+  for (let a = 0; a < candidates.length; a += 1) {
+    for (let b = a + 1; b < candidates.length; b += 1) {
+      const [first, second] = [candidates[a], candidates[b]];
+      const fit = fitOf((row) => first.values[row] + second.values[row]);
+      // Sums are preferred over percentages with the same fit (error 0 ranks first).
+      consider(fit, -1, { type: 'CALC', op: 'SUM', operands: [operand(first.index), operand(second.index)], round });
+    }
+  }
+
+  for (const candidate of candidates) {
+    const ratios = target.map((value, row) => (candidate.values[row] && value ? value / candidate.values[row] : null)).filter((ratio) => ratio !== null);
+    if (ratios.length < 3) continue;
+    const median = [...ratios].sort((x, y) => x - y)[Math.floor(ratios.length / 2)];
+    const percent = Number((median * 100).toFixed(2));
+    if (!percent || percent === 100 || Math.abs(percent) > 1000) continue;
+    const predict = (row) => rounded((candidate.values[row] * percent) / 100);
+    const fit = fitOf(predict);
+    // Error only over matching rows: exceptions (e.g. zeros) must not decide between candidates.
+    const error = target.reduce((sum, value, row) => (fits(predict, row) ? sum + Math.abs((candidate.values[row] * percent) / 100 - value) : sum), 0);
+    consider(fit, error, { type: 'CALC', op: 'PERCENT', value: percent, operands: [operand(candidate.index)], round });
+  }
+  return best;
+}
+
 function inferTemplate({ input = null, output = null, sheet } = {}) {
   if (!output) {
     const template = createTemplateFromHeaders(input?.headers || [], { sheet: sheet || input?.sheet });
@@ -319,6 +385,28 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
 
     report.unresolved.push(outputName);
     return column;
+  });
+
+  // Unresolved numeric columns may be calculations over other columns of the example (e.g. TOTAL = 10% + ADICIONAL).
+  const series = names.map((outputName, index) => numericSeries(outputRows.map((row) => row.values[output.headers[index]] ?? row.values[outputName] ?? null)));
+  // A relation that holds on every row beats a similar-name guess; partial fits are offered as suggestions.
+  columns.forEach((column, index) => {
+    const method = report.byName[column.outputName]?.method;
+    const replaceable = column.source.type === 'EMPTY' || method === 'SIMILAR_NAME';
+    if (!replaceable || !series[index]) return;
+    const found = detectCalculation(index, series, columns, (other) => ['NAME', 'EXAMPLE'].includes(report.byName[other.outputName]?.method));
+    if (!found || (method === 'SIMILAR_NAME' && found.fit < 1)) return;
+
+    columns[index] = { ...column, source: found.source, transformations: [], validations: [], reviewed: found.fit === 1 };
+    report.unresolved = report.unresolved.filter((name) => name !== column.outputName);
+    report.suggested = report.suggested.filter((name) => name !== column.outputName);
+    if (found.fit === 1) {
+      report.learned += 1;
+      report.byName[column.outputName] = { method: 'CALC' };
+    } else {
+      report.suggested.push(column.outputName);
+      report.byName[column.outputName] = { method: 'CALC', fit: found.fit, exceptions: Math.round((1 - found.fit) * series[index].length) };
+    }
   });
 
   const template = {

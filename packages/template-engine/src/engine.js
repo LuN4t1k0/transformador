@@ -1,3 +1,4 @@
+const { parseNumber } = require('../../transformations/src/number');
 const {
   formatRut,
   isValidRut,
@@ -66,13 +67,72 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
+const ROUNDERS = { ROUND: Math.round, FLOOR: Math.floor, CEIL: Math.ceil };
+
+// Evaluates a CALC source. Returns { value } or { issue } with a user-facing code.
+function evaluateCalc(row, source, outputsById) {
+  const values = [];
+  for (const operand of source.operands) {
+    if (operand.type === 'NUMBER') {
+      values.push(operand.value);
+      continue;
+    }
+    const raw = operand.type === 'COLUMN' ? row[operand.column] : outputsById.get(operand.columnId);
+    if (raw === null || raw === undefined || String(raw).trim() === '') {
+      values.push(null);
+      continue;
+    }
+    const number = typeof raw === 'number' ? raw : parseNumber(raw);
+    if (number === null) return { issue: { code: 'INVALID_NUMBER', message: 'Value is not a recognizable number' } };
+    values.push(number);
+  }
+
+  const present = values.filter((value) => value !== null);
+  let result = null;
+  if (source.op === 'PERCENT') result = present.length ? (present[0] * source.value) / 100 : null;
+  if (source.op === 'SUM') result = present.length ? present.reduce((sum, value) => sum + value, 0) : null;
+  if (source.op === 'AVERAGE') result = present.length ? present.reduce((sum, value) => sum + value, 0) / present.length : null;
+  if (['SUBTRACT', 'MULTIPLY', 'DIVIDE'].includes(source.op)) {
+    if (values.some((value) => value === null)) return { value: null };
+    if (source.op === 'SUBTRACT') result = values.slice(1).reduce((total, value) => total - value, values[0]);
+    if (source.op === 'MULTIPLY') result = values.reduce((total, value) => total * value, 1);
+    if (source.op === 'DIVIDE') {
+      if (values.slice(1).some((value) => value === 0)) return { issue: { code: 'DIVISION_BY_ZERO', message: 'Division by zero' } };
+      result = values.slice(1).reduce((total, value) => total / value, values[0]);
+    }
+  }
+  if (result === null) return { value: null };
+
+  const { mode = 'ROUND', decimals = 0 } = source.round || {};
+  if (mode !== 'NONE') {
+    const factor = 10 ** decimals;
+    result = ROUNDERS[mode](Number((result * factor).toPrecision(15))) / factor;
+  }
+  return { value: result };
+}
+
 function transformRow(row, template) {
   const output = {};
+  const outputsById = new Map();
   const issues = [];
   const columns = [...template.columns].sort((a, b) => a.position - b.position);
+  // Plain sources first, then calculations in column order, so calculations can use any earlier column.
+  const ordered = [...columns.filter((column) => column.source?.type !== 'CALC'), ...columns.filter((column) => column.source?.type === 'CALC')];
 
-  for (const column of columns) {
-    const sourceValue = resolveSource(row, column.source);
+  for (const column of ordered) {
+    let sourceValue;
+    if (column.source?.type === 'CALC') {
+      const calc = evaluateCalc(row, column.source, outputsById);
+      if (calc.issue) {
+        issues.push({ column: column.outputName, rule: 'CALC', severity: 'error', ...calc.issue });
+        output[column.outputName] = null;
+        outputsById.set(column.id, null);
+        continue;
+      }
+      sourceValue = calc.value;
+    } else {
+      sourceValue = resolveSource(row, column.source);
+    }
     let value = sourceValue;
 
     // A conversion that turns a present value into nothing is a data problem, never a silent blank.
@@ -99,9 +159,12 @@ function transformRow(row, template) {
     }
 
     output[column.outputName] = value;
+    outputsById.set(column.id, value);
   }
 
-  return { output, issues };
+  // Keep the output in file column order.
+  const ordered_output = Object.fromEntries(columns.map((column) => [column.outputName, output[column.outputName]]));
+  return { output: ordered_output, issues };
 }
 
 module.exports = {

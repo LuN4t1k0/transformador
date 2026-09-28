@@ -15,6 +15,8 @@ const LINE_ENDINGS = ['CRLF', 'LF'];
 const RUT_FORMATS = ['NO_DOTS_NO_DASH', 'NO_DOTS_DASH', 'DOTS_DASH', 'BODY', 'DV'];
 const TEXT_OPERATIONS = ['TRIM', 'UPPERCASE', 'LOWERCASE', 'NORMALIZE_SPACES', 'REMOVE_ACCENTS'];
 const VALIDATIONS = ['VALID_RUT', 'INTEGER'];
+const CALC_OPERATIONS = ['PERCENT', 'SUM', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'AVERAGE'];
+const ROUND_MODES = ['ROUND', 'FLOOR', 'CEIL', 'NONE'];
 
 class TemplateValidationError extends Error {
   constructor(message) {
@@ -79,6 +81,42 @@ function normalizeSeparator(separator, label) {
   return separator;
 }
 
+function finiteNumber(value, label) {
+  const number = typeof value === 'string' ? Number(value.trim().replace(',', '.')) : value;
+  if (typeof number !== 'number' || !Number.isFinite(number)) fail(`${label} debe ser un número.`);
+  return number;
+}
+
+// Arithmetic without expressions: a whitelisted operation over columns, earlier output columns and numbers.
+function normalizeCalc(source, label) {
+  const op = oneOf(source.op, CALC_OPERATIONS, `${label}: la operación de cálculo no es válida.`);
+  if (!Array.isArray(source.operands) || source.operands.length > 10) fail(`${label}: el cálculo debe tener entre 1 y 10 valores.`);
+  const operands = source.operands.map((operand) => {
+    if (operand?.type === 'COLUMN') return { type: 'COLUMN', column: normalizeSourceColumn(operand.column, label) };
+    if (operand?.type === 'OUTPUT') return { type: 'OUTPUT', columnId: text(operand.columnId, `la columna usada en ${label}`, { required: true, max: 64 }) };
+    if (operand?.type === 'NUMBER') return { type: 'NUMBER', value: finiteNumber(operand.value, `Un número de ${label}`) };
+    return fail(`${label}: cada operando debe ser una columna o un número.`);
+  });
+  if (op === 'PERCENT' && operands.length !== 1) fail(`${label}: el porcentaje se calcula sobre un solo valor.`);
+  if (op !== 'PERCENT' && operands.length < 2) fail(`${label}: la operación necesita al menos 2 valores.`);
+
+  const round = source.round || {};
+  const calc = {
+    type: 'CALC',
+    op,
+    operands,
+    round: {
+      mode: oneOf(round.mode || 'ROUND', ROUND_MODES, `${label}: el redondeo no es válido.`),
+      ...(round.mode === 'NONE' ? {} : { decimals: round.decimals === undefined ? 0 : integer(round.decimals, `${label}: los decimales`, { max: 6 }) })
+    }
+  };
+  if (op === 'PERCENT') {
+    if (source.value === undefined || source.value === null || source.value === '') fail(`${label}: falta el porcentaje.`);
+    calc.value = finiteNumber(source.value, `El porcentaje de ${label}`);
+  }
+  return calc;
+}
+
 function normalizeSource(source, label) {
   const type = source?.type;
   if (type === 'EMPTY') return { type };
@@ -90,6 +128,7 @@ function normalizeSource(source, label) {
     if (source.end !== undefined && source.end !== null) range.end = integer(source.end, `La palabra final de ${label}`);
     return range;
   }
+  if (type === 'CALC') return normalizeCalc(source, label);
   if (type === 'CONCAT') {
     if (!Array.isArray(source.parts) || source.parts.length === 0 || source.parts.length > 10) fail(`${label}: unir requiere entre 1 y 10 partes.`);
     return {
@@ -178,6 +217,17 @@ function validateTemplateConfig(config) {
     return normalized;
   });
 
+  // Calculations may only use columns that come before them, so there are no cycles.
+  normalizedColumns.forEach((column, index) => {
+    if (column.source.type !== 'CALC') return;
+    const earlier = new Set(normalizedColumns.slice(0, index).map((other) => other.id));
+    for (const operand of column.source.operands) {
+      if (operand.type === 'OUTPUT' && !earlier.has(operand.columnId)) {
+        fail(`«${column.outputName}» solo puede usar columnas anteriores a ella en el archivo.`);
+      }
+    }
+  });
+
   const inputSheet = text(config.input?.sheet, 'la hoja sugerida', { max: 100 });
   return {
     name: text(config.name, 'el nombre de la plantilla', { required: true, max: 120 }),
@@ -212,5 +262,6 @@ module.exports = {
   RUT_FORMATS,
   TEXT_OPERATIONS,
   VALIDATIONS,
+  CALC_OPERATIONS,
   MAX_COLUMNS
 };

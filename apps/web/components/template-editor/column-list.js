@@ -7,6 +7,7 @@ import { createColumn, duplicateColumn, formatCell, isRutColumn, moveColumn } fr
 import { describeIssue, describeSource, describeTransformations } from '../../lib/templates';
 import { StatusPill } from '../status-pill';
 import { FormatEditor } from './format-editor';
+import { defaultCalc } from './calc-editor';
 import { inputClass, SourceEditor } from './source-editor';
 
 const iconButton = 'flex h-8 w-8 items-center justify-center rounded-md text-ink-500 hover:bg-ink-100 hover:text-ink-900 disabled:opacity-30 disabled:hover:bg-transparent';
@@ -16,6 +17,7 @@ function sourceSample(values, source) {
   if (source.type === 'COLUMN' || source.type.startsWith('SPLIT')) return values[source.column];
   if (source.type === 'CONSTANT') return source.value;
   if (source.type === 'CONCAT') return source.parts.map((part) => (part.type === 'COLUMN' ? formatCell(values[part.column]) : part.value)).filter(Boolean).join(source.separator);
+  if (source.type === 'CALC') return 'calculado';
   return null;
 }
 
@@ -73,10 +75,10 @@ function FixedWidthEditor({ idPrefix, column, onChange }) {
 }
 
 // Direct mapping from the row: pick the file column (or leave empty / use a fixed value) without opening the editor.
-function InlineSourceSelect({ column, headers, onChange, onExpand }) {
+function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }) {
   const { source } = column;
   if (!['COLUMN', 'EMPTY'].includes(source.type)) {
-    return <span className="block truncate text-xs text-ink-700" title={describeSource(source)}>{describeSource(source)}</span>;
+    return <span className="block truncate text-xs text-ink-700" title={describeSource(source, outputNames)}>{describeSource(source, outputNames)}</span>;
   }
   const value = source.type === 'COLUMN' ? source.column : '';
   const isMissing = value && !headers.includes(value);
@@ -93,6 +95,9 @@ function InlineSourceSelect({ column, headers, onChange, onExpand }) {
           onExpand();
         } else if (choice === '__empty') {
           onChange({ ...column, source: { type: 'EMPTY' }, reviewed: false }, { sourceChanged: true });
+        } else if (choice === '__calc') {
+          onChange({ ...column, source: defaultCalc(headers[0]), transformations: [], reviewed: false }, { sourceChanged: true });
+          onExpand();
         } else if (choice === '__more') {
           onExpand();
         } else if (choice) {
@@ -107,6 +112,7 @@ function InlineSourceSelect({ column, headers, onChange, onExpand }) {
       </optgroup>
       <optgroup label="Otras opciones">
         <option value="__constant">Valor fijo…</option>
+        <option value="__calc">Cálculo (%, suma, resta…)…</option>
         <option value="__more">Unir o separar columnas…</option>
         {source.type !== 'EMPTY' ? <option value="__empty">Dejar vacía</option> : null}
       </optgroup>
@@ -115,7 +121,7 @@ function InlineSourceSelect({ column, headers, onChange, onExpand }) {
 }
 
 // One-line summary of a column; expands into the full editor.
-function CompactRow({ column, index, row, sample, headers, flag, onToggle, onConfirm, onChange, onExpand, onFlagResolve }) {
+function CompactRow({ column, index, row, sample, headers, outputNames, flag, onToggle, onConfirm, onChange, onExpand, onFlagResolve }) {
   const status = row?.status;
   const mask = (value) => (isRutColumn(column) && value ? maskRut(formatCell(value)) : formatCell(value));
   const output = sample ? mask(sample.result.output[column.outputName]) : '';
@@ -127,16 +133,16 @@ function CompactRow({ column, index, row, sample, headers, flag, onToggle, onCon
       <span className="text-right text-xs tabular-nums text-ink-400">{index + 1}</span>
       <span className="min-w-0">
         <span className="block break-words text-sm font-medium text-ink-900 sm:truncate">{column.outputName}{column.required ? <span className="ml-1 text-ink-400" title="Obligatoria">*</span> : null}</span>
-        {headers ? null : <span className="block truncate text-xs text-ink-500 sm:hidden">{describeSource(column.source)}</span>}
+        {headers ? null : <span className="block truncate text-xs text-ink-500 sm:hidden">{describeSource(column.source, outputNames)}</span>}
       </span>
       {headers ? (
         <span className="order-last col-span-full min-w-0 pl-10 sm:order-none sm:col-span-1 sm:pl-0">
-          <InlineSourceSelect column={column} headers={headers} onChange={onChange} onExpand={onExpand} />
+          <InlineSourceSelect column={column} headers={headers} outputNames={outputNames} onChange={onChange} onExpand={onExpand} />
           {describeTransformations(column).length ? <span className="mt-0.5 block truncate text-[11px] text-ink-500">{describeTransformations(column).join(' · ')}</span> : null}
         </span>
       ) : (
-        <span className="hidden min-w-0 truncate text-xs text-ink-500 sm:block" title={[describeSource(column.source), ...describeTransformations(column)].join(' · ')}>
-          {describeSource(column.source)}{describeTransformations(column).length ? ` · ${describeTransformations(column).join(' · ')}` : ''}
+        <span className="hidden min-w-0 truncate text-xs text-ink-500 sm:block" title={[describeSource(column.source, outputNames), ...describeTransformations(column)].join(' · ')}>
+          {describeSource(column.source, outputNames)}{describeTransformations(column).length ? ` · ${describeTransformations(column).join(' · ')}` : ''}
         </span>
       )}
       <span className={`hidden min-w-0 truncate font-mono text-xs sm:block ${hasError ? 'text-rose-700' : 'text-ink-900'}`}>{output || <span className="text-ink-300">—</span>}</span>
@@ -164,7 +170,7 @@ function CompactRow({ column, index, row, sample, headers, flag, onToggle, onCon
   );
 }
 
-function ColumnCard({ column, index, total, row, sample, headers, suggestions, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onRemove, onConfirm }) {
+function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onRemove, onConfirm }) {
   const idPrefix = `column-${column.id}`;
   const status = row?.status;
   const tone = status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : status === 'REQUIERE_CONFIRMACION' ? 'border-amber-200 bg-amber-50/40' : 'border-ink-200 bg-white';
@@ -183,7 +189,7 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, i
             onChange={(event) => onChange({ ...column, outputName: event.target.value })}
           />
           <p className="px-2 text-xs text-ink-500">
-            {describeSource(column.source)}
+            {describeSource(column.source, outputNames)}
             {formats.length ? ` · ${formats.join(' · ')}` : ''}
             {isFixedWidth && column.fixedWidth ? ` · ${column.fixedWidth.length} caracteres` : ''}
           </p>
@@ -220,8 +226,10 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, i
 
       {isExpanded ? (
         <div className="space-y-4 border-t border-ink-100 bg-white px-3 py-4 sm:pl-11">
-          <SourceEditor idPrefix={idPrefix} source={column.source} headers={headers} suggestions={suggestions} onChange={(source) => onChange({ ...column, source, reviewed: false }, { sourceChanged: true })} />
-          <FormatEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} />
+          <SourceEditor idPrefix={idPrefix} source={column.source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(source) => onChange({ ...column, source, reviewed: false }, { sourceChanged: true })} />
+          {column.source.type === 'CALC'
+            ? <p className="text-xs text-ink-500">El resultado de un cálculo es un número; el redondeo se define arriba.</p>
+            : <FormatEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} />}
           {isFixedWidth ? <FixedWidthEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} /> : null}
         </div>
       ) : null}
@@ -235,6 +243,7 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
   const [expandedId, setExpandedId] = useState(null);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [compact, setCompact] = useState(columns.length > 8);
+  const outputNames = new Map(columns.map((column) => [column.id, column.outputName]));
   const pendingIds = (evaluation?.rows || []).filter((row) => row.status === 'REQUIERE_CONFIRMACION').map((row) => row.column.id);
   const rowsById = new Map((evaluation?.rows || []).map((row) => [row.column.id, row]));
   const flaggedOk = columns.filter((column) => flagged.has(column.id) && (rowsById.get(column.id)?.status || 'OK') === 'OK').map((column) => column.id);
@@ -304,6 +313,7 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
                 row={row}
                 sample={sample}
                 headers={headers}
+                outputNames={outputNames}
                 flag={flagged.get(column.id)}
                 onConfirm={onConfirm}
                 onToggle={() => setExpandedId(column.id)}
@@ -323,6 +333,8 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
               sample={sample}
               headers={headers}
               suggestions={suggestions}
+              outputColumns={columns.slice(0, index)}
+              outputNames={outputNames}
               isFixedWidth={isFixedWidth}
               isExpanded={expandedId === column.id}
               onToggle={() => setExpandedId(expandedId === column.id ? null : column.id)}

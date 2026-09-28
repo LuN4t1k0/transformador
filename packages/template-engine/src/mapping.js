@@ -30,6 +30,7 @@ function findHeader(name, headers, aliases = []) {
 function sourceColumns(source) {
   if (SINGLE_COLUMN_TYPES.has(source?.type)) return [source.column];
   if (source?.type === 'CONCAT') return source.parts.filter((part) => part.type === 'COLUMN').map((part) => part.column);
+  if (source?.type === 'CALC') return source.operands.filter((operand) => operand.type === 'COLUMN').map((operand) => operand.column);
   return [];
 }
 
@@ -43,6 +44,12 @@ function resolveSource(source, headers, aliases) {
     return {
       ...source,
       parts: source.parts.map((part) => (part.type === 'COLUMN' ? { ...part, column: findHeader(part.column, headers) || part.column } : part))
+    };
+  }
+  if (source.type === 'CALC') {
+    return {
+      ...source,
+      operands: source.operands.map((operand) => (operand.type === 'COLUMN' ? { ...operand, column: findHeader(operand.column, headers) || operand.column } : operand))
     };
   }
   return source;

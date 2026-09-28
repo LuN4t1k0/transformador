@@ -31,11 +31,28 @@ export function describeTransformations(column) {
   return labels;
 }
 
-export function describeSource(source) {
+const CALC_SYMBOLS = { SUM: ' + ', SUBTRACT: ' − ', MULTIPLY: ' × ', DIVIDE: ' ÷ ' };
+
+function describeOperand(operand, outputNames) {
+  if (operand.type === 'NUMBER') return String(operand.value).replace('.', ',');
+  if (operand.type === 'OUTPUT') return `«${outputNames?.get(operand.columnId) || 'columna anterior'}»`;
+  return `«${operand.column}»`;
+}
+
+// `outputNames` (Map id → name) resolves references to other columns of the template.
+function describeCalc(source, outputNames) {
+  const operands = source.operands.map((operand) => describeOperand(operand, outputNames));
+  if (source.op === 'PERCENT') return `${String(source.value).replace('.', ',')}% de ${operands[0]}`;
+  if (source.op === 'AVERAGE') return `Promedio de ${operands.join(', ')}`;
+  return `= ${operands.join(CALC_SYMBOLS[source.op])}`;
+}
+
+export function describeSource(source, outputNames) {
   if (source.type === 'COLUMN') return `Columna «${source.column}»`;
   if (source.type === 'SPLIT_WORD') return `Palabra ${source.index + 1} de «${source.column}»`;
   if (source.type === 'SPLIT_WORD_RANGE') return `Desde la palabra ${source.start + 1} de «${source.column}»`;
   if (source.type === 'CONSTANT') return `Valor fijo «${source.value}»`;
+  if (source.type === 'CALC') return describeCalc(source, outputNames);
   if (source.type === 'CONCAT') {
     return `Unir ${source.parts.map((part) => (part.type === 'COLUMN' ? `«${part.column}»` : `"${part.value}"`)).join(' + ')}`;
   }

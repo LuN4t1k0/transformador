@@ -1,6 +1,7 @@
 'use client';
 
 import { Plus, X } from 'lucide-react';
+import { CalcEditor, defaultCalc } from './calc-editor';
 
 export const inputClass = 'h-9 w-full min-w-0 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900';
 const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
@@ -9,6 +10,7 @@ const SOURCE_TYPES = [
   { value: 'COLUMN', label: 'Columna del archivo' },
   { value: 'SPLIT', label: 'Separar por palabras' },
   { value: 'CONCAT', label: 'Unir varias columnas' },
+  { value: 'CALC', label: 'Cálculo (%, suma, resta…)' },
   { value: 'CONSTANT', label: 'Valor fijo' },
   { value: 'EMPTY', label: 'Vacía' }
 ];
@@ -47,10 +49,25 @@ function convertSource(source, type) {
   if (type === 'SPLIT') return { type: 'SPLIT_WORD', column, index: 0 };
   if (type === 'CONCAT') return { type: 'CONCAT', separator: ' ', parts: [{ type: 'COLUMN', column }] };
   if (type === 'CONSTANT') return { type: 'CONSTANT', value: '' };
+  if (type === 'CALC') return defaultCalc(column);
   return { type: 'EMPTY' };
 }
 
-export function SourceEditor({ idPrefix, source, headers, suggestions, onChange }) {
+export function SourceEditor({ idPrefix, source, headers, suggestions, outputColumns = [], onChange }) {
+  if (source.type === 'CALC') {
+    return (
+      <div className="space-y-3">
+        <div className="max-w-[200px]">
+          <label className={labelClass} htmlFor={`${idPrefix}-type`}>Origen</label>
+          <select id={`${idPrefix}-type`} className={inputClass} value="CALC" onChange={(event) => onChange(convertSource(source, event.target.value))}>
+            {SOURCE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+          </select>
+        </div>
+        <CalcEditor idPrefix={idPrefix} source={source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={onChange} />
+      </div>
+    );
+  }
+
   const kind = source.type.startsWith('SPLIT') ? 'SPLIT' : source.type;
 
   return (

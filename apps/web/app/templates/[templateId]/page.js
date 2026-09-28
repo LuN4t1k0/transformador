@@ -138,7 +138,7 @@ export default function TemplateDetailPage() {
                             {column.required ? <span className="ml-2 text-xs text-ink-500">Obligatoria</span> : null}
                           </td>
                           <td className="px-4 py-2 text-ink-700">
-                            {describeSource(column.source)}
+                            {describeSource(column.source, new Map(shown.configuration.columns.map((other) => [other.id, other.outputName])))}
                             {column.aliases?.length ? <span className="block text-xs text-ink-400">También reconoce: {column.aliases.join(', ')}</span> : null}
                           </td>
                           <td className="px-4 py-2">

@@ -6,6 +6,7 @@ const ExcelJS = require('exceljs');
 function sourceHeaders(source) {
   if (['COLUMN', 'SPLIT_WORD', 'SPLIT_WORD_RANGE'].includes(source.type)) return [source.column];
   if (source.type === 'CONCAT') return source.parts.filter((part) => part.type === 'COLUMN').map((part) => part.column);
+  if (source.type === 'CALC') return source.operands.filter((operand) => operand.type === 'COLUMN').map((operand) => operand.column);
   return [];
 }
 
@@ -21,6 +22,7 @@ const DATE_EXAMPLES = {
 
 function describeExpected(column) {
   const transformation = (column.transformations || []).find((item) => ['RUT_FORMAT', 'DATE_FORMAT', 'NUMBER'].includes(item.type));
+  if (column.source.type === 'CALC') return { example: 1234567, text: 'Número (se usa en un cálculo)' };
   if (column.source.type.startsWith('SPLIT')) return { example: 'PÉREZ SOTO JUAN CARLOS', text: 'Nombre completo: apellido paterno, apellido materno y nombres, separados por espacios' };
   if (transformation?.type === 'RUT_FORMAT') return { example: '12.345.678-5', text: 'RUT con dígito verificador (con o sin puntos)' };
   if (transformation?.type === 'DATE_FORMAT') {
