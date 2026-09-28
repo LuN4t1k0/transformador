@@ -27,32 +27,37 @@ function findHeader(name, headers, aliases = []) {
   return null;
 }
 
+// File columns used by a source, wherever they appear: COLUMN operands, split sources and {Name} placeholders.
 function sourceColumns(source) {
-  if (SINGLE_COLUMN_TYPES.has(source?.type)) return [source.column];
-  if (source?.type === 'CONCAT') return source.parts.filter((part) => part.type === 'COLUMN').map((part) => part.column);
-  if (source?.type === 'CALC') return source.operands.filter((operand) => operand.type === 'COLUMN').map((operand) => operand.column);
-  return [];
+  const columns = [];
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (SINGLE_COLUMN_TYPES.has(node.type) && node.column) columns.push(node.column);
+    if (node.type === 'TEMPLATE') for (const match of node.text.matchAll(/\{(?!@)([^{}]+)\}/g)) columns.push(match[1].trim());
+    Object.values(node).forEach(visit);
+  };
+  visit(source);
+  return [...new Set(columns)];
 }
 
+// Returns the source with every file column reference matched to the actual headers. Top-level single-column
+// sources also try the column aliases; unknown names are kept so the column reports which header is missing.
 function resolveSource(source, headers, aliases) {
-  if (SINGLE_COLUMN_TYPES.has(source.type)) {
-    const match = findHeader(source.column, headers, aliases);
-    // Unknown names are kept so the column reports which header is missing.
-    return match ? { ...source, column: match } : source;
-  }
-  if (source.type === 'CONCAT') {
-    return {
-      ...source,
-      parts: source.parts.map((part) => (part.type === 'COLUMN' ? { ...part, column: findHeader(part.column, headers) || part.column } : part))
-    };
-  }
-  if (source.type === 'CALC') {
-    return {
-      ...source,
-      operands: source.operands.map((operand) => (operand.type === 'COLUMN' ? { ...operand, column: findHeader(operand.column, headers) || operand.column } : operand))
-    };
-  }
-  return source;
+  const resolveName = (name, withAliases) => findHeader(name, headers, withAliases ? aliases : []) || name;
+  const visit = (node, topLevel) => {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map((item) => visit(item, false));
+    const next = {};
+    for (const [key, value] of Object.entries(node)) next[key] = typeof value === 'object' ? visit(value, false) : value;
+    if (SINGLE_COLUMN_TYPES.has(node.type) && node.column) next.column = resolveName(node.column, topLevel);
+    if (node.type === 'TEMPLATE') next.text = node.text.replace(/\{(?!@)([^{}]+)\}/g, (_, name) => `{${resolveName(name.trim(), false)}}`);
+    return next;
+  };
+  return visit(source, true);
 }
 
 function resolveTemplateForHeaders(template, headers) {

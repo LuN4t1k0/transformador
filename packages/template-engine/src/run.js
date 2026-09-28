@@ -1,4 +1,4 @@
-const { transformRow } = require('./engine');
+const { transformRow, displayText } = require('./engine');
 
 function orderedColumns(template) {
   return [...template.columns].sort((a, b) => a.position - b.position);
@@ -49,7 +49,7 @@ function createSummaryAccumulator({ maxGroups = 100, sampleRowsPerGroup = 10 } =
 }
 
 function formatFixedWidthValue(value, { length, align = 'LEFT', padChar = ' ' }) {
-  const text = value === null || value === undefined ? '' : String(value);
+  const text = displayText(value);
   if (text.length >= length) return text.slice(0, length);
   return align === 'RIGHT' ? text.padStart(length, padChar) : text.padEnd(length, padChar);
 }
@@ -69,14 +69,15 @@ function checkFixedWidth(columns, output) {
 }
 
 // Runs the full template (sources, transformations, validations and output checks) on a row.
-function transformTemplateRow(values, template) {
-  const result = transformRow(values, template);
+// `context` carries the row index (correlatives) and the processing date.
+function transformTemplateRow(values, template, context) {
+  const result = transformRow(values, template, context);
   if (template.output?.format === 'FIXED_WIDTH') result.issues.push(...checkFixedWidth(template.columns, result.output));
   return result;
 }
 
-function runRows(rows, template) {
-  return rows.map(({ rowNumber, values }) => ({ rowNumber, ...transformTemplateRow(values, template) }));
+function runRows(rows, template, now = new Date()) {
+  return rows.map(({ rowNumber, values }, rowIndex) => ({ rowNumber, ...transformTemplateRow(values, template, { rowIndex, now }) }));
 }
 
 module.exports = { orderedColumns, createSummaryAccumulator, runRows, transformTemplateRow, checkFixedWidth, formatFixedWidthValue };

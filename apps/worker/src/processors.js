@@ -161,8 +161,9 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, templat
 
     async function* outputRows() {
       let processed = 0;
+      const now = new Date();
       for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits, headerRow: sheet.headerRow })) {
-        const { output: values, issues } = transformTemplateRow(row.values, template);
+        const { output: values, issues } = transformTemplateRow(row.values, template, { rowIndex: processed, now });
         processed += 1;
         const isValid = summary.add(row.rowNumber, issues);
         if (isValid) yield columns.map((column) => values[column.outputName] ?? null);

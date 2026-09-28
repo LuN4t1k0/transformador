@@ -13,9 +13,13 @@ const EXTENSIONS = ['csv', 'txt'];
 const ENCODINGS = ['UTF-8', 'LATIN1'];
 const LINE_ENDINGS = ['CRLF', 'LF'];
 const RUT_FORMATS = ['NO_DOTS_NO_DASH', 'NO_DOTS_DASH', 'DOTS_DASH', 'BODY', 'DV'];
-const TEXT_OPERATIONS = ['TRIM', 'UPPERCASE', 'LOWERCASE', 'NORMALIZE_SPACES', 'REMOVE_ACCENTS'];
+const TEXT_OPERATIONS = ['TRIM', 'UPPERCASE', 'LOWERCASE', 'NORMALIZE_SPACES', 'REMOVE_ACCENTS', 'TITLE_CASE', 'DIGITS_ONLY'];
 const VALIDATIONS = ['VALID_RUT', 'INTEGER'];
-const CALC_OPERATIONS = ['PERCENT', 'SUM', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'AVERAGE'];
+const CALC_OPERATIONS = ['PERCENT', 'SUM', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'AVERAGE', 'MIN', 'MAX', 'ABS'];
+const SINGLE_OPERAND_CALCS = ['PERCENT', 'ABS'];
+const CONDITION_OPERATORS = ['EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'CONTAINS', 'STARTS_WITH', 'ENDS_WITH', 'IN', 'EMPTY', 'NOT_EMPTY'];
+const DATE_OPERATIONS = { DAYS_BETWEEN: 2, ADD_DAYS: 2, ADD_MONTHS: 2, YEAR: 1, MONTH: 1, DAY: 1, START_OF_MONTH: 1, END_OF_MONTH: 1, TODAY: 0 };
+const MAX_MAP_ENTRIES = 1000;
 const ROUND_MODES = ['ROUND', 'FLOOR', 'CEIL', 'NONE'];
 
 class TemplateValidationError extends Error {
@@ -87,18 +91,30 @@ function finiteNumber(value, label) {
   return number;
 }
 
+// A value used by a function: a file column, an earlier output column, a number or a text (when allowed).
+function normalizeOperand(operand, label, { allowText = false, allowEmpty = false } = {}) {
+  if (operand?.type === 'COLUMN') return { type: 'COLUMN', column: normalizeSourceColumn(operand.column, label) };
+  if (operand?.type === 'OUTPUT') return { type: 'OUTPUT', columnId: text(operand.columnId, `la columna usada en ${label}`, { required: true, max: 64 }) };
+  if (operand?.type === 'NUMBER') return { type: 'NUMBER', value: finiteNumber(operand.value, `Un número de ${label}`) };
+  if (allowText && operand?.type === 'TEXT') return { type: 'TEXT', value: typeof operand.value === 'string' ? operand.value.slice(0, 500) : String(operand.value ?? '') };
+  if (allowEmpty && (!operand || operand.type === 'EMPTY')) return { type: 'EMPTY' };
+  return fail(`${label}: cada operando debe ser una columna${allowText ? ', un texto' : ''} o un número.`);
+}
+
+function operandList(operands, label, { min, max = 10, ...options }) {
+  if (!Array.isArray(operands) || operands.length < min || operands.length > max) {
+    fail(min > 1 && Array.isArray(operands) && operands.length < min ? `${label}: la operación necesita al menos ${min} valores.` : `${label}: la cantidad de valores no es válida.`);
+  }
+  return operands.map((operand) => normalizeOperand(operand, label, options));
+}
+
 // Arithmetic without expressions: a whitelisted operation over columns, earlier output columns and numbers.
 function normalizeCalc(source, label) {
   const op = oneOf(source.op, CALC_OPERATIONS, `${label}: la operación de cálculo no es válida.`);
   if (!Array.isArray(source.operands) || source.operands.length > 10) fail(`${label}: el cálculo debe tener entre 1 y 10 valores.`);
-  const operands = source.operands.map((operand) => {
-    if (operand?.type === 'COLUMN') return { type: 'COLUMN', column: normalizeSourceColumn(operand.column, label) };
-    if (operand?.type === 'OUTPUT') return { type: 'OUTPUT', columnId: text(operand.columnId, `la columna usada en ${label}`, { required: true, max: 64 }) };
-    if (operand?.type === 'NUMBER') return { type: 'NUMBER', value: finiteNumber(operand.value, `Un número de ${label}`) };
-    return fail(`${label}: cada operando debe ser una columna o un número.`);
-  });
-  if (op === 'PERCENT' && operands.length !== 1) fail(`${label}: el porcentaje se calcula sobre un solo valor.`);
-  if (op !== 'PERCENT' && operands.length < 2) fail(`${label}: la operación necesita al menos 2 valores.`);
+  if (op === 'PERCENT' && source.operands.length !== 1) fail(`${label}: el porcentaje se calcula sobre un solo valor.`);
+  if (op === 'ABS' && source.operands.length !== 1) fail(`${label}: el valor absoluto se calcula sobre un solo valor.`);
+  const operands = operandList(source.operands, label, { min: SINGLE_OPERAND_CALCS.includes(op) ? 1 : 2 });
 
   const round = source.round || {};
   const calc = {
@@ -117,17 +133,78 @@ function normalizeCalc(source, label) {
   return calc;
 }
 
+function normalizeCase(source, label) {
+  if (!Array.isArray(source.cases) || source.cases.length > 20) fail(`${label}: la condición debe tener hasta 20 casos.`);
+  return {
+    type: 'CASE',
+    cases: source.cases.map((branch) => {
+      if (!Array.isArray(branch?.conditions) || !branch.conditions.length || branch.conditions.length > 5) fail(`${label}: cada caso necesita entre 1 y 5 condiciones.`);
+      return {
+        match: oneOf(branch.match || 'ALL', ['ALL', 'ANY'], `${label}: el tipo de coincidencia no es válido.`),
+        conditions: branch.conditions.map((condition) => {
+          const op = oneOf(condition?.op, CONDITION_OPERATORS, `${label}: el operador de la condición no es válido.`);
+          const normalized = { left: normalizeOperand(condition.left, label, { allowText: true }), op };
+          if (!['EMPTY', 'NOT_EMPTY'].includes(op)) normalized.right = normalizeOperand(condition.right, label, { allowText: true });
+          return normalized;
+        }),
+        result: normalizeOperand(branch.result, label, { allowText: true, allowEmpty: true })
+      };
+    }),
+    otherwise: normalizeOperand(source.otherwise, label, { allowText: true, allowEmpty: true })
+  };
+}
+
+function normalizeMap(source, label) {
+  if (!Array.isArray(source.entries) || source.entries.length > MAX_MAP_ENTRIES) fail(`${label}: la tabla de equivalencias admite hasta ${MAX_MAP_ENTRIES} filas.`);
+  const otherwise = source.otherwise || { mode: 'KEEP' };
+  const mode = oneOf(otherwise.mode, ['KEEP', 'EMPTY', 'TEXT'], `${label}: la opción para valores sin equivalencia no es válida.`);
+  return {
+    type: 'MAP',
+    input: normalizeOperand(source.input, label),
+    entries: source.entries
+      .map((entry) => ({ from: String(entry?.from ?? '').slice(0, 200), to: String(entry?.to ?? '').slice(0, 500) }))
+      .filter((entry) => entry.from.trim() !== ''),
+    otherwise: mode === 'TEXT' ? { mode, value: String(otherwise.value ?? '').slice(0, 500) } : { mode },
+    ...(source.matchCase === true ? { matchCase: true } : {})
+  };
+}
+
+function normalizeDateCalc(source, label) {
+  if (!Object.hasOwn(DATE_OPERATIONS, source.op)) fail(`${label}: la operación de fecha no es válida.`);
+  const count = DATE_OPERATIONS[source.op];
+  const operands = Array.isArray(source.operands) ? source.operands : [];
+  if (operands.length !== count) fail(`${label}: la operación de fecha necesita ${count} valores.`);
+  return {
+    type: 'DATE_CALC',
+    op: source.op,
+    operands: operands.map((operand) => normalizeOperand(operand, label, { allowText: true })),
+    ...(source.op === 'DAYS_BETWEEN' && source.inclusive === true ? { inclusive: true } : {})
+  };
+}
+
 function normalizeSource(source, label) {
   const type = source?.type;
   if (type === 'EMPTY') return { type };
   if (type === 'COLUMN') return { type, column: normalizeSourceColumn(source.column, label) };
   if (type === 'CONSTANT') return { type, value: text(source.value ?? '', `el valor fijo de ${label}`) };
-  if (type === 'SPLIT_WORD') return { type, column: normalizeSourceColumn(source.column, label), index: integer(source.index, `La palabra de ${label}`) };
+  const delimiter = source.delimiter ? { delimiter: text(source.delimiter, `el separador de ${label}`, { max: 5 }) || undefined } : {};
+  if (delimiter.delimiter === undefined) delete delimiter.delimiter;
+  if (type === 'SPLIT_WORD') return { type, column: normalizeSourceColumn(source.column, label), index: integer(source.index, `La palabra de ${label}`), ...delimiter };
   if (type === 'SPLIT_WORD_RANGE') {
-    const range = { type, column: normalizeSourceColumn(source.column, label), start: integer(source.start, `La palabra inicial de ${label}`) };
+    const range = { type, column: normalizeSourceColumn(source.column, label), start: integer(source.start, `La palabra inicial de ${label}`), ...delimiter };
     if (source.end !== undefined && source.end !== null) range.end = integer(source.end, `La palabra final de ${label}`);
     return range;
   }
+  if (type === 'CASE') return normalizeCase(source, label);
+  if (type === 'MAP') return normalizeMap(source, label);
+  if (type === 'COALESCE') return { type, operands: operandList(source.operands, label, { min: 2, allowText: true }) };
+  if (type === 'TEMPLATE') {
+    const value = typeof source.text === 'string' ? source.text.slice(0, 500) : '';
+    if ((value.match(/\{[^{}]+\}/g) || []).length > 30) fail(`${label}: el texto admite hasta 30 variables.`);
+    return { type, text: value };
+  }
+  if (type === 'DATE_CALC') return normalizeDateCalc(source, label);
+  if (type === 'ROW_NUMBER') return { type, start: source.start === undefined ? 1 : integer(source.start, `El inicio del correlativo de ${label}`, { min: 0, max: 1000000000 }) };
   if (type === 'CALC') return normalizeCalc(source, label);
   if (type === 'CONCAT') {
     if (!Array.isArray(source.parts) || source.parts.length === 0 || source.parts.length > 10) fail(`${label}: unir requiere entre 1 y 10 partes.`);
@@ -155,6 +232,24 @@ function normalizeTransformation(transformation, label) {
       outputFormat: oneOf(transformation.outputFormat, DATE_OUTPUT_FORMATS, `${label}: el formato de fecha de salida no es válido.`)
     };
   }
+  if (type === 'REPLACE') {
+    if (typeof transformation.find !== 'string' || !transformation.find || transformation.find.length > 100) fail(`${label}: indica el texto a reemplazar (hasta 100 caracteres).`);
+    return { type, find: transformation.find, replace: String(transformation.replace ?? '').slice(0, 100) };
+  }
+  if (type === 'PAD') {
+    if (typeof transformation.char !== 'string' || [...transformation.char].length !== 1) fail(`${label}: el carácter de relleno debe ser uno solo.`);
+    return {
+      type,
+      length: integer(transformation.length, `${label}: el largo del relleno`, { min: 1, max: 1000 }),
+      char: transformation.char,
+      side: oneOf(transformation.side || 'LEFT', ['LEFT', 'RIGHT'], `${label}: el lado del relleno no es válido.`)
+    };
+  }
+  if (type === 'SUBSTRING') {
+    const substring = { type, start: integer(transformation.start, `${label}: la posición inicial`, { min: 1, max: 10000 }) };
+    if (transformation.length !== undefined && transformation.length !== null) substring.length = integer(transformation.length, `${label}: la cantidad de caracteres`, { min: 1, max: 10000 });
+    return substring;
+  }
   if (type === 'NUMBER') {
     const number = { type };
     if (transformation.integer === true) number.integer = true;
@@ -177,6 +272,24 @@ function normalizeFixedWidth(fixedWidth, label) {
     align: oneOf(fixedWidth.align || 'LEFT', ['LEFT', 'RIGHT'], `${label}: la alineación no es válida.`),
     padChar: oneOf(fixedWidth.padChar ?? ' ', [' ', '0'], `${label}: el relleno debe ser espacio o cero.`)
   };
+}
+
+// Output columns referenced by a source: OUTPUT operands anywhere, and {@Name} placeholders in texts.
+function outputReferences(source) {
+  const ids = [];
+  const names = [];
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (node.type === 'OUTPUT') ids.push(node.columnId);
+    if (node.type === 'TEMPLATE') for (const match of node.text.matchAll(/\{@([^{}]+)\}/g)) names.push(match[1].trim());
+    Object.values(node).forEach(visit);
+  };
+  visit(source);
+  return { ids, names };
 }
 
 function validateTemplateConfig(config) {
@@ -217,14 +330,13 @@ function validateTemplateConfig(config) {
     return normalized;
   });
 
-  // Calculations may only use columns that come before them, so there are no cycles.
+  // Functions may only use columns that come before them, so there are no cycles.
   normalizedColumns.forEach((column, index) => {
-    if (column.source.type !== 'CALC') return;
-    const earlier = new Set(normalizedColumns.slice(0, index).map((other) => other.id));
-    for (const operand of column.source.operands) {
-      if (operand.type === 'OUTPUT' && !earlier.has(operand.columnId)) {
-        fail(`«${column.outputName}» solo puede usar columnas anteriores a ella en el archivo.`);
-      }
+    const earlierIds = new Set(normalizedColumns.slice(0, index).map((other) => other.id));
+    const earlierNames = new Set(normalizedColumns.slice(0, index).map((other) => other.outputName));
+    const references = outputReferences(column.source);
+    if (references.ids.some((id) => !earlierIds.has(id)) || references.names.some((name) => !earlierNames.has(name))) {
+      fail(`«${column.outputName}» solo puede usar columnas anteriores a ella en el archivo.`);
     }
   });
 
@@ -263,5 +375,8 @@ module.exports = {
   TEXT_OPERATIONS,
   VALIDATIONS,
   CALC_OPERATIONS,
+  CONDITION_OPERATORS,
+  DATE_OPERATIONS,
+  outputReferences,
   MAX_COLUMNS
 };

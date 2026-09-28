@@ -3,12 +3,7 @@ const ExcelJS = require('exceljs');
 // Builds a sample input workbook for a template: the headers the template expects, one example row and
 // an instructions sheet. Helps users prepare files that the template recognizes on the first try.
 
-function sourceHeaders(source) {
-  if (['COLUMN', 'SPLIT_WORD', 'SPLIT_WORD_RANGE'].includes(source.type)) return [source.column];
-  if (source.type === 'CONCAT') return source.parts.filter((part) => part.type === 'COLUMN').map((part) => part.column);
-  if (source.type === 'CALC') return source.operands.filter((operand) => operand.type === 'COLUMN').map((operand) => operand.column);
-  return [];
-}
+const { sourceColumns: sourceHeaders } = require('../../template-engine/src/mapping');
 
 const DATE_EXAMPLES = {
   AUTO: '03-05-2024',
@@ -22,7 +17,8 @@ const DATE_EXAMPLES = {
 
 function describeExpected(column) {
   const transformation = (column.transformations || []).find((item) => ['RUT_FORMAT', 'DATE_FORMAT', 'NUMBER'].includes(item.type));
-  if (column.source.type === 'CALC') return { example: 1234567, text: 'Número (se usa en un cálculo)' };
+  if (['CALC', 'DATE_CALC'].includes(column.source.type)) return { example: column.source.type === 'CALC' ? 1234567 : '03-05-2024', text: 'Se usa en un cálculo' };
+  if (['CASE', 'MAP', 'COALESCE', 'TEMPLATE'].includes(column.source.type)) return { example: 'Valor de ejemplo', text: 'Se usa en una regla de la plantilla' };
   if (column.source.type.startsWith('SPLIT')) return { example: 'PÉREZ SOTO JUAN CARLOS', text: 'Nombre completo: apellido paterno, apellido materno y nombres, separados por espacios' };
   if (transformation?.type === 'RUT_FORMAT') return { example: '12.345.678-5', text: 'RUT con dígito verificador (con o sin puntos)' };
   if (transformation?.type === 'DATE_FORMAT') {

@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const { once } = require('node:events');
 const { writeWorkbook } = require('./workbook');
 const { formatFixedWidthValue } = require('../../template-engine/src/run');
+const { displayText } = require('../../template-engine/src/engine');
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -13,7 +14,7 @@ function outputFileInfo(output) {
 }
 
 function toText(value) {
-  return value === null || value === undefined ? '' : String(value);
+  return displayText(value);
 }
 
 function escapeDelimited(value, delimiter) {

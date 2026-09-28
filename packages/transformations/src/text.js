@@ -9,6 +9,10 @@ function transformText(value, operation) {
   if (operation === 'REMOVE_ACCENTS') {
     return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
+  if (operation === 'TITLE_CASE') {
+    return text.replace(/\s+/g, ' ').trim().toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, prefix, letter) => prefix + letter.toUpperCase());
+  }
+  if (operation === 'DIGITS_ONLY') return text.replace(/\D/g, '');
 
   throw new Error(`Unsupported text operation: ${operation}`);
 }
