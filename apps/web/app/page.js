@@ -158,9 +158,26 @@ function TemplateStep({ template, setTemplate }) {
   );
 }
 
+function getMissingRequiredCount(mapping) {
+  return expectedColumns.filter((column) => column.required && !mapping[column.name]).length;
+}
+
+function getCanContinue({ currentStep, fileName, template, mapping }) {
+  if (currentStep === 0) return Boolean(fileName);
+  if (currentStep === 1) return Boolean(template);
+  if (currentStep === 2) return getMissingRequiredCount(mapping) === 0;
+  return Boolean(fileName && template);
+}
+
+function getPrimaryLabel(currentStep) {
+  if (currentStep === 2) return 'Revisar y crear';
+  if (currentStep === 3) return 'Crear job';
+  return 'Continuar';
+}
+
 function MappingStep({ mapping, setMapping }) {
   const missingRequired = useMemo(() => {
-    return expectedColumns.filter((column) => column.required && !mapping[column.name]).length;
+    return getMissingRequiredCount(mapping);
   }, [mapping]);
 
   return (
@@ -205,7 +222,32 @@ function MappingStep({ mapping, setMapping }) {
   );
 }
 
-function CreateStep({ fileName, template, mapping }) {
+function WizardFooter({ currentStep, canContinue, submitted, onBack, onPrimary }) {
+  const isLastStep = currentStep === steps.length - 1;
+
+  return (
+    <div className="sticky bottom-0 mt-4 flex items-center justify-between border-t border-ink-200 bg-[#f4f6f5]/95 py-3 backdrop-blur">
+      <button
+        className="inline-flex h-10 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={currentStep === 0}
+        onClick={onBack}
+      >
+        <ArrowLeft size={16} aria-hidden="true" />
+        Volver
+      </button>
+      <button
+        className="inline-flex h-10 items-center gap-2 rounded-md bg-cobalt-600 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-ink-200"
+        disabled={!canContinue || submitted}
+        onClick={onPrimary}
+      >
+        {getPrimaryLabel(currentStep)}
+        {isLastStep ? <Check size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}
+      </button>
+    </div>
+  );
+}
+
+function CreateStep({ fileName, template, mapping, submitted }) {
   const mappedCount = Object.values(mapping).filter(Boolean).length;
 
   return (
@@ -228,13 +270,11 @@ function CreateStep({ fileName, template, mapping }) {
         </div>
       </dl>
 
-      <button
-        className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-md bg-ink-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-ink-200"
-        disabled={!fileName || !template}
-      >
-        <Check size={16} aria-hidden="true" />
-        Crear job de transformacion
-      </button>
+      {submitted ? (
+        <div className="mt-5 rounded-md border border-mint-100 bg-mint-50 px-3 py-2 text-sm font-semibold text-mint-600">
+          Job listo para conectarse al backend real.
+        </div>
+      ) : null}
     </Panel>
   );
 }
@@ -243,11 +283,21 @@ export default function HomePage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [fileName, setFileName] = useState('');
   const [template, setTemplate] = useState('planvital-pagex');
+  const [submitted, setSubmitted] = useState(false);
   const [mapping, setMapping] = useState(() => {
     return Object.fromEntries(expectedColumns.map((column) => [column.name, column.suggestion]));
   });
 
-  const canContinue = currentStep === 0 ? Boolean(fileName) : currentStep === 1 ? Boolean(template) : true;
+  const canContinue = getCanContinue({ currentStep, fileName, template, mapping });
+
+  function handlePrimaryAction() {
+    if (!canContinue) return;
+    if (currentStep === steps.length - 1) {
+      setSubmitted(true);
+      return;
+    }
+    setCurrentStep((step) => Math.min(steps.length - 1, step + 1));
+  }
 
   return (
     <Shell>
@@ -267,26 +317,15 @@ export default function HomePage() {
             {currentStep === 0 ? <FileStep fileName={fileName} setFileName={setFileName} /> : null}
             {currentStep === 1 ? <TemplateStep template={template} setTemplate={setTemplate} /> : null}
             {currentStep === 2 ? <MappingStep mapping={mapping} setMapping={setMapping} /> : null}
-            {currentStep === 3 ? <CreateStep fileName={fileName} template={template} mapping={mapping} /> : null}
+            {currentStep === 3 ? <CreateStep fileName={fileName} template={template} mapping={mapping} submitted={submitted} /> : null}
 
-            <div className="mt-4 flex items-center justify-between">
-              <button
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={currentStep === 0}
-                onClick={() => setCurrentStep((step) => Math.max(0, step - 1))}
-              >
-                <ArrowLeft size={16} aria-hidden="true" />
-                Volver
-              </button>
-              <button
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-cobalt-600 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-ink-200"
-                disabled={!canContinue || currentStep === steps.length - 1}
-                onClick={() => setCurrentStep((step) => Math.min(steps.length - 1, step + 1))}
-              >
-                Continuar
-                <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            </div>
+            <WizardFooter
+              currentStep={currentStep}
+              canContinue={canContinue}
+              submitted={submitted}
+              onBack={() => setCurrentStep((step) => Math.max(0, step - 1))}
+              onPrimary={handlePrimaryAction}
+            />
           </div>
 
           <HelpPanel currentStep={currentStep} />
