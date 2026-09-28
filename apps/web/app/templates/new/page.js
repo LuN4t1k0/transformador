@@ -66,6 +66,30 @@ function MethodChooser({ onChoose }) {
   );
 }
 
+// Shows which sheet of each example was used and lets the user pick another one (re-runs the inference).
+function ExampleSources({ examples, onChangeSheet, isBusy }) {
+  const { draft } = examples;
+  const item = (kind, label) => {
+    const info = draft[kind];
+    if (!info) return null;
+    return (
+      <label className="flex min-w-0 flex-1 basis-64 flex-col text-xs text-ink-500">
+        {label}: <span className="truncate font-medium text-ink-900">{info.fileName}</span>
+        <select className="mt-1 h-9 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900" value={info.sheet} disabled={isBusy} onChange={(event) => onChangeSheet(kind, event.target.value)}>
+          {info.sheets.map((sheet) => <option key={sheet.name} value={sheet.name}>Hoja «{sheet.name}» · {sheet.rowCount} filas · {sheet.columnCount} columnas</option>)}
+        </select>
+      </label>
+    );
+  };
+  return (
+    <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-ink-200 bg-white p-3 shadow-panel">
+      {item('input', 'Excel que recibes')}
+      {item('output', 'Ejemplo del destino')}
+      {isBusy ? <Loader2 size={18} className="mb-2 animate-spin text-cobalt-600" aria-hidden="true" /> : null}
+    </div>
+  );
+}
+
 function ExampleStep({ onDraft }) {
   const [input, setInput] = useState(null);
   const [output, setOutput] = useState(null);
@@ -83,7 +107,7 @@ function ExampleStep({ onDraft }) {
   async function submit() {
     setState({ loading: true, error: null });
     try {
-      onDraft(await api.createTemplateDraft({ input, output }));
+      onDraft(await api.createTemplateDraft({ input, output }), { input, output });
     } catch (error) {
       setState({ loading: false, error });
     }
@@ -99,7 +123,7 @@ function ExampleStep({ onDraft }) {
         </div>
         <div>
           <h3 className="mb-1 text-sm font-semibold text-ink-900">2. Ejemplo del archivo que te piden <span className="font-normal text-ink-500">(opcional)</span></h3>
-          <p className="mb-2 text-xs text-ink-500">Un archivo ya hecho en el formato del destino, con las mismas personas del Excel anterior. Con él deducimos formatos y columnas calculadas.</p>
+          <p className="mb-2 text-xs text-ink-500">Un archivo ya hecho en el formato del destino. Si incluye algunas de las mismas personas (RUT) del Excel anterior, deducimos cada columna comparando fila a fila; si no, sugerimos por nombres de columna.</p>
           <FileDropzone file={output} error={errors.output} onFile={pick('output', setOutput)} />
         </div>
       </div>
@@ -178,6 +202,32 @@ function NewTemplate() {
   const [method, setMethod] = useState(fromId ? 'from' : null);
   const [editor, setEditor] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [examples, setExamples] = useState(null);
+  const [rerunning, setRerunning] = useState(false);
+
+  function editorFromDraft(draft) {
+    return {
+      key: `example-${draft.input?.sheet}-${draft.output?.sheet}-${Date.now()}`,
+      initial: { ...draft.template, name: '' },
+      report: { ...draft.report, ignored: draft.output?.ignoredHeaders || [] },
+      note: draft.output ? `Deducida de «${draft.input?.fileName || '—'}» y del ejemplo «${draft.output.fileName}».` : `Creada desde los encabezados de «${draft.input.fileName}».`,
+      sample: draft.input ? { fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows) } : null
+    };
+  }
+
+  async function changeExampleSheet(kind, sheet) {
+    setRerunning(true);
+    try {
+      const sheets = { inputSheet: examples.draft.input?.sheet, outputSheet: examples.draft.output?.sheet, [`${kind}Sheet`]: sheet };
+      const draft = await api.createTemplateDraft({ ...examples.files, ...sheets });
+      setExamples({ ...examples, draft });
+      setEditor(editorFromDraft(draft));
+    } catch (error) {
+      setLoadError(error);
+    } finally {
+      setRerunning(false);
+    }
+  }
 
   useEffect(() => {
     if (!fromId) return;
@@ -192,17 +242,19 @@ function NewTemplate() {
   let body;
   if (loadError) body = <Notice tone="danger" icon={AlertCircle} role="alert">{loadError.message}</Notice>;
   else if (editor) {
-    body = <TemplateForm key={editor.key || 'editor'} initial={editor.initial} initialSample={editor.sample} report={editor.report} note={editor.note} submitLabel="Crear plantilla" onSubmit={save} />;
+    body = (
+      <>
+        {examples ? <ExampleSources examples={examples} isBusy={rerunning} onChangeSheet={changeExampleSheet} /> : null}
+        <TemplateForm key={editor.key || 'editor'} initial={editor.initial} initialSample={editor.sample} report={editor.report} note={editor.note} submitLabel="Crear plantilla" onSubmit={save} />
+      </>
+    );
   } else if (method === 'example') {
     body = (
       <ExampleStep
-        onDraft={(draft) => setEditor({
-          key: 'example',
-          initial: { ...draft.template, name: '' },
-          report: draft.report,
-          note: draft.output ? `Deducida de «${draft.input?.fileName || '—'}» y del ejemplo «${draft.output.fileName}».` : `Creada desde los encabezados de «${draft.input.fileName}».`,
-          sample: draft.input ? { fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows) } : null
-        })}
+        onDraft={(draft, files) => {
+          setExamples({ files, draft });
+          setEditor(editorFromDraft(draft));
+        }}
       />
     );
   } else if (method === 'from') {
@@ -224,7 +276,7 @@ function NewTemplate() {
       <div className="mb-5 mt-3 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-ink-900">Nueva plantilla</h1>
         {method || editor ? (
-          <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-cobalt-700 hover:underline" onClick={() => { setMethod(null); setEditor(null); if (fromId) router.replace('/templates/new'); }}>
+          <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-cobalt-700 hover:underline" onClick={() => { setMethod(null); setEditor(null); setExamples(null); if (fromId) router.replace('/templates/new'); }}>
             <FilePlus2 size={15} aria-hidden="true" />
             Elegir otra forma de crearla
           </button>

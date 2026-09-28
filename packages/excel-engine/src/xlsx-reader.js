@@ -151,10 +151,16 @@ async function readWorkbookMeta(zipfile, entries) {
   };
 }
 
-async function readDateStyles(zipfile, entries) {
+function isPercentFormatCode(code) {
+  return /%/.test(String(code).replace(/"[^"]*"/g, '').replace(/\\./g, ''));
+}
+
+// Returns the cellXfs indexes that display dates and percentages.
+async function readStyles(zipfile, entries) {
   const entry = entries.get('xl/styles.xml');
   const dateStyles = new Set();
-  if (!entry) return dateStyles;
+  const percentStyles = new Set();
+  if (!entry) return { dateStyles, percentStyles };
 
   const customFormats = new Map();
   let inCellXfs = false;
@@ -167,6 +173,7 @@ async function readDateStyles(zipfile, entries) {
       if (name === 'xf' && inCellXfs) {
         const id = Number(attribute(node, 'numFmtId') || 0);
         if (BUILTIN_DATE_FORMATS.has(id) || (customFormats.has(id) && isDateFormatCode(customFormats.get(id)))) dateStyles.add(xfIndex);
+        else if (id === 9 || id === 10 || (customFormats.has(id) && isPercentFormatCode(customFormats.get(id)))) percentStyles.add(xfIndex);
         xfIndex += 1;
       }
     });
@@ -174,7 +181,7 @@ async function readDateStyles(zipfile, entries) {
       if (localName(node.name) === 'cellXfs') inCellXfs = false;
     });
   });
-  return dateStyles;
+  return { dateStyles, percentStyles };
 }
 
 async function readSharedStrings(zipfile, entries) {
@@ -228,6 +235,8 @@ function cellValue(cell, context) {
 
 function sheetRowParser(context) {
   return (parser, emit) => {
+    // <cols> precedes <sheetData>: every emitted row shares the set of hidden column indexes.
+    const hiddenColumns = new Set();
     let row = null;
     let cell = null;
     let target = null;
@@ -236,9 +245,13 @@ function sheetRowParser(context) {
 
     parser.on('opentag', (node) => {
       const name = localName(node.name);
-      if (name === 'row') {
+      if (name === 'col' && ['1', 'true'].includes(attribute(node, 'hidden'))) {
+        const min = Number(attribute(node, 'min'));
+        const max = Math.min(Number(attribute(node, 'max')), min + 1000);
+        for (let column = min; column <= max; column += 1) hiddenColumns.add(column - 1);
+      } else if (name === 'row') {
         const number = Number(attribute(node, 'r')) || lastRow + 1;
-        row = { number, cells: [] };
+        row = { number, cells: [], hiddenColumns };
         lastRow = number;
         nextColumn = 0;
       } else if (name === 'c' && row) {
@@ -262,7 +275,10 @@ function sheetRowParser(context) {
       const name = localName(node.name);
       if (name === 'v' || name === 't') target = null;
       else if (name === 'c' && cell && row) {
-        row.cells[cell.column] = cellValue(cell, context);
+        const value = cellValue(cell, context);
+        row.cells[cell.column] = value;
+        // Percent cells keep their numeric value; callers that need the displayed text (headers) use this list.
+        if (typeof value === 'number' && context.percentStyles.has(cell.style)) (row.percent ||= []).push(cell.column);
         cell = null;
       } else if (name === 'row' && row) {
         emit(row);
@@ -282,8 +298,8 @@ async function openWorkbook(filePath, { maxUncompressedBytes = DEFAULT_MAX_UNCOM
       throw new XlsxFormatError('TOO_LARGE_UNCOMPRESSED', 'El archivo descomprimido es demasiado grande para procesarlo.');
     }
     const meta = await readWorkbookMeta(zipfile, entries);
-    const [dateStyles, sharedStrings] = await Promise.all([readDateStyles(zipfile, entries), readSharedStrings(zipfile, entries)]);
-    const context = { dateStyles, sharedStrings, date1904: meta.date1904 };
+    const [{ dateStyles, percentStyles }, sharedStrings] = await Promise.all([readStyles(zipfile, entries), readSharedStrings(zipfile, entries)]);
+    const context = { dateStyles, percentStyles, sharedStrings, date1904: meta.date1904 };
 
     return {
       sheets: meta.sheets.map(({ name, state }) => ({ name, state })),

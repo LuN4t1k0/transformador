@@ -131,3 +131,24 @@ test('rejects workbooks that expand beyond the uncompressed size limit', async (
   const filePath = await createFixture(dir);
   await assert.rejects(analyzeWorkbook(filePath, { limits: { ...limits, maxUncompressedBytes: 1000 } }), { code: 'TOO_LARGE_UNCOMPRESSED' });
 });
+
+test('reads percent-formatted header cells as text and picks the sheet with a real table', async () => {
+  const { pickTableSheet } = require('../packages/excel-engine/src');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'excel-engine-'));
+  const workbook = new ExcelJS.Workbook();
+  const main = workbook.addWorksheet('Capital');
+  main.addRow(['NOMBRES : EMPRESA']);
+  main.addRow([]);
+  const header = main.addRow(['RUT', 'NOMBRE', 0.1, 'TOTAL']);
+  header.getCell(3).numFmt = '0%';
+  main.addRow(['12345678-5', 'SOTO', 7039, 8053]);
+  main.addRow(['9876543-3', 'DIAZ', 8077, 9240]);
+  const scratch = workbook.addWorksheet('Hoja6');
+  for (let index = 0; index < 50; index += 1) scratch.addRow([17667962 + index, 'K']);
+  const filePath = path.join(dir, 'destino.xlsx');
+  await workbook.xlsx.writeFile(filePath);
+
+  const { sheets } = await analyzeWorkbook(filePath, { limits });
+  assert.deepEqual(sheets[0].headers, ['RUT', 'NOMBRE', '10%', 'TOTAL']);
+  assert.equal(pickTableSheet(sheets).name, 'Capital');
+});

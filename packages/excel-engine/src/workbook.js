@@ -127,8 +127,11 @@ async function* iterateSheet(workbook, sheetName, limits, requestedHeaderRow) {
     }
     if (row.number < headerRow) return;
     if (row.number === headerRow) {
-      headerInfo = buildHeaders(Array.from(row.cells));
-      yield { type: 'header', headerRow, ...headerInfo };
+      // Headers are shown as the user sees them in Excel: a 0.1 formatted as percent is "10%".
+      const percent = new Set(row.percent || []);
+      headerInfo = buildHeaders(Array.from(row.cells, (cell, index) => (percent.has(index) && typeof cell === 'number' ? `${Number((cell * 100).toFixed(4))}%` : cell)));
+      const hiddenHeaders = headerInfo.headers.filter((_, index) => row.hiddenColumns?.has(index));
+      yield { type: 'header', headerRow, hiddenHeaders, ...headerInfo };
       return;
     }
     if (!headerInfo) {
@@ -156,6 +159,15 @@ async function* iterateSheet(workbook, sheetName, limits, requestedHeaderRow) {
   if (!headerInfo) yield { type: 'header', headerRow, ...buildHeaders([]) };
 }
 
+// The sheet that holds the main table: most real text headers (not numbers, not synthetic), then most rows.
+// Scratch sheets with thousands of loose values should not win over a smaller, well-formed table.
+function pickTableSheet(sheets) {
+  const textHeaders = (sheet) => sheet.headers.filter((header) => !/^Columna [A-Z]+$/.test(header) && !/^-?[\d.,]+[%]?$/.test(header) && header.length > 1).length;
+  return [...sheets]
+    .filter((sheet) => sheet.rowCount > 0)
+    .sort((a, b) => textHeaders(b) - textHeaders(a) || b.rowCount - a.rowCount)[0] || null;
+}
+
 async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows = {} }) {
   return withWorkbook(filePath, limits, async (workbook) => {
     const sheets = [];
@@ -163,6 +175,7 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
     for (const { name, state } of workbook.sheets) {
       let headers = [];
       let warnings = [];
+      let hiddenHeaders = [];
       let headerRow = HEADER_ROW;
       let rowCount = 0;
       let lastRow = 0;
@@ -172,6 +185,7 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
       for await (const item of iterateSheet(workbook, name, limits, headerRows[name])) {
         if (item.type === 'header') {
           ({ headers, warnings, headerRow } = item);
+          hiddenHeaders = item.hiddenHeaders || [];
           columnCount = headers.length;
           continue;
         }
@@ -190,6 +204,7 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
       });
 
       if (state !== 'visible') warnings = [...warnings, { code: 'HIDDEN_SHEET', message: 'La hoja está oculta en el Excel' }];
+      if (hiddenHeaders.length) warnings = [...warnings, { code: 'HIDDEN_COLUMNS', count: hiddenHeaders.length, message: `${hiddenHeaders.length} columna(s) oculta(s) en el Excel` }];
       if (headerRow !== HEADER_ROW) warnings = [...warnings, { code: 'HEADER_NOT_FIRST_ROW', message: `Los encabezados están en la fila ${headerRow}` }];
       if (rowCount === 0) warnings = [...warnings, { code: 'EMPTY_SHEET', message: 'La hoja no tiene filas de datos' }];
 
@@ -200,6 +215,7 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
         rowCount,
         columnCount,
         headers,
+        hiddenHeaders,
         columns,
         warnings
       });
@@ -264,6 +280,7 @@ async function writeWorkbook(filePath, { sheetName, headers, rows }) {
 module.exports = {
   WorkbookLimitError,
   detectHeaderRow,
+  pickTableSheet,
   analyzeWorkbook,
   readSheetRows,
   writeWorkbook,

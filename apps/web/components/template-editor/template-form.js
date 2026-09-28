@@ -116,9 +116,18 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
       </Panel>
 
       {report?.mode === 'BY_EXAMPLE' || report?.mode === 'OUTPUT_ONLY' ? (
-        <Notice tone={report.unresolved.length ? 'warning' : 'success'} icon={Sparkles}>
-          <p className="font-semibold">Deducimos {report.learned} de {report.learned + report.unresolved.length} columnas a partir de tus ejemplos.</p>
-          {report.unresolved.length ? <p className="mt-0.5">Define el origen de: {report.unresolved.join(', ')}. Si deben ir vacías, déjalas así.</p> : <p className="mt-0.5">Revisa la vista previa y guarda.</p>}
+        <Notice tone={report.unresolved.length || report.suggested?.length ? 'warning' : 'success'} icon={Sparkles}>
+          <p className="font-semibold">
+            De {report.learned + (report.suggested?.length || 0) + report.unresolved.length} columnas: {report.learned} deducidas
+            {report.suggested?.length ? `, ${report.suggested.length} sugeridas por nombre` : ''}
+            {report.unresolved.length ? `, ${report.unresolved.length} por definir` : ''}.
+          </p>
+          {report.alignment === 'NONE' && report.mode === 'BY_EXAMPLE' ? (
+            <p className="mt-0.5">Los ejemplos no tienen personas (RUT) en común, así que no pudimos comparar fila a fila. Si tienes un Excel de origen con algunas de esas personas, úsalo para deducir con más precisión.</p>
+          ) : null}
+          {report.suggested?.length ? <p className="mt-0.5"><span className="font-medium">Revisa las sugeridas:</span> {report.suggested.join(', ')}.</p> : null}
+          {report.unresolved.length ? <p className="mt-0.5"><span className="font-medium">Define el origen de:</span> {report.unresolved.join(', ')}. Si son cálculos (sumas, porcentajes), por ahora se completan a mano o quedan vacías.</p> : null}
+          {report.ignored?.length ? <p className="mt-0.5 text-ink-500">Ignoramos del ejemplo: {report.ignored.join(', ')} (columnas ocultas o vacías).</p> : null}
         </Notice>
       ) : null}
 

@@ -1,7 +1,7 @@
 const { TemplateNameTakenError } = require('../../../../packages/shared/src/repositories');
 const { HttpError } = require('../http');
 const { buildExampleWorkbook } = require('../../../../packages/excel-engine/src/example');
-const { analyzeWorkbook, readSheetRows } = require('../../../../packages/excel-engine/src');
+const { analyzeWorkbook, pickTableSheet, readSheetRows } = require('../../../../packages/excel-engine/src');
 const { inferTemplate } = require('../../../../packages/template-engine/src/infer');
 const { receiveFiles } = require('../jobs/upload');
 
@@ -12,18 +12,32 @@ function encodeCell(value) {
   return value instanceof Date ? { $date: value.toISOString() } : value;
 }
 
-// Reads the sheet with most data rows (and its first rows) from an uploaded example.
-async function readExample(storage, upload, limits) {
+// Reads the main table of an uploaded example (or the sheet the user chose) and its first rows.
+async function readExample(storage, upload, limits, requestedSheet) {
   const filePath = storage.resolvePath(upload.key);
   const { sheets } = await analyzeWorkbook(filePath, { limits, sampleRows: 50 });
-  const sheet = [...sheets].sort((a, b) => b.rowCount - a.rowCount)[0];
-  if (!sheet || !sheet.rowCount) throw new HttpError(400, 'EMPTY_EXAMPLE', `«${upload.fileName}» no tiene filas de datos.`);
+  const sheet = sheets.find((candidate) => candidate.name === requestedSheet && candidate.rowCount > 0) || pickTableSheet(sheets);
+  if (!sheet) throw new HttpError(400, 'EMPTY_EXAMPLE', `«${upload.fileName}» no tiene filas de datos.`);
   const rows = [];
   for await (const row of readSheetRows(filePath, sheet.name, { limits, headerRow: sheet.headerRow })) {
     rows.push(row);
     if (rows.length >= DRAFT_ROWS) break;
   }
-  return { fileName: upload.fileName, sheet: sheet.name, sheets: sheets.map((candidate) => candidate.name), headers: sheet.headers, rows };
+  // In a destination example, hidden columns and unnamed, mostly empty columns are layout leftovers.
+  const present = (header) => rows.filter((row) => row.values[header] !== null && row.values[header] !== undefined && String(row.values[header]).trim() !== '').length;
+  const visibleHeaders = sheet.headers.filter((header) => !(sheet.hiddenHeaders || []).includes(header)
+    && !(/^Columna [A-Z]+$/.test(header) && present(header) < rows.length / 2));
+  return {
+    fileName: upload.fileName,
+    sheet: sheet.name,
+    headerRow: sheet.headerRow,
+    visibleHeaders,
+    ignoredHeaders: sheet.headers.filter((header) => !visibleHeaders.includes(header)),
+    sheets: sheets.filter((candidate) => candidate.rowCount > 0).map((candidate) => ({ name: candidate.name, rowCount: candidate.rowCount, columnCount: candidate.columnCount })),
+    headers: sheet.headers,
+    columns: sheet.columns,
+    rows
+  };
 }
 const {
   normalizeStoredTemplate,
@@ -105,21 +119,22 @@ function createTemplateService({ templates, storage, config, audit = { record: a
     // Builds an unsaved template from example files: the input users receive and/or the output the destination
     // expects. Files are deleted right after reading; rows are only returned to the requester for previews.
     async draft(request) {
-      const { files } = await receiveFiles(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes, names: ['input', 'output'] });
+      const { files, fields } = await receiveFiles(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes, names: ['input', 'output'] });
       try {
-        const input = files.input ? await readExample(storage, files.input, config) : null;
-        const output = files.output ? await readExample(storage, files.output, config) : null;
-        const { template, report } = inferTemplate({ input, output, sheet: input?.sheet });
+        const input = files.input ? await readExample(storage, files.input, config, fields.inputSheet) : null;
+        const output = files.output ? await readExample(storage, files.output, config, fields.outputSheet) : null;
+        const { template, report } = inferTemplate({ input, output: output ? { ...output, headers: output.visibleHeaders } : null, sheet: input?.sheet });
         return {
           template: validateTemplatePayload(template),
           report,
           input: input ? {
             fileName: input.fileName,
             sheet: input.sheet,
+            sheets: input.sheets,
             headers: input.headers,
             sampleRows: input.rows.slice(0, PREVIEW_ROWS).map((row) => ({ rowNumber: row.rowNumber, values: Object.fromEntries(Object.entries(row.values).map(([key, value]) => [key, encodeCell(value)])) }))
           } : null,
-          output: output ? { fileName: output.fileName, sheet: output.sheet, headers: output.headers } : null
+          output: output ? { fileName: output.fileName, sheet: output.sheet, sheets: output.sheets, headerRow: output.headerRow, headers: output.visibleHeaders, ignoredHeaders: output.ignoredHeaders } : null
         };
       } finally {
         await Promise.all(Object.values(files).map((upload) => storage.delete(upload.key).catch(() => {})));

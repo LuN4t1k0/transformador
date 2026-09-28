@@ -22,7 +22,98 @@ function comparable(value) {
   if (value instanceof Date) return `${pad(value.getUTCDate())}/${pad(value.getUTCMonth() + 1)}/${value.getUTCFullYear()}`;
   if (typeof value === 'number') return String(value);
   const text = String(value).trim();
-  return /^-?\d+(\.\d+)?$/.test(text) ? String(Number(text)) : text;
+  if (/^-?\d+(\.\d+)?$/.test(text)) return String(Number(text));
+  // Case and accents are not reproducible from mixed examples; compare text loosely.
+  return normalizeHeader(text).toUpperCase();
+}
+
+function rutKey(value) {
+  const text = String(value ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
+  return text.length >= 7 && isValidRut(text) ? text : null;
+}
+
+function rutColumn(headers, rows) {
+  let best = null;
+  for (const header of headers) {
+    const values = rows.map((row) => row.values[header]).filter((value) => !isBlank(value));
+    if (!values.length) continue;
+    const share = values.filter((value) => rutKey(value)).length / values.length;
+    if (share >= 0.8 && (!best || share > best.share)) best = { header, share };
+  }
+  return best?.header || null;
+}
+
+// Pairs output example rows with input rows: by position when both files list the same people in the same
+// order, otherwise by RUT (choosing, for repeated RUTs, the input row sharing most values).
+function alignRows(input, outputRows, outputHeaders) {
+  const inputRows = input?.rows || [];
+  if (!inputRows.length || !outputRows.length) return { mode: 'NONE', pairs: [] };
+
+  const inputRut = rutColumn(input.headers, inputRows);
+  const outputRut = rutColumn(outputHeaders, outputRows);
+  const positional = () => outputRows.slice(0, inputRows.length).map((row, index) => ({ output: row, input: inputRows[index] }));
+  if (!inputRut || !outputRut) return { mode: 'POSITION', pairs: positional() };
+
+  const count = Math.min(inputRows.length, outputRows.length);
+  let sameOrder = 0;
+  for (let index = 0; index < count; index += 1) {
+    if (rutKey(inputRows[index].values[inputRut]) && rutKey(inputRows[index].values[inputRut]) === rutKey(outputRows[index].values[outputRut])) sameOrder += 1;
+  }
+  if (count && sameOrder / count >= 0.8) return { mode: 'POSITION', pairs: positional() };
+
+  const byRut = new Map();
+  for (const row of inputRows) {
+    const key = rutKey(row.values[inputRut]);
+    if (key) byRut.set(key, [...(byRut.get(key) || []), row]);
+  }
+  const pairs = [];
+  for (const row of outputRows) {
+    const candidates = byRut.get(rutKey(row.values[outputRut])) || [];
+    if (!candidates.length) continue;
+    const outputValues = new Set(Object.values(row.values).map(comparable).filter(Boolean));
+    const shared = (candidate) => Object.values(candidate.values).map(comparable).filter((value) => outputValues.has(value)).length;
+    pairs.push({ output: row, input: candidates.reduce((best, candidate) => (shared(candidate) > shared(best) ? candidate : best)) });
+  }
+  return pairs.length >= 2 ? { mode: 'RUT', pairs } : { mode: 'NONE', pairs: [] };
+}
+
+// Header names as comparable tokens, with common abbreviations and synonyms of payroll files.
+const SYNONYMS = { fec: 'fecha', fch: 'fecha', ini: 'inicio', fin: 'termino', term: 'termino', lic: 'licencia', nom: 'nombre', nombres: 'nombre', apellidos: 'apellido', rem: 'remuneracion', dv: 'digito' };
+
+function headerTokens(header) {
+  return normalizeHeader(header)
+    .split(/[^a-z0-9%]+/)
+    .filter((token) => token && !/^\d+$/.test(token))
+    .map((token) => SYNONYMS[token] || token);
+}
+
+function tokenMatch(a, b) {
+  if (a === b) return 1;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= 3 && long.startsWith(short) ? 0.8 : 0;
+}
+
+// Share of the output header's words found in the input header; `rank` also prefers input headers without
+// extra words ("AFP" over "comision_afp" for "AFP 1").
+function nameScore(outputName, inputHeader) {
+  const outputTokens = headerTokens(outputName);
+  const inputTokens = headerTokens(inputHeader);
+  if (!outputTokens.length || !inputTokens.length) return { match: 0, rank: 0 };
+  const matched = outputTokens.reduce((sum, token) => sum + Math.max(...inputTokens.map((other) => tokenMatch(token, other))), 0);
+  const match = matched / outputTokens.length;
+  return { match, rank: match - (inputTokens.length - 1) * 0.01 };
+}
+
+// Whether an input column can plausibly feed an output column with the detected format.
+function isCompatible(format, inputColumn) {
+  if (!inputColumn) return true;
+  const physical = inputColumn.physical?.type;
+  const semantic = inputColumn.semantic?.type;
+  // Detectors classify numeric text as INTEGER/DECIMAL, so STRING here means non-numeric text.
+  if (format.rut) return semantic === 'CHILEAN_RUT' || physical === 'STRING';
+  if (format.date) return physical === 'DATE' || semantic === 'YEAR_MONTH' || physical === 'INTEGER';
+  if (format.number) return ['INTEGER', 'DECIMAL'].includes(physical);
+  return true;
 }
 
 // Describes what the example values look like: RUT/date/number/text case, or a constant.
@@ -148,13 +239,15 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
   const names = uniqueNames(output.headers);
   const outputRows = (output.rows || []).slice(0, MAX_ROWS);
   const inputRows = (input?.rows || []).slice(0, MAX_ROWS);
-  const aligned = Math.min(outputRows.length, inputRows.length);
-  const candidates = input ? candidateSources(input.headers, inputRows) : [];
-  const report = { mode: input ? 'BY_EXAMPLE' : 'OUTPUT_ONLY', learned: 0, unresolved: [], byName: {} };
+  const { mode: alignment, pairs } = alignRows(input ? { ...input, rows: inputRows } : null, outputRows, output.headers);
+  const candidates = input ? candidateSources(input.headers, pairs.map((pair) => pair.input)) : [];
+  const inputColumns = new Map((input?.columns || []).map((column) => [column.header, column]));
+  const report = { mode: input ? 'BY_EXAMPLE' : 'OUTPUT_ONLY', alignment, pairs: pairs.length, learned: 0, suggested: [], unresolved: [], byName: {} };
 
   const columns = names.map((outputName, index) => {
     const originalHeader = output.headers[index];
-    const values = outputRows.map((row) => row.values[originalHeader] ?? row.values[outputName] ?? null);
+    const valueOf = (row) => row.values[originalHeader] ?? row.values[outputName] ?? null;
+    const values = outputRows.map(valueOf);
     const format = detectFormat(values);
     const formatSpec = formatTransformations(format);
     const column = { id: slug(outputName, index), position: index + 1, outputName, required: format.required, aliases: [], source: { type: 'EMPTY' }, ...formatSpec };
@@ -164,32 +257,64 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
       return { ...column, transformations: [], validations: [] };
     }
 
-    if (aligned) {
-      const expected = values.slice(0, aligned);
+    // 1. By example: the source + format that reproduces the paired rows.
+    if (pairs.length) {
+      const expected = pairs.map((pair) => valueOf(pair.output));
+      const pairedInputs = pairs.map((pair) => pair.input);
       let best = null;
       for (const candidate of candidates) {
-        const score = scoreCandidate(candidate, outputName, formatSpec, inputRows, expected);
+        const score = scoreCandidate(candidate, outputName, formatSpec, pairedInputs, expected);
         const key = [score, -candidate.rank, nameSimilarity(outputName, candidate.source.column), -candidate.order];
         if (!best || isBetter(key, best.key)) best = { candidate, score, key };
       }
-      if (best && best.score >= MIN_SCORE) {
+      const compared = expected.filter((value) => !isBlank(value)).length;
+      if (best && best.score >= MIN_SCORE && compared >= Math.min(2, pairs.length)) {
         report.learned += 1;
         report.byName[outputName] = { method: 'EXAMPLE', score: best.score };
         return { ...column, source: best.candidate.source, reviewed: true };
       }
     }
 
-    if (format.constant !== null && !(input && findHeader(outputName, input.headers))) {
+    // Without an input file, a repeated value is a constant; other columns keep their own name as source.
+    if (!input && format.constant !== null) {
       report.learned += 1;
       report.byName[outputName] = { method: 'CONSTANT' };
       return { ...column, source: { type: 'CONSTANT', value: format.constant }, transformations: [], validations: [] };
     }
 
-    const byName = input ? findHeader(outputName, input.headers) : outputName;
-    if (byName) {
+    // 2. Same header name in the input.
+    const exact = input ? findHeader(outputName, input.headers) : outputName;
+    if (exact) {
       report.learned += 1;
       report.byName[outputName] = { method: input ? 'NAME' : 'OUTPUT_NAME' };
-      return { ...column, source: { type: 'COLUMN', column: byName } };
+      return { ...column, source: { type: 'COLUMN', column: exact } };
+    }
+
+    // A value repeated in many example rows is a constant: stronger evidence than a merely similar name.
+    if (format.constant !== null && outputRows.length >= 3) {
+      report.learned += 1;
+      report.byName[outputName] = { method: 'CONSTANT' };
+      return { ...column, source: { type: 'CONSTANT', value: format.constant }, transformations: [], validations: [] };
+    }
+
+    // 3. Similar header name with a compatible format: a suggestion the user must review.
+    if (input) {
+      const ranked = input.headers
+        .map((header) => ({ header, ...nameScore(outputName, header) }))
+        .filter((item) => item.match >= 0.5 && isCompatible(format, inputColumns.get(item.header)))
+        .sort((a, b) => b.rank - a.rank);
+      if (ranked.length && (ranked.length === 1 || ranked[0].rank > ranked[1].rank)) {
+        report.suggested.push(outputName);
+        report.byName[outputName] = { method: 'SIMILAR_NAME', score: ranked[0].match };
+        return { ...column, source: { type: 'COLUMN', column: ranked[0].header } };
+      }
+    }
+
+    // 4. The same value in every example row.
+    if (format.constant !== null) {
+      report.learned += 1;
+      report.byName[outputName] = { method: 'CONSTANT' };
+      return { ...column, source: { type: 'CONSTANT', value: format.constant }, transformations: [], validations: [] };
     }
 
     report.unresolved.push(outputName);

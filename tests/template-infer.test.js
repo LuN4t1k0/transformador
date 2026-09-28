@@ -79,3 +79,75 @@ test('with only an input file, starts with one column per header', () => {
   assert.deepEqual(template.columns.map((column) => column.source), [{ type: 'COLUMN', column: 'RUT' }, { type: 'COLUMN', column: 'Nombre' }]);
   assert.equal(report.mode, 'INPUT_ONLY');
 });
+
+test('suggests sources by similar column names when rows do not correspond', () => {
+  const { template, report } = inferTemplate({
+    input: {
+      headers: ['RUT', 'Nombre completo', 'Periodo', 'Fecha Inicio', 'Fecha Término', 'AFP', 'dias_licencia', 'dias_pagados', 'total_aporte_afp', 'comision_afp'],
+      columns: [
+        { header: 'RUT', semantic: { type: 'CHILEAN_RUT' }, physical: { type: 'STRING' } },
+        { header: 'Fecha Inicio', semantic: { type: 'GENERIC_TEXT' }, physical: { type: 'DATE' } },
+        { header: 'Fecha Término', semantic: { type: 'GENERIC_TEXT' }, physical: { type: 'DATE' } }
+      ],
+      rows: [{ rowNumber: 2, values: { RUT: '11.111.111-1', 'Nombre completo': 'OTRA PERSONA' } }]
+    },
+    output: {
+      headers: ['RUT', 'APELLIDO NOMBRES', 'PERIODO', 'FEC.INICIO', 'FEC.FIN', 'DIAS LIC.', 'IMPONIBLE', 'TOTAL', 'AFP 1', 'OBSERVACIONES'],
+      rows: [
+        { values: { RUT: '13264112-9', 'APELLIDO NOMBRES': 'Alcaino Herrera Ana', PERIODO: 202604, 'FEC.INICIO': '27-04-2026', 'FEC.FIN': '29-04-2026', 'DIAS LIC.': 3, IMPONIBLE: 703932, TOTAL: 8053, 'AFP 1': 'Capital', OBSERVACIONES: 'Discontinua' } },
+        { values: { RUT: '13744291-4', 'APELLIDO NOMBRES': 'Carpio Saavedra Eli', PERIODO: 202201, 'FEC.INICIO': '27-01-2022', 'FEC.FIN': '02-02-2022', 'DIAS LIC.': 7, IMPONIBLE: 807662, TOTAL: 9240, 'AFP 1': 'Capital', OBSERVACIONES: 'Discontinua' } }
+      ]
+    }
+  });
+  const byName = Object.fromEntries(template.columns.map((column) => [column.outputName, column]));
+  assert.deepEqual(byName['FEC.INICIO'].source, { type: 'COLUMN', column: 'Fecha Inicio' });
+  assert.deepEqual(byName['FEC.INICIO'].transformations, [{ type: 'DATE_FORMAT', inputFormat: 'AUTO', outputFormat: 'DD-MM-YYYY' }]);
+  assert.deepEqual(byName['FEC.FIN'].source, { type: 'COLUMN', column: 'Fecha Término' });
+  assert.deepEqual(byName['DIAS LIC.'].source, { type: 'COLUMN', column: 'dias_licencia' });
+  assert.deepEqual(byName['APELLIDO NOMBRES'].source, { type: 'COLUMN', column: 'Nombre completo' });
+  assert.deepEqual(byName.TOTAL.source, { type: 'COLUMN', column: 'total_aporte_afp' });
+  assert.deepEqual(byName['AFP 1'].source, { type: 'COLUMN', column: 'AFP' });
+  assert.deepEqual(byName.RUT.transformations[0], { type: 'RUT_FORMAT', format: 'NO_DOTS_DASH' });
+  assert.deepEqual(byName.OBSERVACIONES.source, { type: 'CONSTANT', value: 'Discontinua' });
+  assert.deepEqual(byName.IMPONIBLE.source, { type: 'EMPTY' });
+  assert.equal(report.alignment, 'NONE');
+  assert.ok(report.suggested.includes('FEC.INICIO'));
+  assert.deepEqual(report.unresolved, ['IMPONIBLE']);
+});
+
+test('aligns example rows by RUT when files list people in a different order', () => {
+  const input = {
+    headers: ['RUT', 'Nombre completo', 'Monto'],
+    rows: [
+      { rowNumber: 2, values: { RUT: '9.876.543-3', 'Nombre completo': 'DIAZ ROJAS ANA', Monto: 200 } },
+      { rowNumber: 3, values: { RUT: '11.111.111-1', 'Nombre completo': 'NO ESTA EN SALIDA', Monto: 999 } },
+      { rowNumber: 4, values: { RUT: '12.345.678-5', 'Nombre completo': 'SOTO PEREZ JUAN', Monto: 100 } },
+      { rowNumber: 5, values: { RUT: '7.654.321-6', 'Nombre completo': 'VERA TORO LUISA', Monto: 300 } }
+    ]
+  };
+  const output = {
+    headers: ['RUT', 'PATERNO', 'VALOR'],
+    rows: [
+      { values: { RUT: '12345678-5', PATERNO: 'SOTO', VALOR: 100 } },
+      { values: { RUT: '7654321-6', PATERNO: 'VERA', VALOR: 300 } },
+      { values: { RUT: '15678901-1', PATERNO: 'MUÑOZ', VALOR: 555 } },
+      { values: { RUT: '9876543-3', PATERNO: 'DIAZ', VALOR: 200 } }
+    ]
+  };
+  const { template, report } = inferTemplate({ input, output });
+  const byName = Object.fromEntries(template.columns.map((column) => [column.outputName, column]));
+  assert.equal(report.alignment, 'RUT');
+  assert.deepEqual(byName.PATERNO.source, { type: 'SPLIT_WORD', column: 'Nombre completo', index: 0 });
+  assert.deepEqual(byName.VALOR.source, { type: 'COLUMN', column: 'Monto' });
+  assert.equal(report.byName.VALOR.method, 'EXAMPLE');
+});
+
+test('a value repeated in many rows beats a similar column name', () => {
+  const rows = [0.0144, 0.0144, 0.0144].map((value, index) => ({ values: { '% AFP': value, TOTAL: 100 + index } }));
+  const { template } = inferTemplate({
+    input: { headers: ['comision_afp', 'total_aporte_afp'], columns: [{ header: 'comision_afp', physical: { type: 'INTEGER' } }], rows: [] },
+    output: { headers: ['% AFP', 'TOTAL'], rows }
+  });
+  assert.deepEqual(template.columns[0].source, { type: 'CONSTANT', value: '0.0144' });
+  assert.deepEqual(template.columns[1].source, { type: 'COLUMN', column: 'total_aporte_afp' });
+});

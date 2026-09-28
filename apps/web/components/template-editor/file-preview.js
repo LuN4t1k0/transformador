@@ -42,7 +42,26 @@ export function FilePreview({ template, results }) {
   const [asText, setAsText] = useState(false);
   const { columns, output } = template;
   const rowValues = results.map((result) => columns.map((column) => cellText(column, result.output[column.outputName])));
-  const issuesByRow = results.filter((result) => result.issues.length);
+  // One line per problem: columns sharing the same issue on the same rows are listed together.
+  const issueGroups = (() => {
+    const byColumn = new Map();
+    for (const result of results) {
+      for (const issue of result.issues) {
+        const key = `${issue.column}|${issue.code}`;
+        const entry = byColumn.get(key) || { column: issue.column, issue, rows: [] };
+        entry.rows.push(result.rowNumber);
+        byColumn.set(key, entry);
+      }
+    }
+    const groups = new Map();
+    for (const entry of byColumn.values()) {
+      const key = `${entry.issue.code}|${entry.rows.join(',')}`;
+      const group = groups.get(key) || { key, issue: entry.issue, rows: entry.rows, columns: [] };
+      group.columns.push(entry.column);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  })();
 
   let body;
   if (output.format === 'FIXED_WIDTH') {
@@ -99,13 +118,14 @@ export function FilePreview({ template, results }) {
 
       {body}
 
-      {issuesByRow.length ? (
+      {issueGroups.length ? (
         <ul className="space-y-1 text-sm">
-          {issuesByRow.map((result) => (
-            <li key={result.rowNumber} className="flex flex-wrap items-center gap-x-2 text-rose-700">
+          {issueGroups.map((group) => (
+            <li key={group.key} className="flex flex-wrap items-center gap-x-2 text-rose-700">
               <AlertCircle size={14} aria-hidden="true" />
-              <span className="font-medium">Fila {result.rowNumber}:</span>
-              {result.issues.map((issue) => `${issue.column} — ${describeIssue(issue)}. ${describeIssueHint(issue)}`.trim()).join(' · ')}
+              <span className="font-medium">{group.columns.join(', ')}:</span>
+              <span>{describeIssue(group.issue)}.</span>
+              <span className="text-ink-500">{describeIssueHint(group.issue)} Filas {group.rows.join(', ')}.</span>
             </li>
           ))}
         </ul>
