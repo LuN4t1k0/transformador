@@ -1,7 +1,7 @@
 const { Worker } = require('bullmq');
 const { config } = require('../../../packages/shared/src/config');
 const { createPool, migrate } = require('../../../packages/shared/src/db');
-const { createJobRepository } = require('../../../packages/shared/src/repositories');
+const { createAuditRepository, createJobRepository } = require('../../../packages/shared/src/repositories');
 const { LocalTemporaryStorage } = require('../../../packages/storage/src');
 const {
   QUEUE_NAMES,
@@ -32,7 +32,8 @@ async function main() {
     publish: createEventPublisher(connection),
     isCancelled: async (jobId) => (await connection.exists(cancelFlagKey(jobId))) === 1,
     limits: config,
-    log
+    log,
+    audit: createAuditRepository(pool, { log })
   });
 
   const handlers = {
@@ -65,7 +66,7 @@ async function main() {
   const { cleanup } = createQueues(connection);
   await cleanup.upsertJobScheduler('periodic-cleanup', { every: CLEANUP_EVERY_MS }, { name: 'cleanup' });
 
-  log({ event: 'worker:started', queues: Object.keys(handlers), concurrency: workerConcurrency });
+  log({ event: 'worker:started', queues: Object.keys(handlers), concurrency: { ...workerConcurrency, transformation: config.maxConcurrentJobs } });
 
   async function shutdown() {
     await Promise.all(workers.map((worker) => worker.close()));

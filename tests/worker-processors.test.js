@@ -55,7 +55,9 @@ async function setup(jobOverrides = {}, options = {}) {
   const inputStorageKey = await (options.createInput || createInput)(storage);
   const jobs = createFakeJobs([{ id: 'job-1', status: 'QUEUED_ANALYSIS', templateVersionId: 'v1', inputStorageKey, expiresAt: new Date(Date.now() + 60000), ...jobOverrides }]);
   const events = [];
+  const auditEvents = [];
   const processors = createProcessors({
+    audit: { record: async (entry) => auditEvents.push(entry) },
     jobs,
     storage,
     publish: async (jobId, type) => events.push(type),
@@ -63,7 +65,7 @@ async function setup(jobOverrides = {}, options = {}) {
     limits,
     progressIntervalMs: 0
   });
-  return { storage, jobs, events, processors };
+  return { storage, jobs, events, auditEvents, processors };
 }
 
 test('analysis stores sheet metadata and selects the only sheet with data, without row values', async () => {
@@ -107,7 +109,7 @@ async function readyJob(overrides = {}, options = {}) {
 }
 
 test('transformation writes valid rows, reports progress and summarizes issues', async () => {
-  const { jobs, events, storage, processors } = await readyJob();
+  const { jobs, events, auditEvents, storage, processors } = await readyJob();
   await processors.transform('job-1');
   const job = jobs.jobs.get('job-1');
 
@@ -126,6 +128,9 @@ test('transformation writes valid rows, reports progress and summarizes issues',
   assert.equal(sheet.getRow(2).getCell(8).value, '09/05/2024');
 
   assert.equal(job.rejectedRows, 1);
+  const completedAudit = auditEvents.find((entry) => entry.eventType === 'TRANSFORM_COMPLETED');
+  assert.deepEqual({ total: completedAudit.metadata.totalRows, rejected: completedAudit.metadata.rejectedRows, format: completedAudit.metadata.outputFormat }, { total: 3, rejected: 1, format: 'XLSX' });
+  assert.equal(JSON.stringify(auditEvents).includes('SOTO'), false, 'audit never stores row values');
   const rejects = new ExcelJS.Workbook();
   await rejects.xlsx.readFile(storage.resolvePath(job.rejectsStorageKey));
   const rejected = rejects.getWorksheet('RECHAZADAS');

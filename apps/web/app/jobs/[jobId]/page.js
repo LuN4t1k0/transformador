@@ -11,6 +11,7 @@ import { Shell } from '../../../components/shell';
 import { StatusPill } from '../../../components/status-pill';
 import { formatTime, JobStatusBadge } from '../../../components/job-status';
 import { GenerateStep } from '../../../components/job/generate-step';
+import { JobActivity } from '../../../components/job/job-activity';
 import { RunProgress, RunResult, RunTerminal } from '../../../components/job/run-section';
 import { SheetStep } from '../../../components/job/sheet-step';
 import { TemplateStep } from '../../../components/job/template-step';
@@ -420,6 +421,8 @@ function JobWorkspace({ job, setJob }) {
             ) : null}
           </div>
         ) : null}
+
+        <JobActivity job={job} />
       </div>
 
       <ContextPanel job={job} template={template} evaluation={evaluation} saveState={saveState} activeId={sectionId} onGo={setActiveId} />

@@ -98,6 +98,9 @@ export function createHttpApi(baseUrl) {
     async listJobs() {
       return (await getJson('/jobs')).jobs;
     },
+    async getJobActivity(jobId) {
+      return (await getJson(`/jobs/${jobId}/activity`)).events;
+    },
     async getJob(jobId) {
       return (await getJson(`/jobs/${encodeURIComponent(jobId)}`)).job;
     },

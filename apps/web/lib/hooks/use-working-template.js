@@ -58,14 +58,12 @@ export function useWorkingTemplate(job, setJob) {
     timerRef.current = setTimeout(flush, SAVE_DELAY_MS);
   }, [flush]);
 
-  // Server-side replacements (applying another template, changing sheet) discard local edits.
+  // Server-side replacements (applying another template, changing sheet) discard local edits. The draft is then
+  // synced from the job by the effect above; setJob ignores snapshots older than the current job.
   const reset = useCallback((nextJob) => {
     clearTimeout(timerRef.current);
     versionRef.current += 1;
     savedVersionRef.current = versionRef.current;
-    const next = { template: nextJob.workingTemplate, confirmedIds: nextJob.confirmedIds };
-    draftRef.current = next;
-    setDraft(next);
     setSaveState({ status: 'saved', error: null });
     setJob(nextJob);
   }, [setJob]);

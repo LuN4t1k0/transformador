@@ -25,7 +25,11 @@ function encodeCell(value) {
   return value instanceof Date ? { $date: value.toISOString() } : value;
 }
 
-function createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config }) {
+function createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config, audit = { record: async () => {}, listForJob: async () => [] } }) {
+  function auditJob(job, user, eventType, metadata = {}) {
+    return audit.record({ userId: user.id, jobId: job.id, templateId: job.templateId, templateVersionId: job.templateVersionId, eventType, metadata });
+  }
+
   async function view(job) {
     return serializeJob(job, job.templateVersionId ? await templates.getVersion(job.templateVersionId) : null);
   }
@@ -110,8 +114,14 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         await storage.delete(file.key);
         throw error;
       }
+      await auditJob(job, user, 'JOB_CREATED', { fileName: file.fileName, fileSizeBytes: file.size });
       await publish(job.id, 'job:queued');
       return view(job);
+    },
+
+    async activity(jobId, user) {
+      const job = await requireJob(jobId, user);
+      return audit.listForJob(job.id);
     },
 
     async selectSheet(jobId, user, { sheetName, headerRow }) {
@@ -125,6 +135,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         // A different header row changes the headers: re-analyze in the worker.
         const queued = await update(job, { selectedSheet: sheet.name, status: JOB_STATUSES.QUEUED_ANALYSIS, stage: 'QUEUED' });
         await queues.analysis.add('analyze', { jobId: job.id, headerRows: { [sheet.name]: headerRow } }, { jobId: `${job.id}-h${Date.now()}` });
+        await auditJob(job, user, 'HEADER_ROW_CHANGED', { sheet: sheet.name, headerRow });
         await publish(job.id, 'job:queued');
         return view(queued);
       }
@@ -134,6 +145,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         workingTemplate: job.workingTemplate ? resolveTemplateForHeaders(job.workingTemplate, sheet.headers) : null,
         confirmedIds: []
       });
+      await auditJob(updated, user, 'SHEET_SELECTED', { sheet: sheet.name });
       await publish(job.id, 'job:stage');
       return view(updated);
     },
@@ -154,16 +166,20 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
 
       if (blank) {
         const workingTemplate = validateTemplatePayload(createTemplateFromHeaders(headers, { sheet: job.selectedSheet }));
-        return view(await update(job, { templateId: null, templateVersionId: null, workingTemplate, confirmedIds: [] }));
+        const updated = await update(job, { templateId: null, templateVersionId: null, workingTemplate, confirmedIds: [] });
+        await auditJob(updated, user, 'TEMPLATE_APPLIED', { blank: true });
+        return view(updated);
       }
 
       const { template, configuration } = await templateService.getActiveConfiguration(templateId);
-      return view(await update(job, {
+      const updated = await update(job, {
         templateId: template.id,
         templateVersionId: template.versionId,
         workingTemplate: resolveTemplateForHeaders(configuration, headers),
         confirmedIds: []
-      }));
+      });
+      await auditJob(updated, user, 'TEMPLATE_APPLIED', { name: template.name, version: template.version });
+      return view(updated);
     },
 
     async saveWorkingTemplate(jobId, user, payload) {
@@ -185,13 +201,17 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         const base = await templates.getVersion(job.templateVersionId);
         const configuration = prepareVersionForSave(normalizeStoredTemplate(base), working, job.confirmedIds);
         const saved = await templateService.addVersion(job.templateId, configuration, user);
-        return view(await update(job, { templateVersionId: saved.versionId, workingTemplate: validateTemplatePayload(configuration) }));
+        const updated = await update(job, { templateVersionId: saved.versionId, workingTemplate: validateTemplatePayload(configuration) });
+        await auditJob(updated, user, 'TEMPLATE_SAVED_FROM_JOB', { mode, name: saved.name, version: saved.version });
+        return view(updated);
       }
 
       if (mode === 'NEW_TEMPLATE') {
         const configuration = prepareVersionForSave(null, { ...working, name, destination, process, description }, job.confirmedIds);
         const saved = await templateService.create(configuration, user);
-        return view(await update(job, { templateId: saved.id, templateVersionId: saved.versionId, workingTemplate: validateTemplatePayload(configuration) }));
+        const updated = await update(job, { templateId: saved.id, templateVersionId: saved.versionId, workingTemplate: validateTemplatePayload(configuration) });
+        await auditJob(updated, user, 'TEMPLATE_SAVED_FROM_JOB', { mode, name: saved.name, version: saved.version });
+        return view(updated);
       }
 
       throw new HttpError(400, 'INVALID_MODE', 'Indica si quieres guardar una nueva versión o una plantilla nueva.');
@@ -235,6 +255,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
 
       await redis.del(cancelFlagKey(job.id));
       await queues.transformation.add('transform', { jobId: job.id }, { jobId: job.id });
+      await auditJob(queued, user, 'TRANSFORM_REQUESTED', { mode, rows: sheet.rowCount, sheet: sheet.name, outputFormat: template.output.format });
       await publish(job.id, 'job:queued');
       return view(queued);
     },
@@ -250,6 +271,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       // Waiting jobs are removed; an active one sees the cancel flag at its next progress check.
       await Promise.all([queues.analysis.remove(job.id), queues.transformation.remove(job.id)].map((removal) => removal.catch(() => {})));
       await purgeFiles(job);
+      await auditJob(job, user, 'JOB_CANCELLED', { previousStatus: job.status });
       await publish(job.id, 'job:cancelled');
       return view(cancelled);
     },
@@ -288,6 +310,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
         stream.pipe(response);
       });
       if (!response.writableFinished) return;
+      await auditJob(job, user, 'FILE_DOWNLOADED', { file });
 
       // Files stay available for re-download until the job expires or the user purges them.
       if (file === 'output' && job.status === JOB_STATUSES.READY_TO_DOWNLOAD) {
@@ -302,6 +325,7 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       const purged = await jobs.update(job.id, { status: JOB_STATUSES.PURGED, purgedAt: new Date() }, { expectStatus: DOWNLOADABLE });
       if (!purged) throw new HttpError(409, 'INVALID_STATE', 'El job cambió de estado. Recarga para ver la información actual.');
       await purgeFiles(job);
+      await auditJob(job, user, 'FILES_PURGED', {});
       await publish(job.id, 'job:purged');
       return view(purged);
     }

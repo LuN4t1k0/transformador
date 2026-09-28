@@ -12,7 +12,9 @@ Incluye:
 - Plantillas dinámicas creadas por usuarios (ver `docs/plantillas-dinamicas.md`): orígenes por columna, formatos de RUT/fecha/número/texto, salida XLSX, texto delimitado o ancho fijo, versiones inmutables y reconocimiento de encabezados por alias.
 - API Node en `apps/api`: endpoints de jobs y plantillas del SDD, subida multipart, Socket.IO por room `job:{jobId}` con verificación de acceso, descarga con purga posterior.
 - Worker BullMQ en `apps/worker`: colas `analysis`, `transformation` (progreso y cancelación) y `cleanup` (expiración cada 10 minutos).
-- Lectura y escritura XLSX real con `exceljs` en `packages/excel-engine`, con límites de filas, columnas y hojas.
+- Lectura XLSX en streaming propia (`packages/excel-engine/src/xlsx-reader.js`: zip con acceso aleatorio + SAX) con detección de fila de encabezados, límites de filas, columnas, hojas y tamaño descomprimido; escritura con `exceljs`.
+- Filas rechazadas entregadas en un Excel aparte, re-descarga hasta la expiración, purga manual y expiración que se extiende con la actividad.
+- Auditoría en `audit_events` (sin valores de filas), visible como actividad del job; `x-request-id` y logs estructurados de duración por solicitud y por proceso.
 - PostgreSQL con migraciones en `packages/shared/db/migrations` (se aplican al iniciar API y worker). Solo guarda metadata: hojas, encabezados, tipos detectados, mapeo por nombre de columna y conteos de validación.
 - Motor de transformacion por plantilla en `packages/template-engine`.
 - Transformaciones reutilizables de RUT, texto, numero y fecha.
@@ -38,5 +40,4 @@ La web queda disponible en `http://localhost:3000` y la API en `http://localhost
 ## Siguiente fase
 
 - Adaptador Previley SSO y sesiones.
-- Lectura XLSX en streaming: hoy el libro se carga en memoria (unos 830 MB para 100.000 filas), porque el lector en streaming de `exceljs` no es determinista cuando `sharedStrings.xml` viene después de las hojas.
 - `TemporaryStorage` compartido (S3) para separar API y worker en contenedores distintos.

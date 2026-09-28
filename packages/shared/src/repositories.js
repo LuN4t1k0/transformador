@@ -302,4 +302,32 @@ function createJobRepository(pool) {
   };
 }
 
-module.exports = { createUserRepository, createTemplateRepository, createJobRepository, TemplateNameTakenError, TERMINAL_STATUSES };
+// Audit trail: who did what, with which template version. Metadata never contains row values.
+function createAuditRepository(pool, { log = () => {} } = {}) {
+  return {
+    async record({ userId = null, jobId = null, templateId = null, templateVersionId = null, eventType, metadata = {} }) {
+      try {
+        await pool.query(
+          `insert into audit_events (id, user_id, job_id, template_id, template_version_id, event_type, metadata)
+           values ($1, $2, $3, $4, $5, $6, $7)`,
+          [crypto.randomUUID(), userId, jobId, templateId, templateVersionId, eventType, metadata]
+        );
+      } catch (error) {
+        // Losing an audit row must be visible in logs but must not break the user's action.
+        log({ event: 'audit:error', eventType, jobId, message: error.message });
+      }
+    },
+
+    async listForJob(jobId) {
+      const { rows } = await pool.query(
+        `select a.event_type, a.metadata, a.created_at, u.display_name
+         from audit_events a left join local_users u on u.id = a.user_id
+         where a.job_id = $1 order by a.created_at, a.id`,
+        [jobId]
+      );
+      return rows.map((row) => ({ type: row.event_type, metadata: row.metadata, createdAt: row.created_at, user: row.display_name }));
+    }
+  };
+}
+
+module.exports = { createAuditRepository, createUserRepository, createTemplateRepository, createJobRepository, TemplateNameTakenError, TERMINAL_STATUSES };

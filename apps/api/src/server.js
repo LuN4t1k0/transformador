@@ -1,9 +1,10 @@
+const crypto = require('node:crypto');
 const http = require('node:http');
 const { URL } = require('node:url');
 const { config } = require('../../../packages/shared/src/config');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
 const { createPool, migrate } = require('../../../packages/shared/src/db');
-const { createJobRepository, createTemplateRepository, createUserRepository } = require('../../../packages/shared/src/repositories');
+const { createAuditRepository, createJobRepository, createTemplateRepository, createUserRepository } = require('../../../packages/shared/src/repositories');
 const { seedTemplates } = require('../../../packages/shared/templates');
 const { validateTemplateConfig } = require('../../../packages/template-engine/src/schema');
 const { LocalTemporaryStorage } = require('../../../packages/storage/src');
@@ -40,8 +41,9 @@ async function main() {
     users,
     devUser: { email: process.env.DEV_USER_EMAIL, name: process.env.DEV_USER_NAME }
   });
-  const templateService = createTemplateService({ templates });
-  const jobService = createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config });
+  const audit = createAuditRepository(pool, { log });
+  const templateService = createTemplateService({ templates, audit });
+  const jobService = createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config, audit });
 
   const match = createRouter([
     ['GET', '/session', async ({ user }) => ({ user: { email: user.email, displayName: user.displayName } })],
@@ -55,11 +57,12 @@ async function main() {
     ['GET', '/templates/:templateId/versions/:versionId', async ({ params }) => ({ template: await templateService.getVersion(params.templateId, params.versionId) })],
     ['POST', '/templates/:templateId/versions', async ({ user, params, request }) => ({ template: await templateService.addVersion(params.templateId, (await readJson(request)).configuration, user) })],
     ['POST', '/templates/:templateId/duplicate', async ({ user, params, request }) => ({ status: 201, body: { template: await templateService.duplicate(params.templateId, await readJson(request), user) } })],
-    ['POST', '/templates/:templateId/archive', async ({ params }) => ({ template: await templateService.setArchived(params.templateId, true) })],
-    ['POST', '/templates/:templateId/unarchive', async ({ params }) => ({ template: await templateService.setArchived(params.templateId, false) })],
+    ['POST', '/templates/:templateId/archive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, true, user) })],
+    ['POST', '/templates/:templateId/unarchive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, false, user) })],
     ['GET', '/jobs', async ({ user }) => ({ jobs: await jobService.list(user) })],
     ['POST', '/jobs', async ({ user, request }) => ({ status: 201, body: { job: await jobService.create(request, user) } })],
     ['GET', '/jobs/:jobId', async ({ user, params }) => ({ job: await jobService.get(params.jobId, user) })],
+    ['GET', '/jobs/:jobId/activity', async ({ user, params }) => ({ events: await jobService.activity(params.jobId, user) })],
     ['PATCH', '/jobs/:jobId/sheet', async ({ user, params, request }) => ({ job: await jobService.selectSheet(params.jobId, user, await readJson(request)) })],
     ['GET', '/jobs/:jobId/template-matches', async ({ user, params }) => ({ matches: await jobService.templateMatches(params.jobId, user) })],
     ['POST', '/jobs/:jobId/template', async ({ user, params, request }) => ({ job: await jobService.applyTemplate(params.jobId, user, await readJson(request)) })],
@@ -76,6 +79,14 @@ async function main() {
   ]);
 
   const server = http.createServer(async (request, response) => {
+    const incomingId = request.headers['x-request-id'];
+    const requestId = typeof incomingId === 'string' && /^[\w-]{8,64}$/.test(incomingId) ? incomingId : crypto.randomUUID();
+    const startedAt = Date.now();
+    response.setHeader('x-request-id', requestId);
+    response.on('finish', () => {
+      if (request.method === 'OPTIONS' || request.url === '/health') return;
+      log({ event: 'http:request', requestId, method: request.method, path: request.url.split('?')[0], status: response.statusCode, durationMs: Date.now() - startedAt });
+    });
     applyCors(request, response, allowedOrigin);
     if (request.method === 'OPTIONS') {
       response.writeHead(204).end();
@@ -110,7 +121,7 @@ async function main() {
       if (result?.status) sendJson(response, result.status, result.body);
       else sendJson(response, 200, result);
     } catch (error) {
-      if (!(error instanceof HttpError)) log({ event: 'http:error', method: request.method, path: pathname, message: error.message });
+      if (!(error instanceof HttpError)) log({ event: 'http:error', requestId, method: request.method, path: pathname, message: error.message });
       if (response.headersSent) {
         response.destroy();
         return;

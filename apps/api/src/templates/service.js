@@ -14,7 +14,11 @@ function translateNameConflict(error) {
   throw error;
 }
 
-function createTemplateService({ templates }) {
+function createTemplateService({ templates, audit = { record: async () => {} } }) {
+  function auditTemplate(template, user, eventType, metadata = {}) {
+    return audit.record({ userId: user?.id, templateId: template.id, templateVersionId: template.versionId, eventType, metadata: { name: template.name, version: template.version, ...metadata } });
+  }
+
   async function requireTemplate(templateId) {
     const template = UUID.test(templateId) ? await templates.getWithVersions(templateId) : null;
     if (!template) throw new HttpError(404, 'NOT_FOUND', 'La plantilla no existe.');
@@ -55,13 +59,15 @@ function createTemplateService({ templates }) {
     async create(configuration, user) {
       const valid = validateTemplatePayload(configuration);
       const created = await templates.create(valid, user.id).catch(translateNameConflict);
+      await auditTemplate(created, user, 'TEMPLATE_CREATED');
       return serializeTemplateDetail(await templates.getWithVersions(created.id));
     },
 
     async addVersion(templateId, configuration, user) {
       requireActive(await requireTemplate(templateId));
       const valid = validateTemplatePayload(configuration);
-      await templates.addVersion(templateId, valid, user.id).catch(translateNameConflict);
+      const updated = await templates.addVersion(templateId, valid, user.id).catch(translateNameConflict);
+      await auditTemplate(updated, user, 'TEMPLATE_VERSION_CREATED');
       return serializeTemplateDetail(await templates.getWithVersions(templateId));
     },
 
@@ -71,9 +77,10 @@ function createTemplateService({ templates }) {
       return this.create({ ...configuration, name: name || `${configuration.name} (copia)` }, user);
     },
 
-    async setArchived(templateId, archived) {
+    async setArchived(templateId, archived, user) {
       await requireTemplate(templateId);
-      await templates.setArchived(templateId, archived).catch(translateNameConflict);
+      const updated = await templates.setArchived(templateId, archived).catch(translateNameConflict);
+      await auditTemplate(updated, user, archived ? 'TEMPLATE_ARCHIVED' : 'TEMPLATE_UNARCHIVED');
       return serializeTemplateDetail(await templates.getWithVersions(templateId));
     }
   };

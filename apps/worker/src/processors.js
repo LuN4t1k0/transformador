@@ -20,13 +20,18 @@ function pickDefaultSheet(sheets) {
 }
 
 // Pure job processors. Infrastructure (PostgreSQL, Redis, BullMQ) is injected so they can be tested in isolation.
-function createProcessors({ jobs, storage, publish, isCancelled, limits, progressIntervalMs = 250, log = () => {} }) {
+function createProcessors({ jobs, storage, publish, isCancelled, limits, progressIntervalMs = 250, log = () => {}, audit = { record: async () => {} } }) {
+  function auditJob(job, eventType, metadata) {
+    return audit.record({ userId: job.userId, jobId: job.id, templateId: job.templateId, templateVersionId: job.templateVersionId, eventType, metadata });
+  }
+
   async function deleteFiles(...keys) {
     await Promise.all(keys.filter(Boolean).map((key) => storage.delete(key).catch(() => {})));
   }
 
   async function fail(job, error, eventType = 'job:failed') {
     const current = (await jobs.get(job.id)) || job;
+    const stage = [JOB_STATUSES.QUEUED_ANALYSIS, JOB_STATUSES.ANALYZING].includes(current.status) ? 'ANALYSIS_FAILED' : 'TRANSFORM_FAILED';
     await jobs.update(job.id, {
       status: JOB_STATUSES.FAILED,
       stage: null,
@@ -35,6 +40,8 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
       purgedAt: new Date()
     });
     await deleteFiles(current.inputStorageKey, current.outputStorageKey, current.rejectsStorageKey);
+    await auditJob(current, stage, { code: error.code || 'INTERNAL_ERROR' });
+    log({ event: stage === 'ANALYSIS_FAILED' ? 'analysis:failed' : 'transformation:failed', jobId: job.id, code: error.code || 'INTERNAL_ERROR' });
     await publish(job.id, eventType);
   }
 
@@ -45,6 +52,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     });
     if (!job) return;
     await publish(jobId, 'job:started');
+    const startedAt = Date.now();
 
     try {
       const overrides = { ...(job.workbookAnalysis?.headerRows || {}), ...headerRows };
@@ -59,7 +67,12 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
         workingTemplate: job.workingTemplate ? resolveTemplateForHeaders(job.workingTemplate, headers) : null,
         confirmedIds: []
       }, { expectStatus: JOB_STATUSES.ANALYZING });
-      if (updated) await publish(jobId, 'job:stage');
+      if (updated) {
+        const durationMs = Date.now() - startedAt;
+        await auditJob(updated, 'ANALYSIS_COMPLETED', { sheets: sheets.length, headerRows: overrides, durationMs });
+        log({ event: 'analysis:completed', jobId, sheets: sheets.length, rows: sheets.reduce((sum, sheet) => sum + sheet.rowCount, 0), durationMs });
+        await publish(jobId, 'job:stage');
+      }
     } catch (error) {
       if (!(error instanceof WorkbookLimitError)) throw error;
       await fail(job, error);
@@ -72,6 +85,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     });
     if (!job) return;
     await publish(jobId, 'job:started');
+    const startedAt = Date.now();
 
     const template = job.workingTemplate;
     const columns = orderedColumns(template);
@@ -160,6 +174,19 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
       await deleteFiles(output.key, rejects?.key);
       return;
     }
+    const durationMs = Date.now() - startedAt;
+    const metrics = {
+      totalRows: result.totalRows,
+      validRows: result.validRows,
+      rejectedRows: rejects?.count || 0,
+      errorCount: result.errorCount,
+      warningCount: result.warningCount,
+      outputFormat: template.output.format,
+      mode: job.mode,
+      durationMs
+    };
+    await auditJob(completed, 'TRANSFORM_COMPLETED', metrics);
+    log({ event: 'transformation:completed', jobId, ...metrics, rowsPerSecond: Math.round(result.totalRows / Math.max(durationMs / 1000, 0.001)) });
     await publish(jobId, 'job:completed');
   }
 
@@ -169,6 +196,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
       const updated = await jobs.update(job.id, { status: JOB_STATUSES.EXPIRED, stage: null, purgedAt: now }, { expectStatus: job.status });
       if (!updated) continue;
       await deleteFiles(job.inputStorageKey, job.outputStorageKey, job.rejectsStorageKey);
+      await auditJob(job, 'JOB_EXPIRED', { previousStatus: job.status });
       await publish(job.id, 'job:purged');
     }
     const { deleted } = await storage.cleanup(now);

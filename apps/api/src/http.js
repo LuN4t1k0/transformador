@@ -46,7 +46,7 @@ function applyCors(request, response, allowedOrigin) {
     response.setHeader('access-control-allow-credentials', 'true');
     response.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS');
     response.setHeader('access-control-allow-headers', 'content-type');
-    response.setHeader('access-control-expose-headers', 'content-disposition');
+    response.setHeader('access-control-expose-headers', 'content-disposition, x-request-id');
     response.setHeader('vary', 'origin');
   }
 }
