@@ -7,6 +7,7 @@ Base inicial para una plataforma privada y deterministica de transformacion Exce
 Incluye:
 
 - SDD inicial en `docs/SDD.md`.
+- Diseño frontend MVP: rutas, pantallas, estados, contratos API, realtime y criterios de aceptacion.
 - Motor de transformacion por plantilla en `packages/template-engine`.
 - Transformaciones reutilizables de RUT, texto, numero y fecha.
 - Detectores deterministicos fisicos y semanticos.
