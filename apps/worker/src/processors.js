@@ -1,6 +1,7 @@
 const { analyzeWorkbook, readSheetRows, WorkbookLimitError } = require('../../../packages/excel-engine/src');
 const { writeOutput, outputFileInfo } = require('../../../packages/excel-engine/src/output');
 const { createSummaryAccumulator, orderedColumns, transformTemplateRow } = require('../../../packages/template-engine/src/run');
+const { resolveTemplateForHeaders } = require('../../../packages/template-engine/src/mapping');
 const { JOB_STATUSES } = require('../../../packages/shared/src/job-statuses');
 
 class JobCancelledError extends Error {}
@@ -29,7 +30,8 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     await publish(job.id, eventType);
   }
 
-  async function analyze(jobId) {
+  // `headerRows` ({ sheetName: rowNumber }) re-analyzes with user-chosen header rows, keeping earlier choices.
+  async function analyze(jobId, { headerRows = {} } = {}) {
     const job = await jobs.update(jobId, { status: JOB_STATUSES.ANALYZING, stage: 'ANALYZING', startedAt: new Date() }, {
       expectStatus: [JOB_STATUSES.QUEUED_ANALYSIS, JOB_STATUSES.ANALYZING]
     });
@@ -37,12 +39,16 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
     await publish(jobId, 'job:started');
 
     try {
-      const { sheets } = await analyzeWorkbook(storage.resolvePath(job.inputStorageKey), { limits, sampleRows: limits.maxSampleRows });
+      const overrides = { ...(job.workbookAnalysis?.headerRows || {}), ...headerRows };
+      const { sheets } = await analyzeWorkbook(storage.resolvePath(job.inputStorageKey), { limits, sampleRows: limits.maxSampleRows, headerRows: overrides });
+      const selectedSheet = job.selectedSheet && sheets.some((sheet) => sheet.name === job.selectedSheet) ? job.selectedSheet : pickDefaultSheet(sheets);
+      const headers = sheets.find((sheet) => sheet.name === selectedSheet)?.headers || [];
       const updated = await jobs.update(jobId, {
         status: JOB_STATUSES.READY,
         stage: null,
-        workbookAnalysis: { sheets },
-        selectedSheet: pickDefaultSheet(sheets),
+        workbookAnalysis: { sheets, headerRows: overrides },
+        selectedSheet,
+        workingTemplate: job.workingTemplate ? resolveTemplateForHeaders(job.workingTemplate, headers) : null,
         confirmedIds: []
       }, { expectStatus: JOB_STATUSES.ANALYZING });
       if (updated) await publish(jobId, 'job:stage');
@@ -76,7 +82,7 @@ function createProcessors({ jobs, storage, publish, isCancelled, limits, progres
 
     async function* outputRows() {
       let processed = 0;
-      for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits })) {
+      for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits, headerRow: sheet.headerRow })) {
         const { output: values, issues } = transformTemplateRow(row.values, template);
         processed += 1;
         const isValid = summary.add(row.rowNumber, issues);

@@ -99,11 +99,20 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       return view(job);
     },
 
-    async selectSheet(jobId, user, { sheetName }) {
+    async selectSheet(jobId, user, { sheetName, headerRow }) {
       const job = await requireJob(jobId, user);
       requireEditable(job);
       const sheet = (job.workbookAnalysis?.sheets || []).find((candidate) => candidate.name === sheetName);
       if (!sheet) throw new HttpError(400, 'SHEET_NOT_FOUND', `La hoja «${sheetName}» no existe en el archivo.`);
+
+      if (headerRow !== undefined && headerRow !== sheet.headerRow) {
+        if (!Number.isInteger(headerRow) || headerRow < 1 || headerRow > 1000) throw new HttpError(400, 'INVALID_HEADER_ROW', 'La fila de encabezados debe ser un número entre 1 y 1000.');
+        // A different header row changes the headers: re-analyze in the worker.
+        const queued = await update(job, { selectedSheet: sheet.name, status: JOB_STATUSES.QUEUED_ANALYSIS, stage: 'QUEUED' });
+        await queues.analysis.add('analyze', { jobId: job.id, headerRows: { [sheet.name]: headerRow } }, { jobId: `${job.id}-h${Date.now()}` });
+        await publish(job.id, 'job:queued');
+        return view(queued);
+      }
 
       const updated = await update(job, {
         selectedSheet: sheet.name,
@@ -180,7 +189,8 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       selectedHeaders(job);
 
       const rows = [];
-      for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits: config })) {
+      const sheet = job.workbookAnalysis.sheets.find((candidate) => candidate.name === job.selectedSheet);
+      for await (const row of readSheetRows(storage.resolvePath(job.inputStorageKey), job.selectedSheet, { limits: config, headerRow: sheet.headerRow })) {
         rows.push({ rowNumber: row.rowNumber, values: Object.fromEntries(Object.entries(row.values).map(([key, value]) => [key, encodeCell(value)])) });
         if (rows.length >= SAMPLE_ROWS) break;
       }

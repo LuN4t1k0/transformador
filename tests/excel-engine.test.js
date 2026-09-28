@@ -91,3 +91,43 @@ test('writes an output workbook from streamed rows', async () => {
   assert.deepEqual(sheet.getRow(1).values.slice(1), ['RUT', 'APELLIDO', 'DIAS']);
   assert.deepEqual(sheet.getRow(3).values.slice(1), ['123456785', 'SOTO', 5]);
 });
+
+test('detects header rows below titles and lets the caller override them', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'excel-engine-'));
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('REPORTE');
+  sheet.addRow(['Reporte de licencias mayo 2024']);
+  sheet.addRow([]);
+  sheet.addRow(['Empresa:', 'Ejemplo SpA']);
+  sheet.addRow(['RUT', 'Nombre', 'Monto', 'Fecha']);
+  sheet.addRow(['12.345.678-5', 'SOTO', 1000, new Date(Date.UTC(2024, 4, 3))]);
+  sheet.addRow(['9.876.543-3', 'DIAZ', 2000, new Date(Date.UTC(2024, 4, 4))]);
+  const hidden = workbook.addWorksheet('OCULTA', { state: 'hidden' });
+  hidden.addRow(['A', 'B']);
+  hidden.addRow([1, 2]);
+  const filePath = path.join(dir, 'titles.xlsx');
+  await workbook.xlsx.writeFile(filePath);
+
+  const { sheets } = await analyzeWorkbook(filePath, { limits });
+  assert.equal(sheets[0].headerRow, 4);
+  assert.deepEqual(sheets[0].headers, ['RUT', 'Nombre', 'Monto', 'Fecha']);
+  assert.equal(sheets[0].rowCount, 2);
+  assert.equal(sheets[0].range, 'A4:D6');
+  assert.ok(sheets[0].warnings.some((warning) => warning.code === 'HEADER_NOT_FIRST_ROW'));
+  assert.ok(sheets[1].warnings.some((warning) => warning.code === 'HIDDEN_SHEET'));
+
+  const rows = [];
+  for await (const row of readSheetRows(filePath, 'REPORTE', { limits, headerRow: 4 })) rows.push(row);
+  assert.deepEqual(rows.map((row) => row.rowNumber), [5, 6]);
+  assert.equal(rows[1].values.Nombre, 'DIAZ');
+
+  const forced = await analyzeWorkbook(filePath, { limits, headerRows: { REPORTE: 1 } });
+  assert.equal(forced.sheets[0].headerRow, 1);
+  assert.equal(forced.sheets[0].headers[0], 'Reporte de licencias mayo 2024');
+});
+
+test('rejects workbooks that expand beyond the uncompressed size limit', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'excel-engine-'));
+  const filePath = await createFixture(dir);
+  await assert.rejects(analyzeWorkbook(filePath, { limits: { ...limits, maxUncompressedBytes: 1000 } }), { code: 'TOO_LARGE_UNCOMPRESSED' });
+});

@@ -1,5 +1,8 @@
+'use client';
+
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Table2 } from 'lucide-react';
-import { Notice } from '../panel';
+import { buttonStyles, Notice } from '../panel';
 
 const PHYSICAL_TYPES = { STRING: 'Texto', INTEGER: 'Entero', DECIMAL: 'Decimal', DATE: 'Fecha', BOOLEAN: 'Sí/No', EMPTY: 'Vacía' };
 const SEMANTIC_TYPES = { CHILEAN_RUT: 'RUT', EMAIL: 'Email', YEAR_MONTH: 'Periodo AAAAMM', AFP: 'AFP', GENERIC_NUMBER: 'Número', GENERIC_TEXT: '—' };
@@ -43,7 +46,32 @@ export function DetectedColumns({ sheet, open = false }) {
   );
 }
 
-export function SheetStep({ job, onSelect, isBusy }) {
+function HeaderRowControl({ sheet, onChange, isBusy }) {
+  const [value, setValue] = useState(String(sheet.headerRow || 1));
+  const parsed = Number(value);
+  const isValid = Number.isInteger(parsed) && parsed >= 1 && parsed <= 1000;
+
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2 rounded-lg border border-ink-200 p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (isValid && parsed !== sheet.headerRow) onChange(parsed);
+      }}
+    >
+      <div>
+        <label htmlFor="header-row" className="mb-1 block text-xs font-medium text-ink-500">Los encabezados de «{sheet.name}» están en la fila</label>
+        <input id="header-row" type="number" min={1} max={1000} className="h-9 w-24 rounded-md border border-ink-200 bg-white px-2 text-sm" value={value} onChange={(event) => setValue(event.target.value)} />
+      </div>
+      <button type="submit" className={buttonStyles.secondary} disabled={isBusy || !isValid || parsed === sheet.headerRow}>Volver a leer</button>
+      <p className="basis-full text-xs text-ink-500">
+        Detectamos la fila {sheet.headerRow} automáticamente. Cámbiala si el Excel tiene títulos o filas en blanco arriba de la tabla y los encabezados no se ven bien.
+      </p>
+    </form>
+  );
+}
+
+export function SheetStep({ job, onSelect, onHeaderRow, isBusy }) {
   const withData = job.sheets.filter((sheet) => sheet.rowCount > 0);
   const selected = job.sheets.find((sheet) => sheet.name === job.selectedSheet);
 
@@ -100,6 +128,8 @@ export function SheetStep({ job, onSelect, isBusy }) {
           );
         })}
       </div>
+
+      {selected ? <HeaderRowControl key={`${selected.name}-${selected.headerRow}`} sheet={selected} isBusy={isBusy} onChange={(headerRow) => onHeaderRow(selected.name, headerRow)} /> : null}
 
       <DetectedColumns sheet={selected} />
 

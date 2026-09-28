@@ -106,8 +106,8 @@ export function createHttpApi(baseUrl) {
       form.append('file', file, file.name);
       return (await getJson('/jobs', { method: 'POST', body: form })).job;
     },
-    async selectSheet(jobId, sheetName) {
-      return (await getJson(`/jobs/${jobId}/sheet`, { method: 'PATCH', json: { sheetName } })).job;
+    async selectSheet(jobId, sheetName, headerRow) {
+      return (await getJson(`/jobs/${jobId}/sheet`, { method: 'PATCH', json: { sheetName, ...(headerRow ? { headerRow } : {}) } })).job;
     },
     async getTemplateMatches(jobId) {
       return (await getJson(`/jobs/${jobId}/template-matches`)).matches;

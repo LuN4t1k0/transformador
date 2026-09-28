@@ -1,5 +1,6 @@
 const ExcelJS = require('exceljs');
 const { analyzeColumn } = require('../../detectors/src');
+const { openWorkbook, XlsxFormatError } = require('./xlsx-reader');
 
 const HEADER_ROW = 1;
 
@@ -57,118 +58,184 @@ function buildHeaders(rawHeaders) {
   return { headers, warnings };
 }
 
-function invalidWorkbook() {
+const HEADER_SCAN_ROWS = 20;
+
+function limitError(error) {
+  if (error instanceof WorkbookLimitError) return error;
+  if (error instanceof XlsxFormatError) return new WorkbookLimitError(error.code, error.code === 'INVALID_WORKBOOK' ? 'El archivo no es un Excel .xlsx válido o está dañado.' : error.message);
   return new WorkbookLimitError('INVALID_WORKBOOK', 'El archivo no es un Excel .xlsx válido o está dañado.');
 }
 
-// Loads the workbook in memory. exceljs' streaming reader is not deterministic when sharedStrings.xml
-// comes after the sheets inside the zip (headers intermittently resolve as empty), so it is not used for
-// reading. Memory is bounded by the upload size limit and the worker concurrency.
-async function loadWorksheets(filePath, limits) {
-  const workbook = new ExcelJS.Workbook();
+async function withWorkbook(filePath, limits, work) {
+  let workbook;
   try {
-    await workbook.xlsx.readFile(filePath);
-  } catch {
-    throw invalidWorkbook();
+    workbook = await openWorkbook(filePath, { maxUncompressedBytes: limits.maxUncompressedBytes });
+  } catch (error) {
+    throw limitError(error);
   }
-  if (workbook.worksheets.length > limits.maxSheets) {
-    throw new WorkbookLimitError('TOO_MANY_SHEETS', `El archivo supera el máximo de ${limits.maxSheets} hojas.`);
+  try {
+    if (workbook.sheets.length > limits.maxSheets) {
+      throw new WorkbookLimitError('TOO_MANY_SHEETS', `El archivo supera el máximo de ${limits.maxSheets} hojas.`);
+    }
+    return await work(workbook);
+  } catch (error) {
+    throw limitError(error);
+  } finally {
+    workbook.close();
   }
-  return workbook.worksheets;
 }
 
-function* iterateSheet(worksheet, limits) {
+function nonEmptyCount(cells) {
+  return cells.filter((cell) => normalizeCellValue(cell) !== null).length;
+}
+
+// The header row is the first "wide" row that is mostly text among the first rows of the sheet.
+// Title rows above the table (one or two cells) and numeric data rows are skipped.
+function detectHeaderRow(rows) {
+  const candidates = rows.filter((row) => nonEmptyCount(row.cells) > 0);
+  if (!candidates.length) return HEADER_ROW;
+  const widest = Math.max(...candidates.map((row) => nonEmptyCount(row.cells)));
+  const minimum = Math.max(widest > 1 ? 2 : 1, Math.ceil(widest * 0.6));
+  for (const row of candidates) {
+    const values = row.cells.map(normalizeCellValue).filter((value) => value !== null);
+    const textShare = values.filter((value) => typeof value === 'string' && !/^-?[\d.,]+$/.test(value.trim())).length / values.length;
+    if (values.length >= minimum && textShare >= 0.6) return row.number;
+  }
+  return candidates[0].number;
+}
+
+// Streams the rows of one sheet as { type: 'header' } followed by { type: 'row' } items, applying limits.
+async function* iterateSheet(workbook, sheetName, limits, requestedHeaderRow) {
+  const source = workbook.rows(sheetName);
+  const buffered = [];
+  let headerRow = requestedHeaderRow;
+
+  if (!headerRow) {
+    for await (const row of source) {
+      buffered.push(row);
+      if (buffered.length >= HEADER_SCAN_ROWS) break;
+    }
+    headerRow = detectHeaderRow(buffered);
+  }
+
   let headerInfo = null;
   let dataRows = 0;
-  const rows = [];
-  worksheet.eachRow((row) => rows.push(row));
 
-  for (const row of rows) {
-    const values = row.values.slice(1);
-    if (values.length > limits.maxColumns) {
-      throw new WorkbookLimitError('TOO_MANY_COLUMNS', `La hoja «${worksheet.name}» supera el máximo de ${limits.maxColumns} columnas.`);
+  function* handle(row) {
+    if (row.cells.length > limits.maxColumns) {
+      throw new WorkbookLimitError('TOO_MANY_COLUMNS', `La hoja «${sheetName}» supera el máximo de ${limits.maxColumns} columnas.`);
+    }
+    if (row.number < headerRow) return;
+    if (row.number === headerRow) {
+      headerInfo = buildHeaders(Array.from(row.cells));
+      yield { type: 'header', headerRow, ...headerInfo };
+      return;
     }
     if (!headerInfo) {
-      const isHeaderRow = row.number === HEADER_ROW;
-      headerInfo = buildHeaders(isHeaderRow ? values : []);
-      yield { type: 'header', ...headerInfo };
-      if (isHeaderRow) continue;
+      headerInfo = buildHeaders([]);
+      yield { type: 'header', headerRow, ...headerInfo };
     }
-
-    const cells = values.map(normalizeCellValue);
-    if (cells.every((cell) => cell === null)) continue;
+    const cells = Array.from(row.cells, normalizeCellValue);
+    if (cells.every((cell) => cell === null)) return;
     dataRows += 1;
     if (dataRows > limits.maxRows) {
-      throw new WorkbookLimitError('TOO_MANY_ROWS', `La hoja «${worksheet.name}» supera el máximo de ${limits.maxRows} filas.`);
+      throw new WorkbookLimitError('TOO_MANY_ROWS', `La hoja «${sheetName}» supera el máximo de ${limits.maxRows} filas.`);
     }
     yield { type: 'row', rowNumber: row.number, cells };
   }
 
-  if (!headerInfo) yield { type: 'header', ...buildHeaders([]) };
-}
-
-async function analyzeWorkbook(filePath, { limits, sampleRows = 200 }) {
-  const sheets = [];
-
-  for (const worksheet of await loadWorksheets(filePath, limits)) {
-    let headers = [];
-    let warnings = [];
-    let rowCount = 0;
-    let lastRow = 0;
-    let columnCount = 0;
-    const samples = [];
-
-    for (const item of iterateSheet(worksheet, limits)) {
-      if (item.type === 'header') {
-        ({ headers, warnings } = item);
-        columnCount = headers.length;
-        continue;
-      }
-      rowCount += 1;
-      lastRow = item.rowNumber;
-      columnCount = Math.max(columnCount, item.cells.length);
-      if (samples.length < sampleRows) samples.push(item.cells);
-    }
-
-    // Data beyond the header row gets a synthetic header so it stays mappable.
-    while (headers.length < columnCount) headers.push(`Columna ${columnLetter(headers.length + 1)}`);
-
-    const columns = headers.map((header, index) => {
-      const { physical, semantic } = analyzeColumn(header, samples.map((cells) => cells[index] ?? null));
-      return { header, position: index + 1, physical, semantic };
-    });
-
-    if (rowCount === 0) warnings = [...warnings, { code: 'EMPTY_SHEET', message: 'La hoja no tiene filas de datos' }];
-
-    sheets.push({
-      name: worksheet.name,
-      range: columnCount ? `A1:${columnLetter(columnCount)}${Math.max(lastRow, HEADER_ROW)}` : null,
-      rowCount,
-      columnCount,
-      headers,
-      columns,
-      warnings
-    });
+  for (const row of buffered) yield* handle(row);
+  // The detection pass may have stopped the stream early; continue from where it left off.
+  const remaining = requestedHeaderRow ? source : workbook.rows(sheetName);
+  const skipUntil = requestedHeaderRow ? 0 : (buffered.at(-1)?.number ?? 0);
+  for await (const row of remaining) {
+    if (row.number <= skipUntil) continue;
+    yield* handle(row);
   }
 
-  return { sheets };
+  if (!headerInfo) yield { type: 'header', headerRow, ...buildHeaders([]) };
 }
 
-async function* readSheetRows(filePath, sheetName, { limits }) {
-  const worksheet = (await loadWorksheets(filePath, limits)).find((candidate) => candidate.name === sheetName);
-  if (!worksheet) throw new WorkbookLimitError('SHEET_NOT_FOUND', `La hoja «${sheetName}» no existe en el archivo.`);
+async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows = {} }) {
+  return withWorkbook(filePath, limits, async (workbook) => {
+    const sheets = [];
 
-  let headers = [];
-  for (const item of iterateSheet(worksheet, limits)) {
-    if (item.type === 'header') {
-      headers = [...item.headers];
-      continue;
+    for (const { name, state } of workbook.sheets) {
+      let headers = [];
+      let warnings = [];
+      let headerRow = HEADER_ROW;
+      let rowCount = 0;
+      let lastRow = 0;
+      let columnCount = 0;
+      const samples = [];
+
+      for await (const item of iterateSheet(workbook, name, limits, headerRows[name])) {
+        if (item.type === 'header') {
+          ({ headers, warnings, headerRow } = item);
+          columnCount = headers.length;
+          continue;
+        }
+        rowCount += 1;
+        lastRow = item.rowNumber;
+        columnCount = Math.max(columnCount, item.cells.length);
+        if (samples.length < sampleRows) samples.push(item.cells);
+      }
+
+      // Data beyond the header row gets a synthetic header so it stays mappable.
+      while (headers.length < columnCount) headers.push(`Columna ${columnLetter(headers.length + 1)}`);
+
+      const columns = headers.map((header, index) => {
+        const { physical, semantic } = analyzeColumn(header, samples.map((cells) => cells[index] ?? null));
+        return { header, position: index + 1, physical, semantic };
+      });
+
+      if (state !== 'visible') warnings = [...warnings, { code: 'HIDDEN_SHEET', message: 'La hoja está oculta en el Excel' }];
+      if (headerRow !== HEADER_ROW) warnings = [...warnings, { code: 'HEADER_NOT_FIRST_ROW', message: `Los encabezados están en la fila ${headerRow}` }];
+      if (rowCount === 0) warnings = [...warnings, { code: 'EMPTY_SHEET', message: 'La hoja no tiene filas de datos' }];
+
+      sheets.push({
+        name,
+        headerRow,
+        range: columnCount ? `A${headerRow}:${columnLetter(columnCount)}${Math.max(lastRow, headerRow)}` : null,
+        rowCount,
+        columnCount,
+        headers,
+        columns,
+        warnings
+      });
     }
-    while (headers.length < item.cells.length) headers.push(`Columna ${columnLetter(headers.length + 1)}`);
-    yield {
-      rowNumber: item.rowNumber,
-      values: Object.fromEntries(headers.map((header, index) => [header, item.cells[index] ?? null]))
-    };
+
+    return { sheets };
+  });
+}
+
+async function* readSheetRows(filePath, sheetName, { limits, headerRow }) {
+  let workbook;
+  try {
+    workbook = await openWorkbook(filePath, { maxUncompressedBytes: limits.maxUncompressedBytes });
+  } catch (error) {
+    throw limitError(error);
+  }
+  try {
+    if (!workbook.sheets.some((sheet) => sheet.name === sheetName)) {
+      throw new WorkbookLimitError('SHEET_NOT_FOUND', `La hoja «${sheetName}» no existe en el archivo.`);
+    }
+    let headers = [];
+    for await (const item of iterateSheet(workbook, sheetName, limits, headerRow)) {
+      if (item.type === 'header') {
+        headers = [...item.headers];
+        continue;
+      }
+      while (headers.length < item.cells.length) headers.push(`Columna ${columnLetter(headers.length + 1)}`);
+      yield {
+        rowNumber: item.rowNumber,
+        values: Object.fromEntries(headers.map((header, index) => [header, item.cells[index] ?? null]))
+      };
+    }
+  } catch (error) {
+    throw limitError(error);
+  } finally {
+    workbook.close();
   }
 }
 
@@ -183,6 +250,7 @@ async function writeWorkbook(filePath, { sheetName, headers, rows }) {
 
 module.exports = {
   WorkbookLimitError,
+  detectHeaderRow,
   analyzeWorkbook,
   readSheetRows,
   writeWorkbook,

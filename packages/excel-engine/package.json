@@ -5,6 +5,8 @@
   "type": "commonjs",
   "main": "src/index.js",
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "saxes": "^6.0.0",
+    "yauzl": "^3.4.0"
   }
 }

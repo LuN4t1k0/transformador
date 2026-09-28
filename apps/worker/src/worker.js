@@ -36,7 +36,7 @@ async function main() {
   });
 
   const handlers = {
-    [QUEUE_NAMES.ANALYSIS]: (job) => processors.analyze(job.data.jobId),
+    [QUEUE_NAMES.ANALYSIS]: (job) => processors.analyze(job.data.jobId, { headerRows: job.data.headerRows }),
     [QUEUE_NAMES.TRANSFORMATION]: (job) => processors.transform(job.data.jobId),
     [QUEUE_NAMES.CLEANUP]: async () => {
       const result = await processors.cleanup(new Date());

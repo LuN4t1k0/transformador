@@ -10,6 +10,7 @@ function intEnv(name, fallback) {
 const config = Object.freeze({
   maxFileSizeBytes: intEnv('MAX_FILE_SIZE_BYTES', 25 * 1024 * 1024),
   maxRows: intEnv('MAX_ROWS', 100000),
+  maxUncompressedBytes: intEnv('MAX_UNCOMPRESSED_BYTES', 500 * 1024 * 1024),
   maxColumns: intEnv('MAX_COLUMNS', 200),
   maxSheets: intEnv('MAX_SHEETS', 20),
   maxConcurrentJobs: intEnv('MAX_CONCURRENT_JOBS', 2),

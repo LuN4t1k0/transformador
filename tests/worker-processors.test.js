@@ -167,3 +167,19 @@ test('cleanup expires stale jobs and deletes their files', async () => {
   assert.equal(await storage.exists(inputStorageKey), false);
   assert.deepEqual(events, ['job:purged']);
 });
+
+test('re-analysis with a header row override keeps the sheet and re-resolves the working template', async () => {
+  const { jobs, processors } = await setup();
+  await processors.analyze('job-1');
+  const job = jobs.jobs.get('job-1');
+  job.workingTemplate = resolveTemplateForHeaders(validateTemplateConfig(planVitalPagexTemplate), job.workbookAnalysis.sheets[0].headers);
+  job.status = 'QUEUED_ANALYSIS';
+
+  await processors.analyze('job-1', { headerRows: { RESUMEN: 2 } });
+  const reanalyzed = jobs.jobs.get('job-1');
+  assert.equal(reanalyzed.status, 'READY');
+  assert.equal(reanalyzed.selectedSheet, 'RESUMEN');
+  assert.equal(reanalyzed.workbookAnalysis.sheets[0].headerRow, 2);
+  assert.deepEqual(reanalyzed.workbookAnalysis.headerRows, { RESUMEN: 2 });
+  assert.ok(reanalyzed.workingTemplate.columns.length > 0);
+});

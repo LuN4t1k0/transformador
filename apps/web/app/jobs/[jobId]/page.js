@@ -314,7 +314,14 @@ function JobWorkspace({ job, setJob }) {
     }
 
     if (sectionId === 'sheet') {
-      return <SheetStep job={job} isBusy={isBusy} onSelect={(name) => replaceFromServer(() => api.selectSheet(job.id, name), template ? null : 'template')} />;
+      return (
+        <SheetStep
+          job={job}
+          isBusy={isBusy}
+          onSelect={(name) => replaceFromServer(() => api.selectSheet(job.id, name), template ? null : 'template')}
+          onHeaderRow={(name, headerRow) => replaceFromServer(() => api.selectSheet(job.id, name, headerRow))}
+        />
+      );
     }
     if (!job.selectedSheet) return <Prerequisite message="Primero elige la hoja con la que quieres trabajar" actionLabel="Ir a Hoja" onAction={() => setActiveId('sheet')} />;
     if (sectionId === 'template') {
