@@ -25,6 +25,7 @@ temp/
 dist/
 build/
 .next/
+**/.next/
 coverage/
 
 # OS/editor
@@ -35,4 +36,3 @@ Thumbs.db
 
 # Docker/local data
 docker-data/
-

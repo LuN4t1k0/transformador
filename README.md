@@ -8,6 +8,7 @@ Incluye:
 
 - SDD inicial en `docs/SDD.md`.
 - Diseño frontend MVP: rutas, pantallas, estados, contratos API, realtime y criterios de aceptacion.
+- App web Next.js + Tailwind en `apps/web`.
 - Motor de transformacion por plantilla en `packages/template-engine`.
 - Transformaciones reutilizables de RUT, texto, numero y fecha.
 - Detectores deterministicos fisicos y semanticos.
@@ -24,7 +25,7 @@ npm run dev
 npm run stop
 ```
 
-La API queda disponible en `http://localhost:4000`. Por defecto Docker expone PostgreSQL en `5434` y Redis en `6380` para evitar conflictos con servicios locales comunes.
+La web queda disponible en `http://localhost:3000` y la API en `http://localhost:4000`. Por defecto Docker expone PostgreSQL en `5434` y Redis en `6380` para evitar conflictos con servicios locales comunes.
 
 ## Siguiente fase
 
