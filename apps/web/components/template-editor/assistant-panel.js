@@ -1,10 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { AlertCircle, Check, Loader2, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Check, Eye, EyeOff, Loader2, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
+import { previewParameters } from '@previley-transformer/template-engine/src/params.js';
+import { previewDesign } from '@previley-transformer/template-engine/src/output-design.js';
 import { api } from '../../lib/api';
 import { describeSource, describeTransformations } from '../../lib/templates';
+import { formatCell, reviveSampleRows } from '../../lib/template-editor';
+import { maskValue } from '../../lib/preview';
 import { buttonStyles, Notice, Panel } from '../panel';
+import { FilePreview } from './file-preview';
 
 const EXAMPLES = 'Ej: «El TOTAL es el sueldo más el bono», «Si la AFP es Capital escribe 03», «Separa el RUT en número y dígito verificador».';
 
@@ -71,12 +77,76 @@ function Comparison({ current, result }) {
   );
 }
 
+// The template as it would be after applying the proposal (the template's own data stays).
+function proposedTemplate(template, proposal) {
+  const { rowSteps, ...rest } = template;
+  return { ...rest, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : {}) };
+}
+
+// The destination example as the user uploaded it, to compare by eye with the proposal. Columns the proposal
+// treats as sensitive (e.g. RUT) are masked the same way.
+function DestinationExample({ example, columns }) {
+  const rows = reviveSampleRows(example.rows).slice(0, 5);
+  const byName = new Map(columns.map((column) => [column.outputName.toLowerCase(), column]));
+  return (
+    <div className="overflow-x-auto rounded-lg border border-ink-200">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-ink-50 text-xs text-ink-500">
+          <tr>{example.headers.map((header) => <th key={header} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{header}</th>)}</tr>
+        </thead>
+        <tbody className="divide-y divide-ink-100">
+          {rows.map((row, index) => (
+            <tr key={index}>
+              {example.headers.map((header) => {
+                const column = byName.get(header.toLowerCase());
+                const text = formatCell(row.values[header]);
+                return <td key={header} className="whitespace-nowrap px-3 py-1.5 text-ink-900">{(column ? maskValue(column, text) : text) || <span className="text-ink-300">—</span>}</td>;
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// What the file would look like with the proposal, next to the destination example, before applying anything.
+function ProposalPreview({ template, proposal, sample, outputExample }) {
+  const proposed = useMemo(() => proposedTemplate(template, proposal), [template, proposal]);
+  const preview = useMemo(() => {
+    try {
+      const params = previewParameters(proposed.parameters || []);
+      const rows = previewRows(sample.rows, proposed, new Date(), params);
+      return { ...rows, design: previewDesign(proposed, rows.results, { inputName: (sample.fileName || '').replace(/\.xlsx$/i, ''), sheet: sample.sheet, now: new Date(), params }) };
+    } catch {
+      return null;
+    }
+  }, [proposed, sample]);
+
+  return (
+    <div className="space-y-4 rounded-lg border border-cobalt-200 bg-cobalt-50/30 p-3">
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-ink-900">Así quedaría tu archivo con la propuesta</h3>
+        {preview ? <FilePreview template={proposed} results={preview.results} sampleCount={sample.rows.length} design={preview.design} /> : <p className="text-sm text-rose-700">No se pudo generar la vista previa de esta propuesta.</p>}
+      </div>
+      {outputExample ? (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-ink-900">Tu ejemplo de destino <span className="font-normal text-ink-500">(primeras filas de «{outputExample.fileName}»)</span></h3>
+          <DestinationExample example={outputExample} columns={proposed.columns} />
+          <p className="mt-1 text-xs text-ink-500">Compara formatos y columnas: si las personas son distintas, los valores no tienen por qué coincidir.</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // Asks the AI assistant for a template proposal based on the examples and the user's instructions. Nothing is
 // applied until the user reviews the proposal.
 export function AssistantPanel({ template, sample, outputExample, onApply }) {
   const [status, setStatus] = useState(null);
   const [instruction, setInstruction] = useState('');
   const [state, setState] = useState({ loading: false, error: '', result: null });
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     api.getAssistantStatus().then(setStatus).catch(() => setStatus({ enabled: false }));
@@ -86,6 +156,7 @@ export function AssistantPanel({ template, sample, outputExample, onApply }) {
 
   async function ask() {
     setState({ loading: true, error: '', result: null });
+    setShowPreview(false);
     try {
       const result = await api.proposeTemplate({
         template,
@@ -138,9 +209,14 @@ export function AssistantPanel({ template, sample, outputExample, onApply }) {
             ) : null}
             {result.explanation ? <p className="whitespace-pre-line text-sm text-ink-700">{plainText(result.explanation)}</p> : null}
             <Comparison current={template} result={result} />
+            {showPreview ? <ProposalPreview template={template} proposal={result.proposal} sample={sample} outputExample={outputExample} /> : null}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-ink-400">{result.model ? `${result.model} · ` : ''}{result.turns} {result.turns === 1 ? 'ronda' : 'rondas'}</span>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={buttonStyles.secondary} aria-expanded={showPreview} onClick={() => setShowPreview(!showPreview)}>
+                  {showPreview ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                  {showPreview ? 'Ocultar vista previa' : 'Previsualizar'}
+                </button>
                 <button type="button" className={buttonStyles.secondary} onClick={() => setState({ loading: false, error: '', result: null })}>
                   <X size={16} aria-hidden="true" />
                   Descartar
