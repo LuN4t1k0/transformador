@@ -164,3 +164,21 @@ test('keeps destination percentages as numbers shown with the Excel percentage f
   assert.equal(column.cellFormat, 'PERCENT');
   assert.ok(!(column.transformations || []).some((item) => item.type === 'NUMBER'));
 });
+
+test('a destination that repeats a header keeps unique names and writes the repeated text', () => {
+  const rows = [['76123456-7', '12345678-5'], ['76123456-7', '9876543-3']].map(([empresa, trabajador], index) => ({ rowNumber: index + 2, values: { 'Rut Empresa': empresa, 'Rut Trabajador': trabajador } }));
+  const out = rows.map((row) => {
+    const [eb, ed] = row.values['Rut Empresa'].split('-');
+    const [tb, td] = row.values['Rut Trabajador'].split('-');
+    return { values: { 'RUT EMPLEADOR': eb, DV: ed, 'RUT TRABAJADOR': tb, 'DV (2)': td } };
+  });
+  const { template } = inferTemplate({
+    input: { headers: ['Rut Empresa', 'Rut Trabajador'], rows },
+    output: { headers: ['RUT EMPLEADOR', 'DV', 'RUT TRABAJADOR', 'DV (2)'], rows: out, columns: [{ header: 'DV (2)', label: 'DV' }], sheet: 'DATOS' }
+  });
+  const validated = validateTemplateConfig(template);
+  const second = validated.columns.find((column) => column.outputName === 'DV (2)');
+  assert.equal(second.header, 'DV');
+  assert.equal(second.source.column, 'Rut Trabajador');
+  assert.equal(validated.columns.find((column) => column.outputName === 'DV').header, undefined);
+});

@@ -489,9 +489,13 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
   // Columns the destination shows as a percentage keep the number (0.0069) and the Excel percentage format, so
   // the file shows 0,69% and the value still adds up; a number format would turn it into text.
   const percentHeaders = new Set([...(output.percentHeaders || []), ...(output.columns || []).filter((column) => column.display === 'PERCENT').map((column) => column.header)]);
+  // A header the destination repeats (DV after each RUT) keeps a unique name here ("DV (2)") and writes its own text.
+  const labels = new Map([...(output.headerLabels || []), ...(output.columns || []).filter((column) => column.label).map((column) => [column.header, column.label])]);
   const withDisplay = columns.map((column, index) => {
-    if (!percentHeaders.has(output.headers[index])) return column;
-    return { ...column, cellFormat: 'PERCENT', transformations: (column.transformations || []).filter((transformation) => transformation.type !== 'NUMBER') };
+    const label = labels.get(output.headers[index]);
+    const named = label ? { ...column, header: label } : column;
+    if (!percentHeaders.has(output.headers[index])) return named;
+    return { ...named, cellFormat: 'PERCENT', transformations: (named.transformations || []).filter((transformation) => transformation.type !== 'NUMBER') };
   });
 
   const template = {

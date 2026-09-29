@@ -81,3 +81,13 @@ test('builds an example input workbook with expected headers and instructions', 
   assert.deepEqual(help.getRow(4).values.slice(1), ['Columna del Excel', 'Obligatoria', 'Qué debe contener', 'Se usa para']);
   assert.match(help.getRow(6).values.slice(1).join('|'), /Nombre completo\|Sí\|.*\|APELLIDO PATERNO, APELLIDO MATERNO, NOMBRE/);
 });
+
+test('writes a repeated header (DV after each RUT) while column names stay unique', async () => {
+  const dvColumns = [{ outputName: 'RUT EMPLEADOR' }, { outputName: 'DV', header: 'DV' }, { outputName: 'RUT TRABAJADOR' }, { outputName: 'DV (2)', header: 'DV' }];
+  async function* dvRows() {
+    yield { output: { 'RUT EMPLEADOR': '76123456', DV: '7', 'RUT TRABAJADOR': '12345678', 'DV (2)': '5' }, raw: {} };
+  }
+  const filePath = await tempFile('dv.csv');
+  await writeOutput(filePath, { template: template({ format: 'DELIMITED', delimiter: ';', includeHeaders: true, encoding: 'UTF-8', lineEnding: 'LF' }), columns: dvColumns, rows: dvRows() });
+  assert.deepEqual((await fs.readFile(filePath, 'utf8')).trim().split('\n'), ['RUT EMPLEADOR;DV;RUT TRABAJADOR;DV', '76123456;7;12345678;5']);
+});

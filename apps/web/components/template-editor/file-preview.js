@@ -26,6 +26,9 @@ function cellText(column, value) {
   return maskValue(column, text);
 }
 
+// The header as written in the file (a destination may repeat one, e.g. DV after each RUT).
+const headerText = (column) => column.header || column.outputName;
+
 function escapeDelimited(text, delimiter) {
   return /["\r\n]/.test(text) || text.includes(delimiter) ? `"${text.replace(/"/g, '""')}"` : text;
 }
@@ -101,7 +104,7 @@ export function FilePreview({ template, results, sampleCount = results.length, d
   let body;
   if (output.format === 'FIXED_WIDTH') {
     const line = (values) => values.map((value, index) => formatFixedWidthValue(value, columns[index].fixedWidth)).join('');
-    const lines = [...headerLines, ...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines];
+    const lines = [...headerLines, ...(output.includeHeaders ? [line(columns.map(headerText))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines];
     body = (
       <>
         <TextPreview lines={lines} />
@@ -111,7 +114,7 @@ export function FilePreview({ template, results, sampleCount = results.length, d
   } else if (output.format === 'DELIMITED' && asText) {
     const delimiter = output.delimiter;
     const line = (values) => values.map((value) => escapeDelimited(value, delimiter)).join(delimiter === '\t' ? '\t' : delimiter);
-    body = <TextPreview lines={[...headerLines, ...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines]} />;
+    body = <TextPreview lines={[...headerLines, ...(output.includeHeaders ? [line(columns.map(headerText))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines]} />;
   } else {
     const statusOf = (column) => COLUMN_STATUS[columnStatus?.get(column.outputName)] || null;
     body = (
@@ -131,7 +134,7 @@ export function FilePreview({ template, results, sampleCount = results.length, d
                 const label = (
                   <span className="inline-flex items-center gap-1.5">
                     {status ? <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} /> : null}
-                    {column.outputName}
+                    {headerText(column)}
                     {status && status.label !== 'lista' ? <span className="sr-only">, {status.label}</span> : null}
                   </span>
                 );

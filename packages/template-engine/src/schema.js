@@ -479,6 +479,10 @@ function validateTemplateConfig(config) {
       transformations: (Array.isArray(column.transformations) ? column.transformations : []).slice(0, 20).map((transformation) => normalizeTransformation(transformation, label)),
       validations: (Array.isArray(column.validations) ? column.validations : []).map((validation) => ({ type: oneOf(validation?.type, [...VALIDATIONS, ...packValidationTypes()], `${label}: la validación no es válida.`) }))
     };
+    // The header written in the file when it differs from the column name: a destination may repeat a header
+    // (DV after each RUT), while names stay unique inside the template ("DV", "DV (2)").
+    const header = text(column.header, `el encabezado de ${label}`, { max: 120 });
+    if (header && header !== outputName) normalized.header = header;
     if (column.semanticType) normalized.semanticType = text(column.semanticType, `el tipo de ${label}`, { max: 40 });
     if (output.format === 'FIXED_WIDTH') normalized.fixedWidth = normalizeFixedWidth(column.fixedWidth, label);
     // How the value is written in an Excel cell (a real number, percent or date); kept only for Excel output.

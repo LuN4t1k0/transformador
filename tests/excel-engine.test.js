@@ -152,3 +152,17 @@ test('reads percent-formatted header cells as text and picks the sheet with a re
   assert.deepEqual(sheets[0].headers, ['RUT', 'NOMBRE', '10%', 'TOTAL']);
   assert.equal(pickTableSheet(sheets).name, 'Capital');
 });
+
+test('headers repeated with different case get a unique name and keep their text as label', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dv-'));
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Datos');
+  sheet.addRow(['RUT EMPLEADOR', 'DV', 'RUT TRABAJADOR', 'Dv']);
+  sheet.addRow(['76123456', '7', '12345678', '5']);
+  const filePath = path.join(dir, 'dv.xlsx');
+  await workbook.xlsx.writeFile(filePath);
+  const { sheets } = await analyzeWorkbook(filePath, { limits });
+  assert.deepEqual(sheets[0].headers, ['RUT EMPLEADOR', 'DV', 'RUT TRABAJADOR', 'Dv (2)']);
+  assert.equal(sheets[0].columns[3].label, 'Dv');
+  assert.equal(sheets[0].columns[1].label, undefined);
+});

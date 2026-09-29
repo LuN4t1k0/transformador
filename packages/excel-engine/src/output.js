@@ -85,8 +85,11 @@ async function writeLines(filePath, output, lines) {
   }
 }
 
+// The header row uses each column's own header text when it has one (a destination may repeat a header).
+const headerText = (column) => column.header || column.outputName;
+
 async function writeTextPart(filePath, { output, columns, rows, vars }) {
-  const headers = columns.map((column) => column.outputName);
+  const headers = columns.map(headerText);
   const valuesOf = (row) => columns.map((column) => row.output[column.outputName] ?? null);
   const line = output.format === 'FIXED_WIDTH'
     ? (values) => values.map((value, index) => formatFixedWidthValue(value, columns[index].fixedWidth)).join('')
@@ -131,13 +134,13 @@ async function writeXlsxParts(filePath, { output, columns, parts }) {
   for (const part of parts) {
     const sheet = workbook.addWorksheet(part.sheetName);
     sheet.columns = columns.map((column) => ({
-      width: Math.min(40, Math.max(10, column.outputName.length + 2)),
+      width: Math.min(40, Math.max(10, headerText(column).length + 2)),
       ...(EXCEL_FORMATS[column.cellFormat] ? { style: { numFmt: EXCEL_FORMATS[column.cellFormat] } } : {})
     }));
     const prepared = prepareRows(part.rows, columns);
     const context = { ...part.vars, totals: prepared.totals, columns };
     for (const text of output.headerLines || []) sheet.addRow([renderDesignText(text, context)]).commit();
-    const header = sheet.addRow(columns.map((column) => column.outputName));
+    const header = sheet.addRow(columns.map(headerText));
     header.font = { bold: true };
     header.commit();
     let count = 0;

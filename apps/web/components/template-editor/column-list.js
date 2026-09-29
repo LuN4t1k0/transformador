@@ -250,6 +250,7 @@ function ColumnCard({ column, index, total, row, sample, sampleRows = null, head
             {describeSource(column.source, outputNames)}
             {formats.length ? ` · ${formats.join(' · ')}` : ''}
             {isFixedWidth && column.fixedWidth ? ` · ${column.fixedWidth.length} caracteres` : ''}
+            {column.header ? ` · En el archivo: «${column.header}»` : ''}
           </p>
           <div className="px-2">{sampleRows?.length > 1 ? <SampleTable column={column} rows={sampleRows} /> : <SampleLine column={column} sample={sample} />}</div>
         </div>
@@ -291,6 +292,21 @@ function ColumnCard({ column, index, total, row, sample, sampleRows = null, head
             ? <p className="text-xs text-ink-500">El resultado de un cálculo es un número; el redondeo se define arriba.</p>
             : <FormatEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} onSplit={onSplit} />}
           {isFixedWidth ? <FixedWidthEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} /> : null}
+          <div className="max-w-md">
+            <label className="mb-1 block text-xs font-medium text-ink-500" htmlFor={`${idPrefix}-header`}>Encabezado en el archivo</label>
+            <input
+              id={`${idPrefix}-header`}
+              maxLength={120}
+              className="h-9 w-full rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
+              value={column.header || ''}
+              placeholder={column.outputName}
+              onChange={(event) => {
+                const { header, ...rest } = column;
+                onChange(event.target.value ? { ...rest, header: event.target.value } : rest);
+              }}
+            />
+            <p className="mt-1 text-xs text-ink-500">Solo si en el archivo debe decir otra cosa, por ejemplo «DV» repetido después de cada RUT.</p>
+          </div>
         </div>
       ) : null}
     </li>

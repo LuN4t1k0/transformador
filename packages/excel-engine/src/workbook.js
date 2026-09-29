@@ -31,9 +31,14 @@ function normalizeCellValue(value) {
   return null;
 }
 
+// Headers that differ only in case, accents or spacing (DV / Dv) are the same name: templates compare names that
+// way, so the second one becomes "Dv (2)". `labels` keeps each header's text as written in the Excel.
+const headerKey = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 function buildHeaders(rawHeaders) {
   const seen = new Map();
   const warnings = [];
+  const labels = [];
   let emptyCount = 0;
   let duplicateCount = 0;
 
@@ -44,8 +49,10 @@ function buildHeaders(rawHeaders) {
       emptyCount += 1;
       header = `Columna ${columnLetter(index + 1)}`;
     }
-    const count = (seen.get(header) || 0) + 1;
-    seen.set(header, count);
+    labels.push(header);
+    const key = headerKey(header);
+    const count = (seen.get(key) || 0) + 1;
+    seen.set(key, count);
     if (count > 1) {
       duplicateCount += 1;
       header = `${header} (${count})`;
@@ -55,7 +62,7 @@ function buildHeaders(rawHeaders) {
 
   if (emptyCount) warnings.push({ code: 'EMPTY_HEADERS', count: emptyCount, message: `${emptyCount} columna(s) sin encabezado` });
   if (duplicateCount) warnings.push({ code: 'DUPLICATE_HEADERS', count: duplicateCount, message: `${duplicateCount} encabezado(s) repetido(s)` });
-  return { headers, warnings };
+  return { headers, labels, warnings };
 }
 
 const HEADER_SCAN_ROWS = 20;
@@ -174,6 +181,7 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
 
     for (const { name, state } of workbook.sheets) {
       let headers = [];
+      let labels = [];
       let warnings = [];
       let hiddenHeaders = [];
       let headerRow = HEADER_ROW;
@@ -187,7 +195,7 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
 
       for await (const item of iterateSheet(workbook, name, limits, headerRows[name])) {
         if (item.type === 'header') {
-          ({ headers, warnings, headerRow } = item);
+          ({ headers, labels, warnings, headerRow } = item);
           hiddenHeaders = item.hiddenHeaders || [];
           columnCount = headers.length;
           continue;
@@ -213,7 +221,9 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
         const { physical, semantic } = analyzeColumn(header, samples.map((cells) => cells[index] ?? null));
         // `display: 'PERCENT'`: Excel shows the stored fraction (0.0069) as a percentage (0,69%).
         const display = numeric[index] && (shownAsPercent[index] || 0) / numeric[index] >= 0.8 ? { display: 'PERCENT' } : {};
-        return { header, position: index + 1, physical, semantic, ...display };
+        // `label`: the header as written, when it had to be renamed for being repeated (DV → "DV (2)").
+        const label = labels[index] && labels[index] !== header ? { label: labels[index] } : {};
+        return { header, position: index + 1, physical, semantic, ...display, ...label };
       });
 
       if (state !== 'visible') warnings = [...warnings, { code: 'HIDDEN_SHEET', message: 'La hoja está oculta en el Excel' }];
