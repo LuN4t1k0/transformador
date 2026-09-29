@@ -7,6 +7,20 @@ import { maskValue } from '../../lib/preview';
 import { formatCell } from '../../lib/template-editor';
 import { describeIssue, describeIssueHint } from '../../lib/templates';
 
+// Spreadsheet column letters: A…Z, AA…
+function columnLetter(index) {
+  let letters = '';
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) letters = String.fromCharCode(65 + ((n - 1) % 26)) + letters;
+  return letters;
+}
+
+// Mapping status of each output column as a dot and a tint: ready, needs a look, missing.
+const COLUMN_STATUS = {
+  OK: { dot: 'bg-mint-600', cell: '', label: 'lista' },
+  REQUIERE_CONFIRMACION: { dot: 'bg-amber-400', cell: 'bg-amber-50', label: 'por revisar' },
+  FALTANTE: { dot: 'bg-rose-600', cell: 'bg-rose-50 text-rose-700', label: 'sin origen' }
+};
+
 function cellText(column, value) {
   const text = formatCell(value);
   return maskValue(column, text);
@@ -54,7 +68,9 @@ function DesignSummary({ design, output }) {
   );
 }
 
-export function FilePreview({ template, results, sampleCount = results.length, design = null }) {
+// `columnStatus` (Map outputName → OK | REQUIERE_CONFIRMACION | FALTANTE) marks each column's mapping state.
+// `selectedColumn` (a column id) is highlighted; with `onSelectColumn`, clicking a header selects that column.
+export function FilePreview({ template, results, sampleCount = results.length, design = null, columnStatus = null, selectedColumn = null, onSelectColumn = null }) {
   const [asText, setAsText] = useState(false);
   const { columns, output } = template;
   const rowValues = results.map((result) => columns.map((column) => cellText(column, result.output[column.outputName])));
@@ -97,26 +113,50 @@ export function FilePreview({ template, results, sampleCount = results.length, d
     const line = (values) => values.map((value) => escapeDelimited(value, delimiter)).join(delimiter === '\t' ? '\t' : delimiter);
     body = <TextPreview lines={[...headerLines, ...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines]} />;
   } else {
+    const statusOf = (column) => COLUMN_STATUS[columnStatus?.get(column.outputName)] || null;
     body = (
-      <div className="overflow-x-auto rounded-lg border border-ink-200">
+      <div className="overflow-x-auto rounded-md border border-ink-200 bg-white">
         {headerLines.length ? <div className="border-b border-ink-100 bg-white px-3 py-1.5 font-mono text-xs text-ink-700">{headerLines.map((text, index) => <p key={index}>{text || ' '}</p>)}</div> : null}
-        <table className="w-full text-left text-sm">
-          <thead className="bg-ink-50 text-xs text-ink-500">
-            <tr>
-              <th scope="col" className="sticky left-0 bg-ink-50 px-3 py-2 font-medium">Fila</th>
-              {columns.map((column) => <th key={column.id} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{column.outputName}</th>)}
+        <table className="w-full border-collapse text-left font-mono text-[13.5px]">
+          <thead>
+            <tr aria-hidden="true" className="bg-ink-50 text-[11px] text-ink-400">
+              <th className="sticky left-0 w-10 border-b border-r border-ink-200 bg-ink-50" />
+              {columns.map((column, index) => <th key={column.id} className="border-b border-r border-ink-100 px-3 py-0.5 text-center font-normal">{columnLetter(index)}</th>)}
+            </tr>
+            <tr className="font-sans text-[13px] text-ink-900">
+              <th scope="col" className="sticky left-0 w-10 border-b border-r border-ink-200 bg-ink-50 px-2"><span className="sr-only">Fila del Excel</span></th>
+              {columns.map((column) => {
+                const status = statusOf(column);
+                const isSelected = column.id === selectedColumn;
+                const label = (
+                  <span className="inline-flex items-center gap-1.5">
+                    {status ? <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} /> : null}
+                    {column.outputName}
+                    {status && status.label !== 'lista' ? <span className="sr-only">, {status.label}</span> : null}
+                  </span>
+                );
+                return (
+                  <th key={column.id} scope="col" aria-selected={onSelectColumn ? isSelected : undefined} className={`whitespace-nowrap border-b border-r border-ink-200 px-3 py-2 font-bold ${isSelected ? 'bg-amber-100 shadow-[inset_0_-3px_0_#e8b04b]' : status?.cell || 'bg-white'}`}>
+                    {onSelectColumn ? (
+                      <button type="button" className="rounded-sm text-left hover:underline" title="Editar esta columna" onClick={() => onSelectColumn(column.id)}>{label}</button>
+                    ) : label}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-ink-100">
+          <tbody>
             {results.map((result, rowIndex) => (
               <tr key={result.rowNumber}>
-                <th scope="row" className="sticky left-0 bg-white px-3 py-1.5 text-xs font-normal tabular-nums text-ink-400" title={result.rowNumbers?.length > 1 ? `Agrupa las filas ${result.rowNumbers.join(', ')}` : undefined}>
-                  {result.rowNumbers?.length > 1 ? `${result.rowNumber} +${result.rowNumbers.length - 1}` : result.rowNumber}
+                <th scope="row" className="sticky left-0 border-b border-r border-ink-200 bg-ink-50 px-2 py-1.5 text-right text-[11px] font-normal tabular-nums text-ink-400" title={result.rowNumbers?.length > 1 ? `Agrupa las filas ${result.rowNumbers.join(', ')}` : `Fila ${result.rowNumber} del Excel`}>
+                  {result.rowNumbers?.length > 1 ? `${result.rowNumber}+${result.rowNumbers.length - 1}` : result.rowNumber}
                 </th>
                 {columns.map((column, columnIndex) => {
                   const hasError = result.issues.some((issue) => issue.column === column.outputName && issue.severity === 'error');
+                  const status = statusOf(column);
+                  const tint = column.id === selectedColumn ? 'bg-amber-50' : status?.cell || '';
                   return (
-                    <td key={column.id} className={`whitespace-nowrap px-3 py-1.5 ${hasError ? 'bg-rose-50 text-rose-700' : 'text-ink-900'}`}>
+                    <td key={column.id} className={`whitespace-nowrap border-b border-r border-ink-100 px-3 py-1.5 ${hasError ? 'bg-rose-50 text-rose-700' : `${tint} text-ink-900`}`}>
                       {rowValues[rowIndex][columnIndex] || <span className="text-ink-300">—</span>}
                     </td>
                   );
@@ -125,10 +165,10 @@ export function FilePreview({ template, results, sampleCount = results.length, d
             ))}
           </tbody>
           {totalsValues ? (
-            <tfoot className="border-t border-ink-200 bg-ink-50">
+            <tfoot className="bg-ink-50">
               <tr>
-                <th scope="row" className="sticky left-0 bg-ink-50 px-3 py-1.5 text-xs font-normal text-ink-400">Totales</th>
-                {totalsValues.map((value, index) => <td key={columns[index].id} className="whitespace-nowrap px-3 py-1.5 font-semibold text-ink-900">{value}</td>)}
+                <th scope="row" className="sticky left-0 border-r border-t border-ink-200 bg-ink-50 px-2 py-1.5 text-[11px] font-normal text-ink-400">Tot.</th>
+                {totalsValues.map((value, index) => <td key={columns[index].id} className="whitespace-nowrap border-r border-t border-ink-200 px-3 py-1.5 font-semibold text-ink-900">{value}</td>)}
               </tr>
             </tfoot>
           ) : null}

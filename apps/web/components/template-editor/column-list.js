@@ -191,7 +191,7 @@ function CompactRow({ column, index, row, sample, headers, outputNames, flag, on
   );
 }
 
-function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onSplitName, onRemove, onConfirm }) {
+function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onSplitName, onRemove, onConfirm, collapsible = true }) {
   const idPrefix = `column-${column.id}`;
   const status = row?.status;
   const tone = status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : status === 'REQUIERE_CONFIRMACION' ? 'border-amber-200 bg-amber-50/40' : 'border-ink-200 bg-white';
@@ -227,9 +227,11 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, o
           <button type="button" className={iconButton} aria-label={`Bajar ${column.outputName}`} disabled={index === total - 1} onClick={() => onMove(1)}><ArrowDown size={15} aria-hidden="true" /></button>
           <button type="button" className={iconButton} aria-label={`Duplicar ${column.outputName}`} onClick={onDuplicate}><Copy size={15} aria-hidden="true" /></button>
           <button type="button" className={`${iconButton} hover:text-rose-700`} aria-label={`Eliminar ${column.outputName}`} disabled={total === 1} onClick={onRemove}><Trash2 size={15} aria-hidden="true" /></button>
-          <button type="button" className={iconButton} aria-label={isExpanded ? `Cerrar ${column.outputName}` : `Editar ${column.outputName}`} aria-expanded={isExpanded} onClick={onToggle}>
-            <ChevronDown size={16} className={isExpanded ? 'rotate-180 transition-transform' : 'transition-transform'} aria-hidden="true" />
-          </button>
+          {collapsible ? (
+            <button type="button" className={iconButton} aria-label={isExpanded ? `Cerrar ${column.outputName}` : `Editar ${column.outputName}`} aria-expanded={isExpanded} onClick={onToggle}>
+              <ChevronDown size={16} className={isExpanded ? 'rotate-180 transition-transform' : 'transition-transform'} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
 
         {row?.reason || row?.note ? (
@@ -258,9 +260,14 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, o
   );
 }
 
+const DOT = { OK: 'bg-mint-600', REQUIERE_CONFIRMACION: 'bg-amber-400', FALTANTE: 'bg-rose-600' };
+
 // Editable list of output columns. `evaluation`, `sample` and `onConfirm` are optional (not available without a file).
 // `flagged` (Map id → label) marks columns to double-check, e.g. suggested by a similar header name.
-export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, isFixedWidth = false, flagged = new Map(), onFlagResolve = () => {} }) {
+// `layout="workbench"`: a navigator on the left and the selected column's editor on the right, followed by
+// `renderPreview()` (the live file). `selectedId` / `onSelect` keep the selection in the parent, so the preview
+// can highlight and select columns too.
+export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, isFixedWidth = false, flagged = new Map(), onFlagResolve = () => {}, layout = 'list', selectedId = null, onSelect = () => {}, renderPreview = null }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [compact, setCompact] = useState(columns.length > 8);
@@ -282,6 +289,106 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
     const column = createColumn(columns, isFixedWidth);
     onChange([...columns, column]);
     setExpandedId(column.id);
+    onSelect(column.id);
+  }
+
+  // Everything a column card can do, shared by both layouts.
+  function cardProps(column, index) {
+    return {
+      column,
+      index,
+      total: columns.length,
+      row: rowsById.get(column.id),
+      sample,
+      headers,
+      suggestions,
+      outputColumns: columns.slice(0, index),
+      outputNames,
+      isFixedWidth,
+      onChange: (next, options) => replace(index, next, options),
+      onMove: (delta) => onChange(moveColumn(columns, index, delta)),
+      onDuplicate: () => {
+        // Duplicating is explicit intent to reuse the same origin: no confirmation needed for either copy.
+        const next = duplicateColumn(columns, index);
+        onChange(next, { confirm: [column.id, next[index + 1].id] });
+      },
+      onSplit: (domain) => onChange(splitColumn(columns, index, domain)),
+      onSplitName: (source) => {
+        // Asked for explicitly: the three new columns need no further confirmation.
+        const next = splitNameColumn(columns, index, source);
+        onChange(next, { confirm: next.slice(index, index + 3).map((created) => created.id) });
+      },
+      onRemove: () => {
+        onChange(columns.filter((_, columnIndex) => columnIndex !== index));
+        onSelect(columns[index + 1]?.id || columns[index - 1]?.id || null);
+      },
+      onConfirm
+    };
+  }
+
+  const bulkActions = (
+    <>
+      {flaggedOk.length > 1 ? (
+        <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => flaggedOk.forEach(onFlagResolve)}>
+          <CheckCircle2 size={15} aria-hidden="true" />
+          Aceptar sugeridas ({flaggedOk.length})
+        </button>
+      ) : null}
+      {onConfirmAll && pendingIds.length > 1 ? (
+        <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirmAll(pendingIds)}>
+          <CheckCircle2 size={15} aria-hidden="true" />
+          Confirmar todas ({pendingIds.length})
+        </button>
+      ) : null}
+    </>
+  );
+
+  if (layout === 'workbench') {
+    const selectedIndex = Math.max(0, columns.findIndex((column) => column.id === selectedId));
+    const selected = columns[selectedIndex];
+    return (
+      <div className="grid gap-5 xl:grid-cols-[248px_minmax(0,1fr)]">
+        <div className="space-y-3 xl:sticky xl:top-24 xl:self-start">
+          <p className="text-sm text-ink-500">{columns.length} columnas, en el orden del archivo final.</p>
+          <ol aria-label="Columnas del archivo final" className="max-h-[60vh] overflow-y-auto rounded-md border border-ink-200 bg-white">
+            {columns.map((column, index) => {
+              const status = rowsById.get(column.id)?.status || null;
+              const dot = flagged.has(column.id) && (status || 'OK') === 'OK' ? DOT.REQUIERE_CONFIRMACION : DOT[status];
+              const isSelected = column.id === selected?.id;
+              return (
+                <li key={column.id} className="border-b border-ink-100 last:border-b-0">
+                  <button
+                    type="button"
+                    aria-current={isSelected ? 'true' : undefined}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${isSelected ? 'bg-amber-100 font-semibold text-ink-900' : 'text-ink-700 hover:bg-ink-50'}`}
+                    onClick={() => onSelect(column.id)}
+                  >
+                    <span className="w-5 shrink-0 text-right font-mono text-[11px] text-ink-400">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate">{column.outputName}</span>
+                    {dot ? <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${dot}`} /> : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 hover:bg-ink-50" onClick={add}>
+              <Plus size={15} aria-hidden="true" />
+              Agregar columna
+            </button>
+            {bulkActions}
+          </div>
+        </div>
+        <div className="min-w-0 space-y-6">
+          {selected ? (
+            <ul aria-label="Columna seleccionada">
+              <ColumnCard key={selected.id} {...cardProps(selected, selectedIndex)} isExpanded collapsible={false} onToggle={() => {}} />
+            </ul>
+          ) : null}
+          {renderPreview ? renderPreview() : null}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -297,18 +404,7 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
               <LayoutList size={15} aria-hidden="true" /><span className="sr-only">Vista detallada</span>
             </button>
           </div>
-          {flaggedOk.length > 1 ? (
-            <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => flaggedOk.forEach(onFlagResolve)}>
-              <CheckCircle2 size={15} aria-hidden="true" />
-              Aceptar sugeridas ({flaggedOk.length})
-            </button>
-          ) : null}
-          {onConfirmAll && pendingIds.length > 1 ? (
-            <button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirmAll(pendingIds)}>
-              <CheckCircle2 size={15} aria-hidden="true" />
-              Confirmar todas ({pendingIds.length})
-            </button>
-          ) : null}
+          {bulkActions}
           {evaluation || flagged.size ? (
             <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-ink-200 px-3 text-sm font-medium text-ink-700 hover:bg-ink-50">
               <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} />
@@ -349,33 +445,9 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
           return (
             <ColumnCard
               key={column.id}
-              column={column}
-              index={index}
-              total={columns.length}
-              row={row}
-              sample={sample}
-              headers={headers}
-              suggestions={suggestions}
-              outputColumns={columns.slice(0, index)}
-              outputNames={outputNames}
-              isFixedWidth={isFixedWidth}
+              {...cardProps(column, index)}
               isExpanded={expandedId === column.id}
               onToggle={() => setExpandedId(expandedId === column.id ? null : column.id)}
-              onChange={(next, options) => replace(index, next, options)}
-              onMove={(delta) => onChange(moveColumn(columns, index, delta))}
-              onDuplicate={() => {
-                // Duplicating is explicit intent to reuse the same origin: no confirmation needed for either copy.
-                const next = duplicateColumn(columns, index);
-                onChange(next, { confirm: [column.id, next[index + 1].id] });
-              }}
-              onSplit={(domain) => onChange(splitColumn(columns, index, domain))}
-              onSplitName={(source) => {
-                // Asked for explicitly: the three new columns need no further confirmation.
-                const next = splitNameColumn(columns, index, source);
-                onChange(next, { confirm: next.slice(index, index + 3).map((created) => created.id) });
-              }}
-              onRemove={() => onChange(columns.filter((_, columnIndex) => columnIndex !== index))}
-              onConfirm={onConfirm}
             />
           );
         })}

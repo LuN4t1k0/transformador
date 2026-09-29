@@ -77,6 +77,9 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
     return next;
   });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
+  const [activeTab, setActiveTab] = useState('columns');
+  const [columnsView, setColumnsView] = useState('workbench');
+  const [selectedId, setSelectedId] = useState(null);
   // Identifiers the domain packs use to match example rows (e.g. RUT).
   const keyLabels = listPacks().flatMap((pack) => (pack.keys || []).map((key) => key.label));
   const [state, setState] = useState({ saving: false, error: null });
@@ -121,16 +124,84 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   }
 
   const setMeta = (field) => (event) => setTemplate({ ...template, [field]: event.target.value });
+  const columnStatus = evaluation ? new Map(evaluation.rows.map((row) => [row.column.outputName, row.status])) : null;
+  const pendingColumns = evaluation ? evaluation.counts.pending + evaluation.counts.missing : 0;
+  const tabs = [
+    { id: 'columns', label: 'Columnas', badge: pendingColumns || null },
+    { id: 'rows', label: 'Filas', badge: null },
+    { id: 'output', label: 'Archivo de salida', badge: null },
+    { id: 'params', label: 'Datos al generar', badge: template.parameters?.length || null },
+    { id: 'details', label: 'Descripción', badge: null }
+  ];
+
+  // The live file, under every part of the template; in Columnas its headers also select the column to edit.
+  function renderPreview({ selectable = false } = {}) {
+    if (!preview) {
+      return (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-ink-300 bg-white px-4 py-5">
+          <p className="max-w-[60ch] text-sm text-ink-700">Carga un Excel de prueba para ver aquí cómo queda el archivo final mientras editas.</p>
+          <SampleLoader sample={sample} onLoaded={setSample} />
+        </div>
+      );
+    }
+    return (
+      <section aria-label="Vista previa del archivo final">
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-lg font-bold text-ink-900">Así queda el archivo</h2>
+          <span className="text-sm text-ink-500">Con las primeras filas de «{sample.fileName}».{selectable ? ' Haz clic en una columna para editarla.' : ''}</span>
+        </div>
+        <RowStepsNote preview={preview} sampleCount={sample.rows.length} />
+        <FilePreview
+          template={template}
+          results={preview.results}
+          sampleCount={sample.rows.length}
+          design={preview.design}
+          columnStatus={columnStatus}
+          selectedColumn={selectable ? selectedId || template.columns[0]?.id : null}
+          onSelectColumn={selectable ? (id) => { setSelectedId(id); setColumnsView('workbench'); } : null}
+        />
+      </section>
+    );
+  }
 
   return (
     <ParametersContext.Provider value={template.parameters || []}>
     <form className="space-y-5" onSubmit={submit}>
-      <Panel title="Datos de la plantilla" description={note}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className={labelClass} htmlFor="template-name">Nombre *</label>
-            <input id="template-name" required maxLength={120} className={inputClass} value={template.name} onChange={setMeta('name')} placeholder="Ej: PlanVital 2026" />
+      <div className="sticky top-14 z-10 -mx-4 border-b border-ink-200 bg-canvas/95 px-4 pb-0 pt-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-0 flex-1 basis-64">
+            <label className={labelClass} htmlFor="template-name">Nombre de la plantilla *</label>
+            <input id="template-name" required maxLength={120} className="h-11 w-full rounded-md border border-ink-200 bg-white px-3 text-lg font-bold text-ink-900" value={template.name} onChange={setMeta('name')} placeholder="Ej: PlanVital 2026" />
           </div>
+          <SampleLoader sample={sample} onLoaded={setSample} />
+          <button type="submit" className={buttonStyles.primary} disabled={state.saving}>
+            {state.saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
+            {submitLabel}
+          </button>
+        </div>
+        <div role="tablist" aria-label="Partes de la plantilla" className="mt-3 flex gap-1 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`-mb-px flex h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-[15px] font-semibold ${activeTab === tab.id ? 'border-cobalt-600 text-ink-900' : 'border-transparent text-ink-500 hover:text-ink-900'}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+              {tab.badge ? <span className={`rounded-full px-1.5 text-xs tabular-nums ${tab.id === 'columns' ? 'bg-amber-100 text-amber-700' : 'bg-ink-100 text-ink-700'}`}>{tab.badge}</span> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {state.error ? <Notice tone="danger" icon={AlertCircle} role="alert">{state.error.message}</Notice> : null}
+
+      {activeTab === 'details' ? (
+      <section className="max-w-3xl space-y-4" role="tabpanel" aria-label="Descripción">
+        {note ? <p className="text-ink-500">{note}</p> : null}
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className={labelClass} htmlFor="template-destination">Destino</label>
             <input id="template-destination" list="template-destinations" maxLength={80} className={inputClass} value={template.destination || ''} onChange={setMeta('destination')} placeholder="Ej: PlanVital, TGR" />
@@ -146,12 +217,22 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
             <input id="template-description" maxLength={500} className={inputClass} value={template.description || ''} onChange={setMeta('description')} />
           </div>
         </div>
-      </Panel>
+      </section>
+      ) : null}
 
-      <Panel title="Parámetros" description="Opcional: valores que se piden cada vez que se genera el archivo, como el periodo o una fecha de corte.">
-        <ParametersEditor parameters={template.parameters || []} onChange={(parameters) => setTemplate({ ...template, parameters })} />
-      </Panel>
+      {activeTab === 'params' ? (
+        <div className="space-y-6" role="tabpanel" aria-label="Datos al generar">
+          <section className="max-w-4xl">
+            <h2 className="text-lg font-bold text-ink-900">Datos que se piden al generar</h2>
+            <p className="mb-3 mt-1 text-ink-500">Opcional: valores que se escriben cada vez que se genera el archivo, como el periodo o una fecha de corte.</p>
+            <ParametersEditor parameters={template.parameters || []} onChange={(parameters) => setTemplate({ ...template, parameters })} />
+          </section>
+          {renderPreview()}
+        </div>
+      ) : null}
 
+      {activeTab === 'columns' ? (
+      <div className="space-y-5" role="tabpanel" aria-label="Columnas">
       {report?.mode === 'BY_EXAMPLE' || report?.mode === 'OUTPUT_ONLY' ? (
         <Notice tone={report.unresolved.length || report.suggested?.length ? 'warning' : 'success'} icon={Sparkles}>
           <p className="font-semibold">
@@ -173,6 +254,36 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
         </Notice>
       ) : null}
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-[70ch] text-sm text-ink-500">
+          {sample ? 'Elige cada columna para ver y cambiar de dónde sale y su formato; el resultado se ve abajo al instante.' : 'Sin un Excel de prueba, el origen se escribe con el nombre del encabezado que tendrá el archivo. Carga uno para ver ejemplos y la vista previa.'}
+        </p>
+        <div role="group" aria-label="Vista de columnas" className="inline-flex rounded-md border border-ink-200 bg-white p-0.5 text-sm font-semibold">
+          <button type="button" aria-pressed={columnsView === 'workbench'} className={`rounded px-3 py-1.5 ${columnsView === 'workbench' ? 'bg-cobalt-50 text-cobalt-700' : 'text-ink-500 hover:text-ink-900'}`} onClick={() => setColumnsView('workbench')}>Mesa de trabajo</button>
+          <button type="button" aria-pressed={columnsView === 'list'} className={`rounded px-3 py-1.5 ${columnsView === 'list' ? 'bg-cobalt-50 text-cobalt-700' : 'text-ink-500 hover:text-ink-900'}`} onClick={() => setColumnsView('list')}>Lista</button>
+        </div>
+      </div>
+
+      <ColumnList
+        layout={columnsView}
+        selectedId={selectedId || template.columns[0]?.id}
+        onSelect={setSelectedId}
+        renderPreview={() => renderPreview({ selectable: true })}
+        columns={template.columns}
+        onChange={(columns, options) => {
+          setTemplate(withColumns(template, columns));
+          if (options?.unconfirm) unflag(options.unconfirm);
+        }}
+        flagged={flagged}
+        onFlagResolve={unflag}
+        headers={sample ? sample.headers : null}
+        suggestions={suggestions}
+        evaluation={evaluation}
+        sample={results?.length ? { values: sample.rows[0].values, result: results[0] } : null}
+        isFixedWidth={template.output.format === 'FIXED_WIDTH'}
+      />
+      {columnsView === 'list' ? renderPreview({ selectable: true }) : null}
+
       <AssistantPanel
         template={template}
         sample={sample}
@@ -183,57 +294,36 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
           setFlagged(new Map());
         }}
       />
-
-      <Panel
-        title="Columnas"
-        description={sample ? 'Elige el origen entre las columnas del Excel de prueba y revisa el resultado de ejemplo de cada una.' : 'Sin un Excel de prueba, el origen se escribe con el nombre del encabezado que tendrá el archivo. Carga uno para ver ejemplos y la vista previa.'}
-        actions={<SampleLoader sample={sample} onLoaded={setSample} />}
-      >
-        <ColumnList
-          columns={template.columns}
-          onChange={(columns, options) => {
-            setTemplate(withColumns(template, columns));
-            if (options?.unconfirm) unflag(options.unconfirm);
-          }}
-          flagged={flagged}
-          onFlagResolve={unflag}
-          headers={sample ? sample.headers : null}
-          suggestions={suggestions}
-          evaluation={evaluation}
-          sample={results?.length ? { values: sample.rows[0].values, result: results[0] } : null}
-          isFixedWidth={template.output.format === 'FIXED_WIDTH'}
-        />
-      </Panel>
-
-      <Panel title="Filas" description="Opcional: filtra, quita duplicados, agrupa u ordena las filas del archivo final.">
-        <RowStepsEditor
-          steps={template.rowSteps}
-          columns={template.columns}
-          headers={sample ? sample.headers : null}
-          suggestions={suggestions}
-          onChange={(rowSteps) => setTemplate(withColumns({ ...template, rowSteps }, template.columns))}
-        />
-      </Panel>
-
-      <Panel title="Tipo de archivo">
-        <OutputEditor template={template} onChange={setTemplate} />
-      </Panel>
-
-      {preview ? (
-        <Panel title="Vista previa" description={`Así quedaría el archivo con las primeras filas de «${sample.fileName}».`}>
-          <RowStepsNote preview={preview} sampleCount={sample.rows.length} />
-          <FilePreview template={template} results={preview.results} sampleCount={sample.rows.length} design={preview.design} />
-        </Panel>
+      </div>
       ) : null}
 
-      {state.error ? <Notice tone="danger" icon={AlertCircle} role="alert">{state.error.message}</Notice> : null}
+      {activeTab === 'rows' ? (
+        <div className="space-y-6" role="tabpanel" aria-label="Filas">
+          <section>
+            <h2 className="text-lg font-bold text-ink-900">Filas</h2>
+            <p className="mb-3 mt-1 text-ink-500">Opcional: filtra, quita duplicados, agrupa u ordena las filas del archivo final.</p>
+            <RowStepsEditor
+              steps={template.rowSteps}
+              columns={template.columns}
+              headers={sample ? sample.headers : null}
+              suggestions={suggestions}
+              onChange={(rowSteps) => setTemplate(withColumns({ ...template, rowSteps }, template.columns))}
+            />
+          </section>
+          {renderPreview()}
+        </div>
+      ) : null}
 
-      <div className="flex justify-end">
-        <button type="submit" className={buttonStyles.primary} disabled={state.saving}>
-          {state.saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
-          {submitLabel}
-        </button>
-      </div>
+      {activeTab === 'output' ? (
+        <div className="space-y-6" role="tabpanel" aria-label="Archivo de salida">
+          <section>
+            <h2 className="text-lg font-bold text-ink-900">Archivo de salida</h2>
+            <p className="mb-3 mt-1 text-ink-500">Formato, nombre del archivo, encabezado y pie, totales y división.</p>
+            <OutputEditor template={template} onChange={setTemplate} />
+          </section>
+          {renderPreview()}
+        </div>
+      ) : null}
     </form>
     </ParametersContext.Provider>
   );
