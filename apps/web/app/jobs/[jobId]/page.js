@@ -24,7 +24,9 @@ import { ColumnList } from '../../../components/template-editor/column-list';
 import { FilePreview } from '../../../components/template-editor/file-preview';
 import { OutputEditor } from '../../../components/template-editor/output-editor';
 import { RowStepsEditor, RowStepsNote } from '../../../components/template-editor/row-steps-editor';
-import { withColumns } from '../../../lib/template-editor';
+import { encodeSampleRows, withColumns } from '../../../lib/template-editor';
+import { AssistantPanel } from '../../../components/template-editor/assistant-panel';
+import { ExampleReport } from '../../../components/template-editor/example-report';
 import { api } from '../../../lib/api';
 import { useJob } from '../../../lib/hooks/use-job';
 import { StepRail } from '../../../components/job/step-rail';
@@ -100,6 +102,8 @@ function JobWorkspace({ job, setJob }) {
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [sampleIndex, setSampleIndex] = useState(0);
+  // What was learned from a destination example in this visit (report and example rows for the assistant).
+  const [exampleContext, setExampleContext] = useState(null);
   const headingRef = useRef(null);
   const hasMounted = useRef(false);
 
@@ -135,6 +139,10 @@ function JobWorkspace({ job, setJob }) {
   }, [template, sampleRows, params, job.fileName, job.selectedSheet]);
   const sampleAt = Math.min(sampleIndex, (sampleRows?.length || 1) - 1);
   const sample = results?.length ? { values: sampleRows[sampleAt].values, result: results[sampleAt] } : null;
+  // The assistant works with this file's sample (or the rows read with the destination example).
+  const assistantSample = headers && sampleRows?.length
+    ? { fileName: job.fileName, sheet: job.selectedSheet, headers, rows: sampleRows, exampleRows: exampleContext?.input?.exampleRows || encodeSampleRows(sampleRows) }
+    : null;
 
   // Tell the user when a conversion they started finishes while they are in another tab.
   const previousStatus = useRef(job.status);
@@ -165,6 +173,24 @@ function JobWorkspace({ job, setJob }) {
     } catch (error) {
       setActionError(error.message || 'No pudimos completar la acción. Inténtalo de nuevo.');
       return null;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  // A new template learned from an example of the destination; the assistant can then complete what is missing.
+  async function createFromExample(file) {
+    if (!(await flush())) return 'No se pudieron guardar los cambios anteriores.';
+    setIsBusy(true);
+    setActionError('');
+    try {
+      const result = await api.createJobTemplateFromExample(job.id, { output: file });
+      reset(result.job);
+      setExampleContext({ report: result.report, input: result.input, output: result.output });
+      setActiveId('columns');
+      return null;
+    } catch (error) {
+      return error.message || 'No pudimos leer el ejemplo. Revisa que sea un Excel .xlsx.';
     } finally {
       setIsBusy(false);
     }
@@ -251,7 +277,17 @@ function JobWorkspace({ job, setJob }) {
     }
     if (!job.selectedSheet) return <Prerequisite message="Primero elige la hoja con la que quieres trabajar" actionLabel="Ir a Hoja" onAction={() => setActiveId('sheet')} />;
     if (sectionId === 'template') {
-      return <TemplateStep job={{ ...job, workingTemplate: template }} isBusy={isBusy} onApply={(selection) => replaceFromServer(() => api.applyTemplate(job.id, selection), sectionAfterApply)} />;
+      return (
+        <TemplateStep
+          job={{ ...job, workingTemplate: template }}
+          isBusy={isBusy}
+          onApply={(selection) => {
+            setExampleContext(null);
+            return replaceFromServer(() => api.applyTemplate(job.id, selection), sectionAfterApply);
+          }}
+          onFromExample={createFromExample}
+        />
+      );
     }
     if (!template) return <Prerequisite message="Primero elige o crea una plantilla" actionLabel="Ir a Plantilla" onAction={() => setActiveId('template')} />;
 
@@ -266,6 +302,7 @@ function JobWorkspace({ job, setJob }) {
               </select>
             </label>
           ) : null}
+          <ExampleReport report={exampleContext?.report} assistantAvailable={Boolean(assistantSample)} />
           <ColumnList
             columns={template.columns}
             onChange={changeColumns}
@@ -276,6 +313,18 @@ function JobWorkspace({ job, setJob }) {
             sample={sample}
             isFixedWidth={template.output.format === 'FIXED_WIDTH'}
           />
+          {assistantSample ? (
+            <AssistantPanel
+              template={template}
+              sample={assistantSample}
+              outputExample={exampleContext?.output ? { fileName: exampleContext.output.fileName, headers: exampleContext.output.headers, rows: exampleContext.output.exampleRows } : null}
+              onApply={(proposal) => update((current) => {
+                // The proposal replaces columns, output and row steps; parameters stay as they were.
+                const { rowSteps, ...rest } = current.template;
+                return { ...current, template: { ...rest, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : {}) } };
+              })}
+            />
+          ) : null}
         </div>
       );
     }

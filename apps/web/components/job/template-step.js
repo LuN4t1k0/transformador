@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, FilePlus2, FileSpreadsheet, Loader2, Search } from 'lucide-react';
 import { api } from '../../lib/api';
 import { outputFormatLabel } from '../../lib/templates';
@@ -27,7 +27,81 @@ function MatchBar({ match }) {
   );
 }
 
-export function TemplateStep({ job, onApply, isBusy }) {
+// A new template for this file: from an example of the destination (learned, then the assistant and the user
+// complete it) or by hand from this file's headers.
+function CreateTemplateChoice({ job, isBusy, onApply, onFromExample }) {
+  const [open, setOpen] = useState(false);
+  const [example, setExample] = useState(null);
+  const [error, setError] = useState('');
+  const inputId = useId();
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={isBusy}
+        className={`flex w-full items-start gap-3 rounded-md border border-dashed p-4 text-left disabled:cursor-wait ${
+          job.workingTemplate && !job.template ? 'border-cobalt-500 bg-cobalt-50' : 'border-ink-300 bg-white hover:bg-ink-50'
+        }`}
+        onClick={() => setOpen(true)}
+      >
+        <FilePlus2 className="mt-0.5 shrink-0 text-cobalt-600" size={20} aria-hidden="true" />
+        <span>
+          <span className="block font-semibold text-ink-900">Crear una plantilla nueva para este archivo</span>
+          <span className="mt-1 block text-sm text-ink-500">Con un ejemplo de cómo debe quedar (el sistema y el asistente la arman) o a mano, desde las columnas de «{job.selectedSheet}».</span>
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <section aria-labelledby={`${inputId}-title`} className="space-y-3 rounded-md border border-cobalt-500 bg-white p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id={`${inputId}-title`} className="text-base font-bold text-ink-900">¿Cómo quieres crear la plantilla?</h3>
+        <button type="button" className="text-sm font-semibold text-ink-500 hover:underline" onClick={() => setOpen(false)}>Cancelar</button>
+      </div>
+
+      <div className="rounded-md border border-ink-200 p-4">
+        <p className="font-semibold text-ink-900">Con un ejemplo de cómo debe quedar <span className="ml-1 rounded-full bg-cobalt-50 px-2 py-0.5 text-xs font-semibold text-cobalt-700">Recomendado</span></p>
+        <p className="mt-1 text-sm text-ink-700">Sube un archivo que ya tenga el formato del destino, con unas pocas filas. Deducimos cada columna comparando con «{job.fileName}»; lo que falte te lo propone el asistente y lo que quede lo completas a mano.</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label htmlFor={inputId} className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 hover:bg-ink-50">
+            <FileSpreadsheet size={16} aria-hidden="true" />
+            {example ? 'Cambiar ejemplo' : 'Elegir ejemplo del destino'}
+          </label>
+          <input id={inputId} type="file" accept=".xlsx" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) { setExample(file); setError(''); } }} />
+          {example ? <span className="text-sm font-semibold text-ink-900">{example.name}</span> : null}
+          <button
+            type="button"
+            disabled={!example || isBusy}
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-cobalt-600 px-4 text-sm font-semibold text-white hover:bg-cobalt-700 disabled:cursor-not-allowed disabled:bg-ink-200 disabled:text-ink-500"
+            onClick={async () => {
+              setError('');
+              const message = await onFromExample(example);
+              if (message) setError(message);
+            }}
+          >
+            {isBusy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
+            Preparar la plantilla
+          </button>
+        </div>
+        {error ? <p role="alert" className="mt-2 text-sm text-rose-700">{error}</p> : null}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-ink-200 p-4">
+        <div>
+          <p className="font-semibold text-ink-900">A mano</p>
+          <p className="mt-1 text-sm text-ink-700">Empieza con una columna por cada encabezado de «{job.selectedSheet}»; después ajustas nombres, formatos y orden.</p>
+        </div>
+        <button type="button" disabled={isBusy} className="inline-flex h-10 items-center rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 hover:bg-ink-50" onClick={() => onApply({ blank: true })}>
+          Crear a mano
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function TemplateStep({ job, onApply, onFromExample, isBusy }) {
   const [state, setState] = useState({ templates: null, matches: null, error: null });
   const [query, setQuery] = useState('');
   const [destination, setDestination] = useState('');
@@ -132,20 +206,8 @@ export function TemplateStep({ job, onApply, isBusy }) {
         {!visible.length ? <p className="rounded-lg border border-dashed border-ink-300 px-4 py-6 text-center text-sm text-ink-500">Ninguna plantilla coincide con los filtros.</p> : null}
       </div>
 
-      <button
-        type="button"
-        disabled={isBusy}
-        className={`flex w-full items-start gap-3 rounded-lg border border-dashed p-4 text-left disabled:cursor-wait ${
-          job.workingTemplate && !job.template ? 'border-cobalt-500 bg-cobalt-50' : 'border-ink-300 bg-white hover:bg-ink-50'
-        }`}
-        onClick={() => onApply({ blank: true })}
-      >
-        <FilePlus2 className="mt-0.5 shrink-0 text-cobalt-600" size={20} aria-hidden="true" />
-        <span>
-          <span className="block text-sm font-semibold text-ink-900">Crear una plantilla nueva desde este archivo</span>
-          <span className="mt-1 block text-sm text-ink-500">Empieza con una columna por cada encabezado de «{job.selectedSheet}». Después ajustas nombres, formatos y orden, y la guardas.</span>
-        </span>
-      </button>
+      <CreateTemplateChoice job={job} isBusy={isBusy} onApply={onApply} onFromExample={onFromExample} />
+
 
       {job.workingTemplate ? (
         <p className="text-xs text-ink-500">Elegir otra plantilla reemplaza la configuración actual de esta conversión.</p>

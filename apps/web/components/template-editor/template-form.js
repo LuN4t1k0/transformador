@@ -8,9 +8,9 @@ import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
 import { previewParameters } from '@previley-transformer/template-engine/src/params.js';
 import { previewDesign } from '@previley-transformer/template-engine/src/output-design.js';
 import { ParametersContext } from './parameters-context';
-import { listPacks } from '../../lib/packs.js';
 import { ParametersEditor } from './parameters-editor';
 import { AssistantPanel } from './assistant-panel';
+import { ExampleReport } from './example-report';
 import { api } from '../../lib/api';
 import { reviveSampleRows } from '../../lib/template-editor';
 import { buttonStyles, Notice, Panel } from '../panel';
@@ -80,8 +80,6 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   const [activeTab, setActiveTab] = useState('columns');
   const [columnsView, setColumnsView] = useState('workbench');
   const [selectedId, setSelectedId] = useState(null);
-  // Identifiers the domain packs use to match example rows (e.g. RUT).
-  const keyLabels = listPacks().flatMap((pack) => (pack.keys || []).map((key) => key.label));
   const [state, setState] = useState({ saving: false, error: null });
   const suggestions = useMemo(() => knownHeaderNames(template.columns), [template.columns]);
   const evaluation = useMemo(
@@ -174,6 +172,24 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
             <input id="template-name" required maxLength={120} className="h-11 w-full rounded-md border border-ink-200 bg-white px-3 text-lg font-bold text-ink-900" value={template.name} onChange={setMeta('name')} placeholder="Ej: PlanVital 2026" />
           </div>
           <SampleLoader sample={sample} onLoaded={setSample} />
+          {sample?.exampleRows ? (
+            <button
+              type="button"
+              className={buttonStyles.secondary}
+              title="La IA propone de dónde sale cada columna comparando tus archivos"
+              onClick={() => {
+                setActiveTab('columns');
+                // After the tab renders, bring the assistant into view and put the cursor in its instructions.
+                setTimeout(() => {
+                  document.getElementById('asistente')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  document.getElementById('assistant-instruction')?.focus({ preventScroll: true });
+                }, 50);
+              }}
+            >
+              <Sparkles size={16} aria-hidden="true" />
+              Asistente
+            </button>
+          ) : null}
           <button type="submit" className={buttonStyles.primary} disabled={state.saving}>
             {state.saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
             {submitLabel}
@@ -233,26 +249,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
 
       {activeTab === 'columns' ? (
       <div className="space-y-5" role="tabpanel" aria-label="Columnas">
-      {report?.mode === 'BY_EXAMPLE' || report?.mode === 'OUTPUT_ONLY' ? (
-        <Notice tone={report.unresolved.length || report.suggested?.length ? 'warning' : 'success'} icon={Sparkles}>
-          <p className="font-semibold">
-            De {report.learned + (report.suggested?.length || 0) + report.unresolved.length} columnas: {report.learned} deducidas
-            {report.suggested?.length ? `, ${report.suggested.length} sugeridas por nombre` : ''}
-            {report.unresolved.length ? `, ${report.unresolved.length} por definir` : ''}.
-          </p>
-          {report.alignment === 'NONE' && report.mode === 'BY_EXAMPLE' ? (
-            <p className="mt-0.5">Los ejemplos no tienen filas en común{keyLabels.length ? ` (por ejemplo, el mismo ${keyLabels.join(' o ')})` : ''}, así que no pudimos comparar fila a fila. Si tienes un Excel de origen con algunas de esas filas, úsalo para deducir con más precisión.</p>
-          ) : null}
-          {report.suggested?.length ? (
-            <p className="mt-0.5">
-              <span className="font-medium">Revisa las sugeridas:</span>{' '}
-              {report.suggested.map((name) => (report.byName?.[name]?.exceptions ? `${name} (cálculo que no calza en ${report.byName[name].exceptions} ${report.byName[name].exceptions === 1 ? 'fila' : 'filas'} del ejemplo)` : name)).join(', ')}.
-            </p>
-          ) : null}
-          {report.unresolved.length ? <p className="mt-0.5"><span className="font-medium">Define el origen de:</span> {report.unresolved.join(', ')}. Si son cálculos (sumas, porcentajes), por ahora se completan a mano o quedan vacías.</p> : null}
-          {report.ignored?.length ? <p className="mt-0.5 text-ink-500">Ignoramos del ejemplo: {report.ignored.join(', ')} (columnas ocultas o vacías).</p> : null}
-        </Notice>
-      ) : null}
+      <ExampleReport report={report} assistantAvailable={Boolean(sample?.exampleRows)} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[70ch] text-sm text-ink-500">
@@ -284,6 +281,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
       />
       {columnsView === 'list' ? renderPreview({ selectable: true }) : null}
 
+      <div id="asistente" className="scroll-mt-40">
       <AssistantPanel
         template={template}
         sample={sample}
@@ -294,6 +292,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
           setFlagged(new Map());
         }}
       />
+      </div>
       </div>
       ) : null}
 

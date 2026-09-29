@@ -101,6 +101,14 @@ export function createHttpApi(baseUrl) {
       return getJson('/assistant/propose', { method: 'POST', json: { template, input, output, instruction } });
     },
 
+    // A new template for a conversion, learned from an example of the destination file.
+    async createJobTemplateFromExample(jobId, { output, outputSheet }) {
+      const form = new FormData();
+      if (outputSheet) form.append('outputSheet', outputSheet);
+      form.append('output', output, output.name);
+      return getJson(`/jobs/${jobId}/template/from-example`, { method: 'POST', body: form });
+    },
+
     async createTemplateDraft({ input, output, inputSheet, outputSheet }) {
       const form = new FormData();
       if (inputSheet) form.append('inputSheet', inputSheet);

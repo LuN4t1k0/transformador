@@ -172,6 +172,14 @@ export function hasTemplateChanges(base, draft) {
 }
 
 // Dates travel from the API as { $date }; the engine expects Date instances.
+// The inverse of `reviveSampleRows`: dates tagged as { $date } so rows can travel back to the API.
+export function encodeSampleRows(rows) {
+  return rows.map((row) => ({
+    ...row,
+    values: Object.fromEntries(Object.entries(row.values).map(([key, value]) => [key, value instanceof Date ? { $date: value.toISOString() } : value]))
+  }));
+}
+
 export function reviveSampleRows(rows) {
   return rows.map((row) => ({
     ...row,

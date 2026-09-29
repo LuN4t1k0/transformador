@@ -119,6 +119,26 @@ function createTemplateService({ templates, storage, config, audit = { record: a
       return this.create({ ...configuration, name: name || `${configuration.name} (copia)` }, user);
     },
 
+    // Like `draft`, for a conversion in progress: the source is the conversion's own file (already stored, and
+    // kept), the request only brings the destination example.
+    async draftFromStoredInput({ inputKey, fileName, sheet }, request) {
+      const { files, fields } = await receiveFiles(request, { storage, maxFileSizeBytes: config.maxFileSizeBytes, names: ['output'] });
+      try {
+        if (!files.output) throw new HttpError(400, 'OUTPUT_REQUIRED', 'Sube un ejemplo de cómo debe quedar el archivo.');
+        const input = await readExample(storage, { key: inputKey, fileName }, config, sheet);
+        const output = await readExample(storage, files.output, config, fields.outputSheet);
+        const { template, report } = inferTemplate({ input, output: { ...output, headers: output.visibleHeaders }, sheet: input.sheet });
+        return {
+          template: validateTemplatePayload(template),
+          report: { ...report, ignored: output.ignoredHeaders },
+          input: { fileName, sheet: input.sheet, headers: input.headers, exampleRows: input.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(input.headers)) },
+          output: { fileName: output.fileName, sheet: output.sheet, headers: output.visibleHeaders, exampleRows: output.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(output.visibleHeaders)) }
+        };
+      } finally {
+        await Promise.all(Object.values(files).map((upload) => storage.delete(upload.key).catch(() => {})));
+      }
+    },
+
     // Builds an unsaved template from example files: the input users receive and/or the output the destination
     // expects. Files are deleted right after reading; rows are only returned to the requester for previews.
     async draft(request) {

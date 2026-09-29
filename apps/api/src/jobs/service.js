@@ -202,6 +202,23 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       return view(updated);
     },
 
+    // A new template for this conversion learned from a destination example (the source is this job's file).
+    // Returns the job plus what was learned and the example rows, so the web can offer the assistant for the rest.
+    async templateFromExample(jobId, user, request) {
+      const job = await requireJob(jobId, user);
+      requireEditable(job);
+      const headers = selectedHeaders(job);
+      const draft = await templateService.draftFromStoredInput({ inputKey: job.inputStorageKey, fileName: job.fileName, sheet: job.selectedSheet }, request);
+      const updated = await update(job, {
+        templateId: null,
+        templateVersionId: null,
+        workingTemplate: resolveTemplateForHeaders(draft.template, headers),
+        confirmedIds: []
+      });
+      await auditJob(updated, user, 'TEMPLATE_APPLIED', { fromExample: true, columns: draft.template.columns.length, learned: draft.report.learned });
+      return { job: await view(updated), report: draft.report, input: draft.input, output: draft.output };
+    },
+
     async saveWorkingTemplate(jobId, user, payload) {
       const job = await requireJob(jobId, user);
       requireEditable(job);

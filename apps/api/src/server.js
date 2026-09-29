@@ -88,6 +88,7 @@ async function main() {
     ['PATCH', '/jobs/:jobId/sheet', async ({ user, params, request }) => ({ job: await jobService.selectSheet(params.jobId, user, await readJson(request)) })],
     ['GET', '/jobs/:jobId/template-matches', async ({ user, params }) => ({ matches: await jobService.templateMatches(params.jobId, user) })],
     ['POST', '/jobs/:jobId/template', async ({ user, params, request }) => ({ job: await jobService.applyTemplate(params.jobId, user, await readJson(request)) })],
+    ['POST', '/jobs/:jobId/template/from-example', async ({ user, params, request }) => jobService.templateFromExample(params.jobId, user, request)],
     ['PATCH', '/jobs/:jobId/working-template', async ({ user, params, request }) => ({ job: await jobService.saveWorkingTemplate(params.jobId, user, await readJson(request)) })],
     ['POST', '/jobs/:jobId/template/save', async ({ user, params, request }) => ({ job: await jobService.saveTemplate(params.jobId, user, await readJson(request)) })],
     ['GET', '/jobs/:jobId/sample', async ({ user, params }) => jobService.sample(params.jobId, user)],
