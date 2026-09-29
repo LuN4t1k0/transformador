@@ -91,3 +91,10 @@ test('values that cannot be converted are reported instead of silently emptied',
   assert.deepEqual(result.issues.map((issue) => `${issue.column}:${issue.code}`), ['FECHA:INVALID_DATE', 'MONTO:INVALID_NUMBER', 'RUT:INVALID_RUT_FORMAT']);
   assert.equal(transformRow({ F: '03-05-2024', M: '1234.56', R: '12.345.678-5', E: '' }, template).output.MONTO, '1234.56');
 });
+
+test('reads written percentages and can write fractions back as percentages', () => {
+  const { parseNumber } = require('../packages/transformations/src/number');
+  assert.equal(parseNumber('0,69%'), 0.0069);
+  assert.equal(parseNumber('10%'), 0.1);
+  assert.equal(transformNumber(0.0069, { percent: true, fixedDecimals: 2, decimalSeparator: ',' }), '0,69%');
+});

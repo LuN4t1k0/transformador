@@ -152,3 +152,15 @@ test('a value repeated in many rows beats a similar column name', () => {
   assert.deepEqual(template.columns[0].source, { type: 'CONSTANT', value: '0.0144' });
   assert.deepEqual(template.columns[1].source, { type: 'COLUMN', column: 'total_aporte_afp' });
 });
+
+test('keeps destination percentages as numbers shown with the Excel percentage format', () => {
+  const rows = [0.0069, 0.0145, 0.01].map((rate, index) => ({ rowNumber: index + 2, values: { RUT: `1111111${index}-1`, Tasa: rate } }));
+  const { template } = inferTemplate({
+    input: { headers: ['RUT', 'Tasa'], rows },
+    output: { headers: ['RUT', '% AFP'], rows: rows.map((row) => ({ values: { RUT: row.values.RUT, '% AFP': row.values.Tasa } })), percentHeaders: ['% AFP'], sheet: 'DATOS' }
+  });
+  const column = template.columns.find((item) => item.outputName === '% AFP');
+  assert.deepEqual(column.source, { type: 'COLUMN', column: 'Tasa' });
+  assert.equal(column.cellFormat, 'PERCENT');
+  assert.ok(!(column.transformations || []).some((item) => item.type === 'NUMBER'));
+});

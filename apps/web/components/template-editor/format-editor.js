@@ -104,6 +104,10 @@ export function FormatEditor({ idPrefix, column, onChange, onSplit = null }) {
                   <option value=",">Coma (1234,50)</option>
                 </select>
               </div>
+              <label className={`${checkboxClass} sm:col-span-2`}>
+                <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={format.numberPercent} onChange={(event) => set({ numberPercent: event.target.checked })} />
+                Escribir como porcentaje (0,0069 → 0,69%). En Excel es mejor dejar el número y usar el formato de celda «Porcentaje».
+              </label>
               {format.numberDecimals === 0 ? (
                 <label className={`${checkboxClass} sm:col-span-2`}>
                   <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={format.validateInteger} onChange={(event) => set({ validateInteger: event.target.checked })} />

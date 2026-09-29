@@ -274,6 +274,7 @@ function normalizeTransformation(transformation, label) {
     const number = { type };
     if (transformation.integer === true) number.integer = true;
     if (transformation.absolute === true) number.absolute = true;
+    if (transformation.percent === true) number.percent = true;
     if (transformation.round !== undefined && transformation.round !== null) number.round = integer(transformation.round, `${label}: el redondeo`, { max: 10 });
     if (transformation.fixedDecimals !== undefined && transformation.fixedDecimals !== null) number.fixedDecimals = integer(transformation.fixedDecimals, `${label}: los decimales`, { max: 10 });
     if (transformation.decimalSeparator !== undefined) number.decimalSeparator = oneOf(transformation.decimalSeparator, ['.', ','], `${label}: el separador decimal no es válido.`);

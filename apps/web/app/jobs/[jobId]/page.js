@@ -141,7 +141,7 @@ function JobWorkspace({ job, setJob }) {
   const sample = results?.length ? { values: sampleRows[sampleAt].values, result: results[sampleAt] } : null;
   // The assistant works with this file's sample (or the rows read with the destination example).
   const assistantSample = headers && sampleRows?.length
-    ? { fileName: job.fileName, sheet: job.selectedSheet, headers, rows: sampleRows, exampleRows: exampleContext?.input?.exampleRows || encodeSampleRows(sampleRows) }
+    ? { fileName: job.fileName, sheet: job.selectedSheet, headers, rows: sampleRows, exampleRows: exampleContext?.input?.exampleRows || encodeSampleRows(sampleRows), percentHeaders: exampleContext?.input?.percentHeaders || (sheet?.columns || []).filter((column) => column.display === 'PERCENT').map((column) => column.header) }
     : null;
 
   // Tell the user when a conversion they started finishes while they are in another tab.
@@ -317,7 +317,7 @@ function JobWorkspace({ job, setJob }) {
             <AssistantPanel
               template={template}
               sample={assistantSample}
-              outputExample={exampleContext?.output ? { fileName: exampleContext.output.fileName, headers: exampleContext.output.headers, rows: exampleContext.output.exampleRows } : null}
+              outputExample={exampleContext?.output ? { fileName: exampleContext.output.fileName, headers: exampleContext.output.headers, rows: exampleContext.output.exampleRows, percentHeaders: exampleContext.output.percentHeaders || [] } : null}
               onApply={(proposal) => update((current) => {
                 // The proposal replaces columns, output and row steps; parameters stay as they were.
                 const { rowSteps, ...rest } = current.template;

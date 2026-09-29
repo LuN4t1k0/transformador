@@ -43,7 +43,7 @@ function SampleLoader({ sample, onLoaded }) {
     setState({ loading: true, error: '' });
     try {
       const draft = await api.createTemplateDraft({ input: file });
-      onLoaded({ fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows), exampleRows: draft.input.exampleRows });
+      onLoaded({ fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows), exampleRows: draft.input.exampleRows, percentHeaders: draft.input.percentHeaders || [] });
       setState({ loading: false, error: '' });
     } catch (error) {
       setState({ loading: false, error: error.message });

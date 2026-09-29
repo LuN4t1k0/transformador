@@ -25,7 +25,8 @@ function describeTransformation(transformation) {
   if (transformation.type === 'SUBSTRING') return `Caracteres ${transformation.start}${transformation.length ? ` a ${transformation.start + transformation.length - 1}` : ' en adelante'}`;
   if (transformation.type === 'NUMBER') {
     const decimals = transformation.integer ? 'Entero' : Number.isInteger(transformation.fixedDecimals) ? `${transformation.fixedDecimals} decimales` : 'Número';
-    return transformation.decimalSeparator === ',' ? `${decimals} con coma` : decimals;
+    const written = transformation.decimalSeparator === ',' ? `${decimals} con coma` : decimals;
+    return transformation.percent ? `${written}, como porcentaje` : written;
   }
   return packTransformation(transformation.type)?.describe?.(transformation) || transformation.type;
 }

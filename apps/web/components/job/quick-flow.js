@@ -140,7 +140,7 @@ function TemplateChooser({ job, onApply, onAdvanced, isBusy, allowAutoApply }) {
 }
 
 function sampleText(column, value) {
-  const text = formatCell(value);
+  const text = formatCell(value, column);
   return maskValue(column, text);
 }
 

@@ -49,6 +49,7 @@ export function parseFormat(column) {
     decimalSeparator: primary?.type === 'NUMBER' ? primary.decimalSeparator || '.' : '.',
     inputDecimalSeparator: primary?.type === 'NUMBER' ? primary.inputDecimalSeparator || 'AUTO' : 'AUTO',
     validateInteger: validations.has('INTEGER'),
+    numberPercent: primary?.type === 'NUMBER' ? primary.percent === true : false,
     textCase: textOps.has('UPPERCASE') ? 'UPPERCASE' : textOps.has('LOWERCASE') ? 'LOWERCASE' : textOps.has('TITLE_CASE') ? 'TITLE_CASE' : 'NONE',
     removeAccents: textOps.has('REMOVE_ACCENTS'),
     normalizeSpaces: textOps.has('NORMALIZE_SPACES') || textOps.has('TRIM'),
@@ -71,6 +72,7 @@ export function applyFormat(column, format) {
   if (format.kind === 'DATE') transformations.push({ type: 'DATE_FORMAT', inputFormat: format.dateInput, outputFormat: format.dateOutput });
   if (format.kind === 'NUMBER') {
     const number = { type: 'NUMBER' };
+    if (format.numberPercent) number.percent = true;
     if (format.numberDecimals === 0) number.integer = true;
     else if (Number.isInteger(format.numberDecimals)) number.fixedDecimals = format.numberDecimals;
     if (format.decimalSeparator === ',') number.decimalSeparator = ',';
@@ -187,8 +189,13 @@ export function reviveSampleRows(rows) {
   }));
 }
 
-export function formatCell(value) {
+// Shows a value as the file will: dates as DD/MM/AAAA and, for columns with the Excel percentage format,
+// the stored fraction as a percentage (0.0069 → 0,69%).
+export function formatCell(value, column = null) {
   if (value === null || value === undefined || value === '') return '';
+  if (column?.cellFormat === 'PERCENT' && typeof value === 'number') {
+    return `${Number((value * 100).toPrecision(12)).toLocaleString('es-CL', { maximumFractionDigits: 6 })}%`;
+  }
   if (value instanceof Date) {
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(value.getUTCDate())}/${pad(value.getUTCMonth() + 1)}/${value.getUTCFullYear()}`;

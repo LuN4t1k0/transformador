@@ -99,7 +99,8 @@ function DestinationExample({ example, columns }) {
             <tr key={index}>
               {example.headers.map((header) => {
                 const column = byName.get(header.toLowerCase());
-                const text = formatCell(row.values[header]);
+                // The destination example keeps Excel's own display (percentages as 0,69%).
+                const text = formatCell(row.values[header], example.percentHeaders?.includes(header) ? { cellFormat: 'PERCENT' } : column);
                 return <td key={header} className="whitespace-nowrap px-3 py-1.5 text-ink-900">{(column ? maskValue(column, text) : text) || <span className="text-ink-300">—</span>}</td>;
               })}
             </tr>
@@ -160,8 +161,8 @@ export function AssistantPanel({ template, sample, outputExample, onApply }) {
     try {
       const result = await api.proposeTemplate({
         template,
-        input: { headers: sample.headers, rows: sample.exampleRows },
-        output: outputExample ? { headers: outputExample.headers, rows: outputExample.rows } : null,
+        input: { headers: sample.headers, rows: sample.exampleRows, percentHeaders: sample.percentHeaders || [] },
+        output: outputExample ? { headers: outputExample.headers, rows: outputExample.rows, percentHeaders: outputExample.percentHeaders || [] } : null,
         instruction
       });
       setState({ loading: false, error: result.proposal ? '' : 'El asistente no logró una propuesta válida. Prueba con instrucciones más concretas.', result: result.proposal ? result : null });

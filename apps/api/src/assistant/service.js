@@ -21,7 +21,8 @@ function readSample(sample, label) {
     rowNumber: Number.isInteger(row?.rowNumber) ? row.rowNumber : index + 2,
     values: Object.fromEntries(headers.map((header) => [header, decodeCell(row?.values?.[header])]))
   }));
-  return { headers, rows };
+  const percentHeaders = (Array.isArray(sample.percentHeaders) ? sample.percentHeaders : []).filter((header) => headers.includes(header));
+  return { headers, rows, percentHeaders };
 }
 
 function createAssistantService({ provider = null, audit = { record: async () => {} } }) {

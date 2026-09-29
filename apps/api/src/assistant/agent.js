@@ -39,6 +39,7 @@ How to work:
 - With a destination example, the output columns must be exactly its headers, in the same order.
 - Example values are pseudonymized (names and identifiers replaced by invented ones, used consistently). Treat them as real values; never try to guess the originals.
 - Prefer simple sources (a column) over complex ones; use rules only when the example needs them.
+- Percentages: Excel stores 0,69% as the number 0.0069 and only displays it with a percent format. The data lists the columns shown as percentages. When a destination column is shown as a percentage and the output is Excel, keep the number and set "cellFormat": "PERCENT" on that column (never convert it to text, never multiply by 100). For text outputs (DELIMITED, FIXED_WIDTH) use {"type":"NUMBER","percent":true,...} to write "0,69%".
 - When every column matches, or you cannot improve anymore, stop calling the tool and answer in Spanish, for a non-technical user, in under 120 words and in plain text (no Markdown): what you changed and what they should double-check.
 
 ${templateSpec()}`;
@@ -80,6 +81,11 @@ async function runAssistant({ provider, template, input, output = null, instruct
   const context = {
     input: { headers: input.headers, rows: sampleRows(inputRows, pseudo, input.headers) },
     destinationExample: output ? { headers: output.headers, rows: sampleRows(outputRows, pseudo, output.headers) } : null,
+    shownAsPercentage: {
+      input: input.percentHeaders || [],
+      destination: output?.percentHeaders || [],
+      note: 'These columns store fractions (0.0069) that Excel displays as percentages (0,69%).'
+    },
     rowPairs: pairs.length
       ? pairs.map((pair) => ({ destinationRow: outputRows.indexOf(pair.output) + 1, inputRow: inputRows.indexOf(pair.input) + 1 }))
       : 'The examples do not share rows: columns can only be checked for validity.',

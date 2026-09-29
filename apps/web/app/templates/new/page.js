@@ -211,8 +211,8 @@ function NewTemplate() {
       initial: { ...draft.template, name: '' },
       report: { ...draft.report, ignored: draft.output?.ignoredHeaders || [] },
       note: draft.output ? `Deducida de «${draft.input?.fileName || '—'}» y del ejemplo «${draft.output.fileName}».` : `Creada desde los encabezados de «${draft.input.fileName}».`,
-      sample: draft.input ? { fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows), exampleRows: draft.input.exampleRows } : null,
-      outputExample: draft.output?.exampleRows ? { fileName: draft.output.fileName, headers: draft.output.headers, rows: draft.output.exampleRows } : null
+      sample: draft.input ? { fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows), exampleRows: draft.input.exampleRows, percentHeaders: draft.input.percentHeaders || [] } : null,
+      outputExample: draft.output?.exampleRows ? { fileName: draft.output.fileName, headers: draft.output.headers, rows: draft.output.exampleRows, percentHeaders: draft.output.percentHeaders || [] } : null
     };
   }
 

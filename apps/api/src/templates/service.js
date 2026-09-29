@@ -9,6 +9,9 @@ const DRAFT_ROWS = 30;
 const PREVIEW_ROWS = 5;
 const EXAMPLE_ROWS = 15;
 
+// Headers Excel displays as a percentage (the stored value is the fraction).
+const percentHeaders = (example) => (example.columns || []).filter((column) => column.display === 'PERCENT').map((column) => column.header);
+
 const encodeRow = (headers) => (row) => ({ rowNumber: row.rowNumber, values: Object.fromEntries(headers.map((header) => [header, encodeCell(row.values[header] ?? null)])) });
 
 function encodeCell(value) {
@@ -131,8 +134,8 @@ function createTemplateService({ templates, storage, config, audit = { record: a
         return {
           template: validateTemplatePayload(template),
           report: { ...report, ignored: output.ignoredHeaders },
-          input: { fileName, sheet: input.sheet, headers: input.headers, exampleRows: input.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(input.headers)) },
-          output: { fileName: output.fileName, sheet: output.sheet, headers: output.visibleHeaders, exampleRows: output.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(output.visibleHeaders)) }
+          input: { fileName, sheet: input.sheet, headers: input.headers, percentHeaders: percentHeaders(input), exampleRows: input.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(input.headers)) },
+          output: { fileName: output.fileName, sheet: output.sheet, headers: output.visibleHeaders, percentHeaders: percentHeaders(output), exampleRows: output.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(output.visibleHeaders)) }
         };
       } finally {
         await Promise.all(Object.values(files).map((upload) => storage.delete(upload.key).catch(() => {})));
@@ -156,6 +159,7 @@ function createTemplateService({ templates, storage, config, audit = { record: a
             sheets: input.sheets,
             headers: input.headers,
             sampleRows: input.rows.slice(0, PREVIEW_ROWS).map(encodeRow(input.headers)),
+            percentHeaders: percentHeaders(input),
             exampleRows: input.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(input.headers))
           } : null,
           output: output ? {
@@ -166,6 +170,7 @@ function createTemplateService({ templates, storage, config, audit = { record: a
             headers: output.visibleHeaders,
             ignoredHeaders: output.ignoredHeaders,
             // For the template assistant, which checks its proposals against the destination example.
+            percentHeaders: percentHeaders(output),
             exampleRows: output.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(output.visibleHeaders))
           } : null
         };

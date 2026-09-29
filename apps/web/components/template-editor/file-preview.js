@@ -22,7 +22,7 @@ const COLUMN_STATUS = {
 };
 
 function cellText(column, value) {
-  const text = formatCell(value);
+  const text = formatCell(value, column);
   return maskValue(column, text);
 }
 

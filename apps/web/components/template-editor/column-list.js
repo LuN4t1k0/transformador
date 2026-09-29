@@ -26,7 +26,7 @@ function sourceSample(values, source) {
 
 function SampleLine({ column, sample }) {
   if (!sample) return null;
-  const mask = (value) => maskValue(column, formatCell(value));
+  const mask = (value) => maskValue(column, formatCell(value, column));
   const input = mask(sourceSample(sample.values, column.source));
   const output = mask(sample.result.output[column.outputName]);
   const issues = sample.result.issues.filter((issue) => issue.column === column.outputName);
@@ -144,7 +144,7 @@ function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }
 // One-line summary of a column; expands into the full editor.
 function CompactRow({ column, index, row, sample, headers, outputNames, flag, onToggle, onConfirm, onChange, onExpand, onFlagResolve }) {
   const status = row?.status;
-  const mask = (value) => maskValue(column, formatCell(value));
+  const mask = (value) => maskValue(column, formatCell(value, column));
   const output = sample ? mask(sample.result.output[column.outputName]) : '';
   const hasError = sample?.result.issues.some((issue) => issue.column === column.outputName && issue.severity === 'error');
   const tone = status === 'FALTANTE' ? 'bg-rose-50/60' : status === 'REQUIERE_CONFIRMACION' ? 'bg-amber-50/60' : 'bg-white';

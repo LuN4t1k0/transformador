@@ -144,7 +144,7 @@ async function* iterateSheet(workbook, sheetName, limits, requestedHeaderRow) {
     if (dataRows > limits.maxRows) {
       throw new WorkbookLimitError('TOO_MANY_ROWS', `La hoja «${sheetName}» supera el máximo de ${limits.maxRows} filas.`);
     }
-    yield { type: 'row', rowNumber: row.number, cells };
+    yield { type: 'row', rowNumber: row.number, cells, percent: row.percent || [] };
   }
 
   for (const row of buffered) yield* handle(row);
@@ -181,6 +181,9 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
       let lastRow = 0;
       let columnCount = 0;
       const samples = [];
+      // Per column: numeric sample cells, and how many of them Excel displays as a percentage.
+      const numeric = [];
+      const shownAsPercent = [];
 
       for await (const item of iterateSheet(workbook, name, limits, headerRows[name])) {
         if (item.type === 'header') {
@@ -192,7 +195,15 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
         rowCount += 1;
         lastRow = item.rowNumber;
         columnCount = Math.max(columnCount, item.cells.length);
-        if (samples.length < sampleRows) samples.push(item.cells);
+        if (samples.length < sampleRows) {
+          samples.push(item.cells);
+          const percent = new Set(item.percent);
+          item.cells.forEach((cell, index) => {
+            if (typeof cell !== 'number') return;
+            numeric[index] = (numeric[index] || 0) + 1;
+            if (percent.has(index)) shownAsPercent[index] = (shownAsPercent[index] || 0) + 1;
+          });
+        }
       }
 
       // Data beyond the header row gets a synthetic header so it stays mappable.
@@ -200,7 +211,9 @@ async function analyzeWorkbook(filePath, { limits, sampleRows = 200, headerRows 
 
       const columns = headers.map((header, index) => {
         const { physical, semantic } = analyzeColumn(header, samples.map((cells) => cells[index] ?? null));
-        return { header, position: index + 1, physical, semantic };
+        // `display: 'PERCENT'`: Excel shows the stored fraction (0.0069) as a percentage (0,69%).
+        const display = numeric[index] && (shownAsPercent[index] || 0) / numeric[index] >= 0.8 ? { display: 'PERCENT' } : {};
+        return { header, position: index + 1, physical, semantic, ...display };
       });
 
       if (state !== 'visible') warnings = [...warnings, { code: 'HIDDEN_SHEET', message: 'La hoja está oculta en el Excel' }];

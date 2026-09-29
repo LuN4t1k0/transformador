@@ -139,3 +139,13 @@ test('splits a full name column into paternal surname, maternal surname and give
   assert.deepEqual(next[2].transformations, [{ type: 'TEXT', operation: 'UPPERCASE' }], 'keeps the column format');
   validateTemplateConfig({ name: 'T', columns: next });
 });
+
+test('shows percentage cells as Excel does and keeps the percent number option', async () => {
+  const { formatCell, parseFormat, applyFormat } = await load();
+  assert.equal(formatCell(0.0069, { cellFormat: 'PERCENT' }), '0,69%');
+  assert.equal(formatCell(0.0069), '0.0069');
+  const column = { id: 'p', outputName: '% AFP', source: { type: 'COLUMN', column: 'Tasa' }, transformations: [{ type: 'NUMBER', fixedDecimals: 2, decimalSeparator: ',', percent: true }] };
+  const format = parseFormat(column);
+  assert.equal(format.numberPercent, true);
+  assert.equal(applyFormat(column, format).transformations.find((item) => item.type === 'NUMBER').percent, true);
+});

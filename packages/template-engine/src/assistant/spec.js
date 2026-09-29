@@ -16,7 +16,7 @@ function templateSpec() {
   "rowSteps": ROW_STEPS                // optional
 }
 
-COLUMN = { "id": unique short id, "outputName": header in the output file, "required": bool, "source": SOURCE, "transformations": [TRANSFORMATION...], "validations": [{"type": ${validations}}] }
+COLUMN = { "id": unique short id, "outputName": header in the output file, "required": bool, "source": SOURCE, "transformations": [TRANSFORMATION...], "validations": [{"type": ${validations}}], "cellFormat": optional, only for XLSX output: "NUMBER" | "NUMBER_2" | "PERCENT" | "DATE" | "TEXT" }
 Keep the id of an existing column when you change it. A column may only reference columns that come BEFORE it.
 
 OPERAND (a value used by a function):
@@ -42,7 +42,7 @@ SOURCE (where the column value comes from):
 TRANSFORMATION (applied in order to the source value):
 - {"type":"TEXT","operation":"UPPERCASE"|"LOWERCASE"|"TITLE_CASE"|"TRIM"|"NORMALIZE_SPACES"|"REMOVE_ACCENTS"|"DIGITS_ONLY"}
 - {"type":"DATE_FORMAT","inputFormat":"AUTO","outputFormat": one of ${DATE_OUTPUT_FORMATS.map((format) => `"${format}"`).join(', ')}}
-- {"type":"NUMBER","integer": true} | {"type":"NUMBER","fixedDecimals": n,"decimalSeparator":"."|","}
+- {"type":"NUMBER","integer": true} | {"type":"NUMBER","fixedDecimals": n,"decimalSeparator":"."|","} | add "percent": true to write 0.0069 as "0,69%" (text outputs)
 - {"type":"REPLACE","find":"x","replace":"y"} | {"type":"PAD","length": n,"char":"0","side":"LEFT"|"RIGHT"} | {"type":"SUBSTRING","start": 1-based,"length": n}
 ${packTransformations}
 

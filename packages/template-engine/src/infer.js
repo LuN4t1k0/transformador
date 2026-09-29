@@ -18,12 +18,18 @@ function pad(value) {
   return String(value).padStart(2, '0');
 }
 
+// Numbers are compared without binary noise, and "0,69%" equals the fraction Excel stores (0.0069).
+function comparableNumber(number) {
+  return String(Number(number.toPrecision(12)));
+}
+
 function comparable(value) {
   if (isBlank(value)) return '';
   if (value instanceof Date) return `${pad(value.getUTCDate())}/${pad(value.getUTCMonth() + 1)}/${value.getUTCFullYear()}`;
-  if (typeof value === 'number') return String(value);
+  if (typeof value === 'number') return comparableNumber(value);
   const text = String(value).trim();
-  if (/^-?\d+(\.\d+)?$/.test(text)) return String(Number(text));
+  if (/^-?\d+(\.\d+)?$/.test(text)) return comparableNumber(Number(text));
+  if (/^-?[\d.,]+\s*%$/.test(text) && parseNumber(text) !== null) return comparableNumber(parseNumber(text));
   // Case and accents are not reproducible from mixed examples; compare text loosely.
   return normalizeHeader(text).toUpperCase();
 }
@@ -480,11 +486,19 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
     }
   });
 
+  // Columns the destination shows as a percentage keep the number (0.0069) and the Excel percentage format, so
+  // the file shows 0,69% and the value still adds up; a number format would turn it into text.
+  const percentHeaders = new Set([...(output.percentHeaders || []), ...(output.columns || []).filter((column) => column.display === 'PERCENT').map((column) => column.header)]);
+  const withDisplay = columns.map((column, index) => {
+    if (!percentHeaders.has(output.headers[index])) return column;
+    return { ...column, cellFormat: 'PERCENT', transformations: (column.transformations || []).filter((transformation) => transformation.type !== 'NUMBER') };
+  });
+
   const template = {
     name: 'Nueva plantilla',
     input: { headerRow: 1, ...(input?.sheet ? { sheet: input.sheet } : {}) },
     output: { format: 'XLSX', sheetName: String(output.sheet || 'DATOS').slice(0, 31) },
-    columns
+    columns: withDisplay
   };
   return { template, report };
 }

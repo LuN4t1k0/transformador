@@ -21,12 +21,21 @@ function parseNumber(value, { decimalSeparator = 'AUTO' } = {}) {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
 
-  const text = String(value).trim().replace(/[\s$]/g, '');
+  let text = String(value).trim().replace(/[\s$]/g, '');
+  // A percentage written as text ("0,69%") is the fraction Excel would store (0.0069).
+  const isPercent = text.endsWith('%');
+  if (isPercent) text = text.slice(0, -1);
   if (!text) return null;
   const normalized = normalizeNumberText(text, decimalSeparator);
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) return null;
   const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (!Number.isFinite(parsed)) return null;
+  return isPercent ? cleanFloat(parsed / 100) : parsed;
+}
+
+// Removes binary noise such as 0.69 / 100 = 0.006899999999999999.
+function cleanFloat(number) {
+  return Number(number.toPrecision(12));
 }
 
 function transformNumber(value, options = {}) {
@@ -40,9 +49,11 @@ function transformNumber(value, options = {}) {
   }
   if (options.integer === true) number = Math.trunc(number);
 
+  // As a percentage: 0.0069 is written "0.69%" (with the chosen decimals and separator).
+  if (options.percent === true) number = cleanFloat(number * 100);
   const text = Number.isInteger(options.fixedDecimals) ? number.toFixed(options.fixedDecimals) : null;
-  if (options.decimalSeparator === ',') return (text ?? String(number)).replace('.', ',');
-  return text ?? number;
+  const written = options.decimalSeparator === ',' ? (text ?? String(number)).replace('.', ',') : text ?? number;
+  return options.percent === true ? `${written}%` : written;
 }
 
 module.exports = { parseNumber, transformNumber };
