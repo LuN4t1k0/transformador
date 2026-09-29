@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatRut, isValidRut, calculateDv } = require('../packages/transformations/src');
+const { formatRut, isValidRut, calculateDv } = require('../packages/packs/chile/rut');
 
 test('validates and formats Chilean RUT values', () => {
   assert.equal(calculateDv('10231091'), '8');

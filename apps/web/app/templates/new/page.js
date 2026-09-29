@@ -123,7 +123,7 @@ function ExampleStep({ onDraft }) {
         </div>
         <div>
           <h3 className="mb-1 text-sm font-semibold text-ink-900">2. Ejemplo del archivo que te piden <span className="font-normal text-ink-500">(opcional)</span></h3>
-          <p className="mb-2 text-xs text-ink-500">Un archivo ya hecho en el formato del destino. Si incluye algunas de las mismas personas (RUT) del Excel anterior, deducimos cada columna comparando fila a fila; si no, sugerimos por nombres de columna.</p>
+          <p className="mb-2 text-xs text-ink-500">Un archivo ya hecho en el formato del destino. Si incluye algunas de las mismas filas del Excel anterior (por ejemplo, las mismas personas por su RUT), deducimos cada columna comparando fila a fila; si no, sugerimos por nombres de columna.</p>
           <FileDropzone file={output} error={errors.output} onFile={pick('output', setOutput)} />
         </div>
       </div>

@@ -1,13 +1,7 @@
+import { packFormats, isSensitiveColumn } from './packs.js';
+
 // Pure helpers behind the template editor UI. The UI edits a simplified "format" model per column which is
 // converted to/from the template's transformations and validations arrays.
-
-export const RUT_FORMAT_OPTIONS = [
-  { value: 'NO_DOTS_NO_DASH', label: 'Sin puntos ni guion (123456785)' },
-  { value: 'NO_DOTS_DASH', label: 'Con guion (12345678-5)' },
-  { value: 'DOTS_DASH', label: 'Con puntos y guion (12.345.678-5)' },
-  { value: 'BODY', label: 'Solo el número, sin dígito verificador (12345678)' },
-  { value: 'DV', label: 'Solo el dígito verificador (5)' }
-];
 
 export const DATE_INPUT_OPTIONS = [
   { value: 'AUTO', label: 'Detectar automáticamente' },
@@ -28,18 +22,27 @@ export const DATE_OUTPUT_OPTIONS = [
   { value: 'MM/YYYY', label: 'MM/AAAA (05/2024)' }
 ];
 
-const PRIMARY_TYPES = new Set(['RUT_FORMAT', 'DATE_FORMAT', 'NUMBER']);
+const CORE_PRIMARY_TYPES = ['DATE_FORMAT', 'NUMBER'];
+
+// Formats contributed by the enabled domain packs (e.g. RUT): { kind, label, transformation, option, validation }.
+export function domainFormats() {
+  return packFormats();
+}
 
 export function parseFormat(column) {
   const transformations = column.transformations || [];
-  const primary = transformations.find((transformation) => PRIMARY_TYPES.has(transformation.type));
+  const formats = domainFormats();
+  const primaryTypes = new Set([...CORE_PRIMARY_TYPES, ...formats.map((format) => format.transformation)]);
+  const primary = transformations.find((transformation) => primaryTypes.has(transformation.type));
+  const domain = formats.find((format) => format.transformation === primary?.type);
   const textOps = new Set(transformations.filter((transformation) => transformation.type === 'TEXT').map((transformation) => transformation.operation));
   const validations = new Set((column.validations || []).map((validation) => validation.type));
 
   return {
-    kind: primary?.type === 'RUT_FORMAT' ? 'RUT' : primary?.type === 'DATE_FORMAT' ? 'DATE' : primary?.type === 'NUMBER' ? 'NUMBER' : 'NONE',
-    rutFormat: primary?.type === 'RUT_FORMAT' ? primary.format : 'NO_DOTS_NO_DASH',
-    validateRut: validations.has('VALID_RUT'),
+    kind: domain ? domain.kind : primary?.type === 'DATE_FORMAT' ? 'DATE' : primary?.type === 'NUMBER' ? 'NUMBER' : 'NONE',
+    // Option and validation of a pack format (for RUT: how to write it and whether to check the verifier).
+    domainOption: domain ? primary[domain.option.key] : null,
+    domainValidate: domain?.validation ? validations.has(domain.validation.type) : false,
     dateInput: primary?.type === 'DATE_FORMAT' ? primary.inputFormat || 'AUTO' : 'AUTO',
     dateOutput: primary?.type === 'DATE_FORMAT' ? primary.outputFormat : 'DD/MM/YYYY',
     numberDecimals: primary?.type === 'NUMBER' ? (primary.integer ? 0 : primary.fixedDecimals ?? null) : 0,
@@ -60,9 +63,10 @@ export function applyFormat(column, format) {
   const transformations = [];
   const validations = [];
 
-  if (format.kind === 'RUT') {
-    transformations.push({ type: 'RUT_FORMAT', format: format.rutFormat });
-    if (format.validateRut) validations.push({ type: 'VALID_RUT' });
+  const domain = domainFormats().find((candidate) => candidate.kind === format.kind);
+  if (domain) {
+    transformations.push({ type: domain.transformation, [domain.option.key]: format.domainOption ?? domain.option.default });
+    if (domain.validation && format.domainValidate) validations.push({ type: domain.validation.type });
   }
   if (format.kind === 'DATE') transformations.push({ type: 'DATE_FORMAT', inputFormat: format.dateInput, outputFormat: format.dateOutput });
   if (format.kind === 'NUMBER') {
@@ -157,11 +161,8 @@ export function formatCell(value) {
   return String(value);
 }
 
-export function isRutColumn(column) {
-  return column.semanticType === 'CHILEAN_RUT'
-    || (column.transformations || []).some((transformation) => transformation.type === 'RUT_FORMAT')
-    || (column.validations || []).some((validation) => validation.type === 'VALID_RUT');
-}
+// Columns whose values are masked in on-screen samples (decided by the domain packs, e.g. RUT).
+export { isSensitiveColumn };
 
 // Replaces the columns and drops row step references to columns that no longer exist,
 // so deleting a column never leaves the template invalid.

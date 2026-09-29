@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { planVitalPagexTemplate } = require('../packages/shared/templates');
+const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
 const { validateTemplateConfig } = require('../packages/template-engine/src/schema');
 const {
   MAPPING_STATUS,

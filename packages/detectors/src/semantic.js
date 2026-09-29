@@ -1,6 +1,5 @@
-const { isValidRut, parseNumber } = require('../../transformations/src');
-
-const AFP_VALUES = new Set(['capital', 'cuprum', 'habitat', 'modelo', 'planvital', 'provida', 'uno']);
+const { parseNumber } = require('../../transformations/src');
+const { packDetectors } = require('../../template-engine/src/packs');
 
 function normalizeHeader(header) {
   return String(header || '')
@@ -11,17 +10,6 @@ function normalizeHeader(header) {
 }
 
 const detectors = [
-  {
-    type: 'CHILEAN_RUT',
-    detect(header, values) {
-      const h = normalizeHeader(header);
-      const samples = values.filter(Boolean);
-      const validSamples = samples.filter(isValidRut).length;
-      const headerScore = /\brut\b/.test(h) ? 0.35 : 0;
-      const valueScore = samples.length ? (validSamples / samples.length) * 0.65 : 0;
-      return { confidence: headerScore + valueScore, evidence: { headerScore, validSamples, sampleSize: samples.length } };
-    }
-  },
   {
     type: 'EMAIL',
     detect(header, values) {
@@ -41,15 +29,6 @@ const detectors = [
     }
   },
   {
-    type: 'AFP',
-    detect(header, values) {
-      const h = normalizeHeader(header);
-      const samples = values.filter(Boolean);
-      const validSamples = samples.filter((value) => AFP_VALUES.has(normalizeHeader(value))).length;
-      return { confidence: (h.includes('afp') ? 0.4 : 0) + (samples.length ? (validSamples / samples.length) * 0.6 : 0), evidence: { validSamples, sampleSize: samples.length } };
-    }
-  },
-  {
     type: 'GENERIC_NUMBER',
     detect(header, values) {
       const samples = values.filter(Boolean);
@@ -60,7 +39,8 @@ const detectors = [
 ];
 
 function detectSemanticType(header, values) {
-  const results = detectors.map((detector) => {
+  // Neutral detectors plus the ones contributed by the enabled domain packs (RUT, AFP…).
+  const results = [...detectors, ...packDetectors()].map((detector) => {
     const result = detector.detect(header, values);
     return {
       type: detector.type,

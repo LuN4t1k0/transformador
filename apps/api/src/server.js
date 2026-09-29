@@ -1,3 +1,5 @@
+// Domain packs (DOMAIN_PACKS) must be registered before any template is validated.
+require('../../../packages/packs/register');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const { URL } = require('node:url');
@@ -30,7 +32,7 @@ async function main() {
   const templates = createTemplateRepository(pool);
   const jobs = createJobRepository(pool);
   const systemUser = await users.upsertBySubject({ subject: 'system', email: 'system@previley.local', displayName: 'Sistema' });
-  await templates.ensureSeeds(seedTemplates.map((seed) => ({ ...seed, configuration: validateTemplateConfig(seed.configuration) })), systemUser.id);
+  await templates.ensureSeeds(seedTemplates().map((seed) => ({ ...seed, configuration: validateTemplateConfig(seed.configuration) })), systemUser.id);
 
   const redis = createRedisConnection();
   const subscriber = createRedisConnection();

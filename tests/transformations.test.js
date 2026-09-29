@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatRut, formatDate, parseDate, transformNumber } = require('../packages/transformations/src');
+const { formatDate, parseDate, transformNumber } = require('../packages/transformations/src');
+const { formatRut } = require('../packages/packs/chile/rut');
 const { resolveSource } = require('../packages/template-engine/src/engine');
 
 test('formats RUT body and verifier separately', () => {

@@ -4,6 +4,7 @@ const ExcelJS = require('exceljs');
 // an instructions sheet. Helps users prepare files that the template recognizes on the first try.
 
 const { sourceColumns: sourceHeaders } = require('../../template-engine/src/mapping');
+const { packTransformation } = require('../../template-engine/src/packs');
 
 const DATE_EXAMPLES = {
   AUTO: '03-05-2024',
@@ -16,11 +17,11 @@ const DATE_EXAMPLES = {
 };
 
 function describeExpected(column) {
-  const transformation = (column.transformations || []).find((item) => ['RUT_FORMAT', 'DATE_FORMAT', 'NUMBER'].includes(item.type));
+  const transformation = (column.transformations || []).find((item) => ['DATE_FORMAT', 'NUMBER'].includes(item.type) || packTransformation(item.type)?.example);
   if (['CALC', 'DATE_CALC'].includes(column.source.type)) return { example: column.source.type === 'CALC' ? 1234567 : '03-05-2024', text: 'Se usa en un cálculo' };
   if (['CASE', 'MAP', 'COALESCE', 'TEMPLATE'].includes(column.source.type)) return { example: 'Valor de ejemplo', text: 'Se usa en una regla de la plantilla' };
   if (column.source.type.startsWith('SPLIT')) return { example: 'PÉREZ SOTO JUAN CARLOS', text: 'Nombre completo: apellido paterno, apellido materno y nombres, separados por espacios' };
-  if (transformation?.type === 'RUT_FORMAT') return { example: '12.345.678-5', text: 'RUT con dígito verificador (con o sin puntos)' };
+  if (transformation && packTransformation(transformation.type)?.example) return packTransformation(transformation.type).example(transformation);
   if (transformation?.type === 'DATE_FORMAT') {
     const example = DATE_EXAMPLES[transformation.inputFormat || 'AUTO'];
     return { example, text: `Fecha${transformation.inputFormat === 'YYYYMM' ? ' como año y mes (AAAAMM)' : ''}` };

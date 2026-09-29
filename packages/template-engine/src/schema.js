@@ -1,4 +1,5 @@
 const { DATE_INPUT_FORMATS, DATE_OUTPUT_FORMATS } = require('../../transformations/src/date');
+const { packTransformation, packValidationTypes } = require('./packs');
 const { PARAMETER_TYPES, ParameterError, parseParameterValue, parameterReferences } = require('./params');
 
 // Whitelist-based validation for user-authored templates. Anything not listed here is rejected or dropped,
@@ -13,9 +14,8 @@ const DELIMITERS = [';', ',', '|', '\t'];
 const EXTENSIONS = ['csv', 'txt'];
 const ENCODINGS = ['UTF-8', 'LATIN1'];
 const LINE_ENDINGS = ['CRLF', 'LF'];
-const RUT_FORMATS = ['NO_DOTS_NO_DASH', 'NO_DOTS_DASH', 'DOTS_DASH', 'BODY', 'DV'];
 const TEXT_OPERATIONS = ['TRIM', 'UPPERCASE', 'LOWERCASE', 'NORMALIZE_SPACES', 'REMOVE_ACCENTS', 'TITLE_CASE', 'DIGITS_ONLY'];
-const VALIDATIONS = ['VALID_RUT', 'INTEGER'];
+const VALIDATIONS = ['INTEGER'];
 const CALC_OPERATIONS = ['PERCENT', 'SUM', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'AVERAGE', 'MIN', 'MAX', 'ABS'];
 const SINGLE_OPERAND_CALCS = ['PERCENT', 'ABS'];
 const CONDITION_OPERATORS = ['EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'CONTAINS', 'STARTS_WITH', 'ENDS_WITH', 'IN', 'EMPTY', 'NOT_EMPTY'];
@@ -235,7 +235,6 @@ function normalizeSource(source, label) {
 
 function normalizeTransformation(transformation, label) {
   const type = transformation?.type;
-  if (type === 'RUT_FORMAT') return { type, format: oneOf(transformation.format, RUT_FORMATS, `${label}: el formato de RUT no es válido.`) };
   if (type === 'TEXT') return { type, operation: oneOf(transformation.operation, TEXT_OPERATIONS, `${label}: la operación de texto no es válida.`) };
   if (type === 'DATE_FORMAT') {
     return {
@@ -274,6 +273,9 @@ function normalizeTransformation(transformation, label) {
     }
     return number;
   }
+  // Transformations of the enabled domain packs (e.g. RUT_FORMAT from the Chile pack).
+  const fromPack = packTransformation(type);
+  if (fromPack) return fromPack.normalize(transformation, { oneOf, text, integer, fail, label });
   return fail(`${label}: la transformación no es válida.`);
 }
 
@@ -465,7 +467,7 @@ function validateTemplateConfig(config) {
       aliases,
       source: normalizeSource(column.source, label),
       transformations: (Array.isArray(column.transformations) ? column.transformations : []).slice(0, 20).map((transformation) => normalizeTransformation(transformation, label)),
-      validations: (Array.isArray(column.validations) ? column.validations : []).map((validation) => ({ type: oneOf(validation?.type, VALIDATIONS, `${label}: la validación no es válida.`) }))
+      validations: (Array.isArray(column.validations) ? column.validations : []).map((validation) => ({ type: oneOf(validation?.type, [...VALIDATIONS, ...packValidationTypes()], `${label}: la validación no es válida.`) }))
     };
     if (column.semanticType) normalized.semanticType = text(column.semanticType, `el tipo de ${label}`, { max: 40 });
     if (output.format === 'FIXED_WIDTH') normalized.fixedWidth = normalizeFixedWidth(column.fixedWidth, label);
@@ -529,7 +531,6 @@ module.exports = {
   TemplateValidationError,
   OUTPUT_FORMATS,
   DELIMITERS,
-  RUT_FORMATS,
   TEXT_OPERATIONS,
   VALIDATIONS,
   CALC_OPERATIONS,

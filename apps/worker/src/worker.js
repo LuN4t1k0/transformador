@@ -1,3 +1,5 @@
+// Domain packs (DOMAIN_PACKS) must be registered before any template runs.
+require('../../../packages/packs/register');
 const { Worker } = require('bullmq');
 const { config } = require('../../../packages/shared/src/config');
 const { createPool, migrate } = require('../../../packages/shared/src/db');

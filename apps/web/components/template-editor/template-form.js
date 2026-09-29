@@ -8,6 +8,7 @@ import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
 import { previewParameters } from '@previley-transformer/template-engine/src/params.js';
 import { previewDesign } from '@previley-transformer/template-engine/src/output-design.js';
 import { ParametersContext } from './parameters-context';
+import { listPacks } from '../../lib/packs.js';
 import { ParametersEditor } from './parameters-editor';
 import { api } from '../../lib/api';
 import { reviveSampleRows } from '../../lib/template-editor';
@@ -75,6 +76,8 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
     return next;
   });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
+  // Identifiers the domain packs use to match example rows (e.g. RUT).
+  const keyLabels = listPacks().flatMap((pack) => (pack.keys || []).map((key) => key.label));
   const [state, setState] = useState({ saving: false, error: null });
   const suggestions = useMemo(() => knownHeaderNames(template.columns), [template.columns]);
   const evaluation = useMemo(
@@ -156,7 +159,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
             {report.unresolved.length ? `, ${report.unresolved.length} por definir` : ''}.
           </p>
           {report.alignment === 'NONE' && report.mode === 'BY_EXAMPLE' ? (
-            <p className="mt-0.5">Los ejemplos no tienen personas (RUT) en común, así que no pudimos comparar fila a fila. Si tienes un Excel de origen con algunas de esas personas, úsalo para deducir con más precisión.</p>
+            <p className="mt-0.5">Los ejemplos no tienen filas en común{keyLabels.length ? ` (por ejemplo, el mismo ${keyLabels.join(' o ')})` : ''}, así que no pudimos comparar fila a fila. Si tienes un Excel de origen con algunas de esas filas, úsalo para deducir con más precisión.</p>
           ) : null}
           {report.suggested?.length ? (
             <p className="mt-0.5">

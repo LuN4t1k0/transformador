@@ -14,7 +14,7 @@ export function Shell({ children }) {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">Previley Transformer</p>
-              <p className="truncate text-xs text-ink-500">Excel a plantillas previsionales</p>
+              <p className="truncate text-xs text-ink-500">Transforma Excel con plantillas</p>
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-2">

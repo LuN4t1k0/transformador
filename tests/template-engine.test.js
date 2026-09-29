@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { transformRow } = require('../packages/template-engine/src/engine');
-const { planVitalPagexTemplate } = require('../packages/shared/templates');
+const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
 
 test('transforms a PAGEX row using the PlanVital template without hardcoded engine branches', () => {
   const row = {

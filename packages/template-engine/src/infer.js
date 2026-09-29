@@ -1,6 +1,6 @@
 const { transformRow } = require('./engine');
 const { createTemplateFromHeaders, findHeader, normalizeHeader } = require('./mapping');
-const { isValidRut } = require('../../transformations/src/rut');
+const { packKeys, packFormatDetectors } = require('./packs');
 const { parseNumber } = require('../../transformations/src/number');
 
 // Learns a template by example: given rows of the file users receive (input) and rows of the file the
@@ -28,54 +28,60 @@ function comparable(value) {
   return normalizeHeader(text).toUpperCase();
 }
 
-function rutKey(value) {
-  const text = String(value ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
-  return text.length >= 7 && isValidRut(text) ? text : null;
-}
-
-function rutColumn(headers, rows) {
+// The column that identifies rows (a RUT, a customer code…) according to the enabled domain packs:
+// the one where most values are valid keys.
+function keyColumn(headers, rows, key) {
   let best = null;
   for (const header of headers) {
     const values = rows.map((row) => row.values[header]).filter((value) => !isBlank(value));
     if (!values.length) continue;
-    const share = values.filter((value) => rutKey(value)).length / values.length;
+    const share = values.filter((value) => key.key(value)).length / values.length;
     if (share >= 0.8 && (!best || share > best.share)) best = { header, share };
   }
   return best?.header || null;
 }
 
-// Pairs output example rows with input rows: by position when both files list the same people in the same
-// order, otherwise by RUT (choosing, for repeated RUTs, the input row sharing most values).
+function findKey(input, inputRows, outputHeaders, outputRows) {
+  for (const key of packKeys()) {
+    const inputColumn = keyColumn(input.headers, inputRows, key);
+    const outputColumn = keyColumn(outputHeaders, outputRows, key);
+    if (inputColumn && outputColumn) return { key, inputColumn, outputColumn };
+  }
+  return null;
+}
+
+// Pairs output example rows with input rows: by position when both files list the same rows in the same
+// order, otherwise by a key column (choosing, for repeated keys, the input row sharing most values).
 function alignRows(input, outputRows, outputHeaders) {
   const inputRows = input?.rows || [];
   if (!inputRows.length || !outputRows.length) return { mode: 'NONE', pairs: [] };
 
-  const inputRut = rutColumn(input.headers, inputRows);
-  const outputRut = rutColumn(outputHeaders, outputRows);
   const positional = () => outputRows.slice(0, inputRows.length).map((row, index) => ({ output: row, input: inputRows[index] }));
-  if (!inputRut || !outputRut) return { mode: 'POSITION', pairs: positional() };
+  const found = findKey(input, inputRows, outputHeaders, outputRows);
+  if (!found) return { mode: 'POSITION', pairs: positional() };
+  const keyOf = (row, column) => found.key.key(row.values[column]);
 
   const count = Math.min(inputRows.length, outputRows.length);
   let sameOrder = 0;
   for (let index = 0; index < count; index += 1) {
-    if (rutKey(inputRows[index].values[inputRut]) && rutKey(inputRows[index].values[inputRut]) === rutKey(outputRows[index].values[outputRut])) sameOrder += 1;
+    if (keyOf(inputRows[index], found.inputColumn) && keyOf(inputRows[index], found.inputColumn) === keyOf(outputRows[index], found.outputColumn)) sameOrder += 1;
   }
   if (count && sameOrder / count >= 0.8) return { mode: 'POSITION', pairs: positional() };
 
-  const byRut = new Map();
+  const byKey = new Map();
   for (const row of inputRows) {
-    const key = rutKey(row.values[inputRut]);
-    if (key) byRut.set(key, [...(byRut.get(key) || []), row]);
+    const key = keyOf(row, found.inputColumn);
+    if (key) byKey.set(key, [...(byKey.get(key) || []), row]);
   }
   const pairs = [];
   for (const row of outputRows) {
-    const candidates = byRut.get(rutKey(row.values[outputRut])) || [];
+    const candidates = byKey.get(keyOf(row, found.outputColumn)) || [];
     if (!candidates.length) continue;
     const outputValues = new Set(Object.values(row.values).map(comparable).filter(Boolean));
     const shared = (candidate) => Object.values(candidate.values).map(comparable).filter((value) => outputValues.has(value)).length;
     pairs.push({ output: row, input: candidates.reduce((best, candidate) => (shared(candidate) > shared(best) ? candidate : best)) });
   }
-  return pairs.length >= 2 ? { mode: 'RUT', pairs } : { mode: 'NONE', pairs: [] };
+  return pairs.length >= 2 ? { mode: 'KEY', key: found.key.label, pairs } : { mode: 'NONE', pairs: [] };
 }
 
 // Header names as comparable tokens, with common abbreviations and synonyms of payroll files.
@@ -111,16 +117,16 @@ function isCompatible(format, inputColumn) {
   const physical = inputColumn.physical?.type;
   const semantic = inputColumn.semantic?.type;
   // Detectors classify numeric text as INTEGER/DECIMAL, so STRING here means non-numeric text.
-  if (format.rut) return semantic === 'CHILEAN_RUT' || physical === 'STRING';
+  if (format.pack) return format.pack.semanticTypes?.includes(semantic) || physical === 'STRING';
   if (format.date) return physical === 'DATE' || semantic === 'YEAR_MONTH' || physical === 'INTEGER';
   if (format.number) return ['INTEGER', 'DECIMAL'].includes(physical);
   return true;
 }
 
-// Describes what the example values look like: RUT/date/number/text case, or a constant.
+// Describes what the example values look like: a pack format (e.g. RUT), date, number, text case or a constant.
 function detectFormat(values) {
   const present = values.filter((value) => !isBlank(value));
-  const format = { rut: null, date: null, number: null, textCase: null, constant: null, required: values.length > 0 && present.length === values.length };
+  const format = { pack: null, date: null, number: null, textCase: null, constant: null, required: values.length > 0 && present.length === values.length };
   if (!present.length) return format;
 
   if (present.length >= 2 && present.length === values.length && new Set(present.map(comparable)).size === 1) format.constant = String(present[0]).trim();
@@ -132,21 +138,25 @@ function detectFormat(values) {
   const texts = present.map((value) => (value instanceof Date ? '' : String(value).trim()));
   const all = (pattern) => texts.every((text) => pattern.test(text));
 
-  if (all(/^\d{1,2}\.\d{3}\.\d{3}-[\dkK]$/)) format.rut = 'DOTS_DASH';
-  else if (all(/^\d{7,8}-[\dkK]$/)) format.rut = 'NO_DOTS_DASH';
+  // Pack formats come in two stages: EARLY ones are unambiguous; LATE ones (plain digits) only apply once
+  // dates are ruled out, and they also keep 8-digit dates from being claimed when a pack recognizes them.
+  const early = detectPackFormat(texts, 'EARLY');
+  const late = detectPackFormat(texts, 'LATE');
+
+  if (early) format.pack = early;
   else if (all(/^\d{2}\/\d{2}\/\d{4}$/)) format.date = 'DD/MM/YYYY';
   else if (all(/^\d{2}-\d{2}-\d{4}$/)) format.date = 'DD-MM-YYYY';
   else if (all(/^\d{4}-\d{2}-\d{2}$/)) format.date = 'YYYY-MM-DD';
   else if (all(/^\d{2}\/\d{4}$/)) format.date = 'MM/YYYY';
-  else if (all(/^(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/) && !texts.every((text) => isValidRut(text))) format.date = 'YYYYMMDD';
+  else if (all(/^(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/) && !late) format.date = 'YYYYMMDD';
   else if (all(/^(19|20)\d{2}(0[1-9]|1[0-2])$/)) format.date = 'YYYYMM';
-  else if (all(/^\d{7,9}$/) && texts.every((text) => isValidRut(text))) format.rut = 'NO_DOTS_NO_DASH';
+  else if (late) format.pack = late;
   else if (present.every((value) => typeof value === 'number') || all(/^-?\d+([.,]\d+)?$/)) {
     const decimals = Math.max(...texts.map((text) => (text.split(/[.,]/)[1] || '').length));
     format.number = decimals === 0 ? { integer: true } : { fixedDecimals: decimals, decimalSeparator: texts.some((text) => text.includes(',')) ? ',' : '.' };
   }
 
-  if (!format.rut && !format.date && !format.number) {
+  if (!format.pack && !format.date && !format.number) {
     const letters = texts.join('').replace(NAME_LETTERS, '');
     if (letters && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) format.textCase = 'UPPERCASE';
     else if (letters && letters === letters.toLowerCase() && letters !== letters.toUpperCase()) format.textCase = 'LOWERCASE';
@@ -154,12 +164,20 @@ function detectFormat(values) {
   return format;
 }
 
+function detectPackFormat(texts, stage) {
+  for (const detector of packFormatDetectors(stage)) {
+    const found = detector.detect(texts);
+    if (found) return found;
+  }
+  return null;
+}
+
 function formatTransformations(format) {
   const transformations = [];
   const validations = [];
-  if (format.rut) {
-    transformations.push({ type: 'RUT_FORMAT', format: format.rut });
-    validations.push({ type: 'VALID_RUT' });
+  if (format.pack) {
+    transformations.push(...format.pack.transformations);
+    validations.push(...(format.pack.validations || []));
   } else if (format.date) {
     transformations.push({ type: 'DATE_FORMAT', inputFormat: 'AUTO', outputFormat: format.date });
   } else if (format.number) {
@@ -305,10 +323,10 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
   const names = uniqueNames(output.headers);
   const outputRows = (output.rows || []).slice(0, MAX_ROWS);
   const inputRows = (input?.rows || []).slice(0, MAX_ROWS);
-  const { mode: alignment, pairs } = alignRows(input ? { ...input, rows: inputRows } : null, outputRows, output.headers);
+  const { mode: alignment, key: alignmentKey, pairs } = alignRows(input ? { ...input, rows: inputRows } : null, outputRows, output.headers);
   const candidates = input ? candidateSources(input.headers, pairs.map((pair) => pair.input)) : [];
   const inputColumns = new Map((input?.columns || []).map((column) => [column.header, column]));
-  const report = { mode: input ? 'BY_EXAMPLE' : 'OUTPUT_ONLY', alignment, pairs: pairs.length, learned: 0, suggested: [], unresolved: [], byName: {} };
+  const report = { mode: input ? 'BY_EXAMPLE' : 'OUTPUT_ONLY', alignment, ...(alignmentKey ? { alignmentKey } : {}), pairs: pairs.length, learned: 0, suggested: [], unresolved: [], byName: {} };
 
   const columns = names.map((outputName, index) => {
     const originalHeader = output.headers[index];

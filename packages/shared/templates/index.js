@@ -1,16 +1,9 @@
-const { planVitalPagexTemplate } = require('./planvital-pagex');
+const { packTemplates } = require('../../template-engine/src/packs');
 
-// Initial templates inserted once into PostgreSQL. After that they are edited from the UI like any other.
-const seedTemplates = [
-  {
-    slug: 'planvital-pagex',
-    configuration: {
-      ...planVitalPagexTemplate,
-      description: 'Formato de carga PAGEX para licencias médicas en AFP PlanVital.',
-      destination: 'PlanVital',
-      process: 'Licencias médicas PAGEX'
-    }
-  }
-];
+// Initial templates inserted once into PostgreSQL, contributed by the enabled domain packs.
+// After that they are edited from the UI like any other.
+function seedTemplates() {
+  return packTemplates();
+}
 
-module.exports = { planVitalPagexTemplate, seedTemplates };
+module.exports = { seedTemplates };

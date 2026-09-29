@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { planVitalPagexTemplate } = require('../packages/shared/templates');
+const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
 const { validateTemplateConfig } = require('../packages/template-engine/src/schema');
 
 const load = () => import('../apps/web/lib/template-editor.js');
@@ -21,7 +21,7 @@ test('format model round-trips every seed column without losing transformations'
 test('builds RUT, date and number formats from the UI model', async () => {
   const { parseFormat, applyFormat } = await load();
   const base = { id: 'x', outputName: 'X', source: { type: 'COLUMN', column: 'X' }, transformations: [], validations: [] };
-  const format = { ...parseFormat(base), kind: 'RUT', rutFormat: 'BODY', validateRut: true, textCase: 'UPPERCASE' };
+  const format = { ...parseFormat(base), kind: 'RUT', domainOption: 'BODY', domainValidate: true, textCase: 'UPPERCASE' };
   assert.deepEqual(applyFormat(base, format).transformations, [{ type: 'RUT_FORMAT', format: 'BODY' }, { type: 'TEXT', operation: 'UPPERCASE' }]);
   assert.deepEqual(applyFormat(base, format).validations, [{ type: 'VALID_RUT' }]);
 

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { planVitalPagexTemplate } = require('../packages/shared/templates');
+const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
 const { validateTemplateConfig } = require('../packages/template-engine/src/schema');
 const { runRows } = require('../packages/template-engine/src/run');
 const { detectFormat, inferTemplate } = require('../packages/template-engine/src/infer');
@@ -21,8 +21,8 @@ function outputExample(template) {
 }
 
 test('detects output formats from example values', () => {
-  assert.deepEqual(detectFormat(['123456785', '98765433']).rut, 'NO_DOTS_NO_DASH');
-  assert.deepEqual(detectFormat(['12.345.678-5', '9.876.543-3']).rut, 'DOTS_DASH');
+  assert.deepEqual(detectFormat(['123456785', '98765433']).pack.transformations, [{ type: 'RUT_FORMAT', format: 'NO_DOTS_NO_DASH' }]);
+  assert.deepEqual(detectFormat(['12.345.678-5', '9.876.543-3']).pack.transformations, [{ type: 'RUT_FORMAT', format: 'DOTS_DASH' }]);
   assert.equal(detectFormat(['03/05/2024', '10/04/2024']).date, 'DD/MM/YYYY');
   assert.equal(detectFormat(['20240503', '20240410']).date, 'YYYYMMDD');
   assert.equal(detectFormat(['202405', '202404']).date, 'YYYYMM');
@@ -136,7 +136,8 @@ test('aligns example rows by RUT when files list people in a different order', (
   };
   const { template, report } = inferTemplate({ input, output });
   const byName = Object.fromEntries(template.columns.map((column) => [column.outputName, column]));
-  assert.equal(report.alignment, 'RUT');
+  assert.equal(report.alignment, 'KEY');
+  assert.equal(report.alignmentKey, 'RUT');
   assert.deepEqual(byName.PATERNO.source, { type: 'SPLIT_WORD', column: 'Nombre completo', index: 0 });
   assert.deepEqual(byName.VALOR.source, { type: 'COLUMN', column: 'Monto' });
   assert.equal(report.byName.VALOR.method, 'EXAMPLE');

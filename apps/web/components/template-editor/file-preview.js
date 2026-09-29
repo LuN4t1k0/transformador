@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { formatFixedWidthValue } from '@previley-transformer/template-engine/src/run.js';
-import { maskRut } from '../../lib/preview';
-import { formatCell, isRutColumn } from '../../lib/template-editor';
+import { maskValue } from '../../lib/preview';
+import { formatCell } from '../../lib/template-editor';
 import { describeIssue, describeIssueHint } from '../../lib/templates';
 
 function cellText(column, value) {
   const text = formatCell(value);
-  return isRutColumn(column) && text ? maskRut(text) : text;
+  return maskValue(column, text);
 }
 
 function escapeDelimited(text, delimiter) {
@@ -164,7 +164,7 @@ export function FilePreview({ template, results, sampleCount = results.length, d
       ) : null}
 
       <p className="text-xs text-ink-500">
-        Primeras {sampleCount} filas de la hoja, con el RUT enmascarado. Al generar se procesan y validan todas las filas; las que tengan errores se excluyen y se informan.
+        Primeras {sampleCount} filas de la hoja, con los datos sensibles enmascarados. Al generar se procesan y validan todas las filas; las que tengan errores se excluyen y se informan.
       </p>
     </div>
   );

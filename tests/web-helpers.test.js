@@ -1,13 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { planVitalPagexTemplate } = require('../packages/shared/templates');
+const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
 const { createSummaryAccumulator, runRows } = require('../packages/template-engine/src/run');
 
 test('masks RUT digits keeping format, first digits and verifier', async () => {
-  const { maskRut } = await import('../apps/web/lib/preview.js');
-  assert.equal(maskRut('10.231.091-8'), '10.•••.•••-8');
-  assert.equal(maskRut('102310918'), '10••••••8');
-  assert.equal(maskRut(null), null);
+  const { maskValue } = await import('../apps/web/lib/preview.js');
+  const rut = { outputName: 'RUT', transformations: [{ type: 'RUT_FORMAT', format: 'DOTS_DASH' }] };
+  assert.equal(maskValue(rut, '10.231.091-8'), '10.•••.•••-8');
+  assert.equal(maskValue(rut, '102310918'), '10••••••8');
+  assert.equal(maskValue(rut, null), null);
+  assert.equal(maskValue({ outputName: 'MONTO', transformations: [] }, '102310918'), '102310918', 'only sensitive columns are masked');
 });
 
 test('runs rows through the template and reports fixed width overflow', () => {

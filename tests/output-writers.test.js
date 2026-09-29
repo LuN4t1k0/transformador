@@ -67,7 +67,7 @@ test('describes file name, extension and content type per format', () => {
 test('builds an example input workbook with expected headers and instructions', async () => {
   const { buildExampleWorkbook } = require('../packages/excel-engine/src/example');
   const { validateTemplateConfig } = require('../packages/template-engine/src/schema');
-  const { planVitalPagexTemplate } = require('../packages/shared/templates');
+  const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
   const buffer = await buildExampleWorkbook(validateTemplateConfig(planVitalPagexTemplate));
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);

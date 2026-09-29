@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Download, FileSpreadsheet, Loader2, Play, Sparkles, Table2 } from 'lucide-react';
 import { downloadBlob } from '../../lib/download';
 import { api } from '../../lib/api';
-import { maskRut } from '../../lib/preview';
-import { formatCell, isRutColumn } from '../../lib/template-editor';
+import { maskValue } from '../../lib/preview';
+import { formatCell } from '../../lib/template-editor';
 import { buttonStyles, Notice } from '../panel';
 import { FilePreview } from '../template-editor/file-preview';
 
@@ -160,7 +160,7 @@ function TemplateChooser({ job, onApply, onAdvanced, isBusy, allowAutoApply }) {
 
 function sampleText(column, value) {
   const text = formatCell(value);
-  return isRutColumn(column) && text ? maskRut(text) : text;
+  return maskValue(column, text);
 }
 
 // Only the columns that need attention, with the minimum controls to resolve them.

@@ -3,9 +3,12 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Table2 } from 'lucide-react';
 import { buttonStyles, Notice } from '../panel';
+import { packDetectors } from '../../lib/packs.js';
 
 const PHYSICAL_TYPES = { STRING: 'Texto', INTEGER: 'Entero', DECIMAL: 'Decimal', DATE: 'Fecha', BOOLEAN: 'Sí/No', EMPTY: 'Vacía' };
-const SEMANTIC_TYPES = { CHILEAN_RUT: 'RUT', EMAIL: 'Email', YEAR_MONTH: 'Periodo AAAAMM', AFP: 'AFP', GENERIC_NUMBER: 'Número', GENERIC_TEXT: '—' };
+// Neutral types plus the labels of the detectors contributed by the domain packs (RUT, AFP…).
+const CORE_SEMANTIC_TYPES = { EMAIL: 'Email', YEAR_MONTH: 'Periodo AAAAMM', GENERIC_NUMBER: 'Número', GENERIC_TEXT: '—' };
+const semanticLabel = (type) => CORE_SEMANTIC_TYPES[type] || packDetectors().find((detector) => detector.type === type)?.label || type;
 
 export function DetectedColumns({ sheet, open = false }) {
   if (!sheet?.columns?.length) return null;
@@ -32,7 +35,7 @@ export function DetectedColumns({ sheet, open = false }) {
                 <td className="px-3 py-1.5 font-medium text-ink-900">{column.header}</td>
                 <td className="px-3 py-1.5 text-ink-700">{PHYSICAL_TYPES[column.physical.type] || column.physical.type}</td>
                 <td className="px-3 py-1.5 text-ink-700">
-                  {SEMANTIC_TYPES[column.semantic.type] || column.semantic.type}
+                  {semanticLabel(column.semantic.type)}
                   {column.semantic.type !== 'GENERIC_TEXT' ? (
                     <span className="ml-1 text-xs tabular-nums text-ink-400">{Math.round(column.semantic.confidence * 100)}%</span>
                   ) : null}

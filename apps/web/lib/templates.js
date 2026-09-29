@@ -1,4 +1,5 @@
-import { DATE_OUTPUT_OPTIONS, RUT_FORMAT_OPTIONS } from './template-editor';
+import { DATE_OUTPUT_OPTIONS } from './template-editor';
+import { packTransformation, packValidation } from './packs.js';
 
 const TEXT_OPERATIONS = {
   TRIM: 'Quitar espacios',
@@ -17,7 +18,6 @@ function shortLabel(options, value) {
 }
 
 function describeTransformation(transformation) {
-  if (transformation.type === 'RUT_FORMAT') return `RUT ${shortLabel(RUT_FORMAT_OPTIONS, transformation.format).toLowerCase()}`;
   if (transformation.type === 'TEXT') return TEXT_OPERATIONS[transformation.operation] || 'Texto';
   if (transformation.type === 'DATE_FORMAT') return `Fecha ${shortLabel(DATE_OUTPUT_OPTIONS, transformation.outputFormat)}`;
   if (transformation.type === 'REPLACE') return `Reemplazar "${transformation.find}" por ${transformation.replace ? `"${transformation.replace}"` : 'nada'}`;
@@ -27,12 +27,15 @@ function describeTransformation(transformation) {
     const decimals = transformation.integer ? 'Entero' : Number.isInteger(transformation.fixedDecimals) ? `${transformation.fixedDecimals} decimales` : 'Número';
     return transformation.decimalSeparator === ',' ? `${decimals} con coma` : decimals;
   }
-  return transformation.type;
+  return packTransformation(transformation.type)?.describe?.(transformation) || transformation.type;
 }
 
 export function describeTransformations(column) {
   const labels = (column.transformations || []).map(describeTransformation);
-  if ((column.validations || []).some((validation) => validation.type === 'VALID_RUT')) labels.push('Valida dígito verificador');
+  for (const validation of column.validations || []) {
+    const label = packValidation(validation.type)?.label;
+    if (label) labels.push(label);
+  }
   return labels;
 }
 

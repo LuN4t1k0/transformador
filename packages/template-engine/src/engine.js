@@ -1,8 +1,7 @@
 const { parseNumber } = require('../../transformations/src/number');
 const { parseDate } = require('../../transformations/src/date');
+const { packTransformation, packValidation } = require('./packs');
 const {
-  formatRut,
-  isValidRut,
   transformText,
   transformNumber,
   formatDate,
@@ -237,7 +236,6 @@ function resolveSource(row, source, context = emptyContext()) {
 // ---- Transformations and validations -----------------------------------------------------------------------
 
 function applyTransformation(value, transformation) {
-  if (transformation.type === 'RUT_FORMAT') return formatRut(value, transformation.format);
   if (transformation.type === 'TEXT') return transformText(value, transformation.operation);
   if (transformation.type === 'NUMBER') return transformNumber(value, transformation);
   if (transformation.type === 'DATE_FORMAT') return formatDate(value, transformation);
@@ -251,34 +249,36 @@ function applyTransformation(value, transformation) {
     const start = Math.max(0, transformation.start - 1);
     return text.substr(start, transformation.length ?? undefined) || null;
   }
+  const fromPack = packTransformation(transformation.type);
+  if (fromPack) return fromPack.apply(value, transformation);
   throw new Error(`Unsupported transformation type: ${transformation.type}`);
 }
 
-// VALID_RUT checks the source value: the output may keep only part of the RUT (body or verifier).
+// Pack validations receive the source value too: the output may keep only part of it.
 function validateValue(value, validation, sourceValue = value) {
   if (validation.type === 'REQUIRED') {
     return value !== null && value !== undefined && value !== ''
       ? null
       : { severity: 'error', code: 'REQUIRED', message: 'Required value is missing' };
   }
-  if (validation.type === 'VALID_RUT') {
-    return isValidRut(sourceValue)
-      ? null
-      : { severity: 'error', code: 'INVALID_RUT', message: 'Invalid Chilean RUT' };
-  }
   if (validation.type === 'INTEGER') {
     return Number.isInteger(Number(value))
       ? null
       : { severity: 'error', code: 'INVALID_INTEGER', message: 'Value must be an integer' };
   }
+  const fromPack = packValidation(validation.type);
+  if (fromPack) return fromPack.validate(value, sourceValue);
   return { severity: 'warning', code: 'UNKNOWN_VALIDATION', message: `Unknown validation ${validation.type}` };
 }
 
 const CONVERSION_ISSUES = {
   DATE_FORMAT: { code: 'INVALID_DATE', message: 'Value is not a recognizable date' },
-  NUMBER: { code: 'INVALID_NUMBER', message: 'Value is not a recognizable number' },
-  RUT_FORMAT: { code: 'INVALID_RUT_FORMAT', message: 'Value is not a recognizable RUT' }
+  NUMBER: { code: 'INVALID_NUMBER', message: 'Value is not a recognizable number' }
 };
+
+function conversionIssue(type) {
+  return CONVERSION_ISSUES[type] || packTransformation(type)?.conversionIssue || null;
+}
 
 // `context.rowIndex` (0-based position among processed rows) and `context.now` feed correlatives and TODAY.
 // `params` holds the values typed for the template's parameters when generating ({ byId, byName }).
@@ -306,17 +306,17 @@ function transformRow(row, template, { rowIndex = 0, now = new Date(), params = 
     let value = sourceValue;
 
     // A conversion that turns a present value into nothing is a data problem, never a silent blank.
-    let conversionIssue = null;
+    let failedConversion = null;
     for (const transformation of column.transformations || []) {
       const before = value;
       value = applyTransformation(value, transformation);
-      if (!conversionIssue && !isBlank(before) && isBlank(value) && CONVERSION_ISSUES[transformation.type]) {
-        conversionIssue = CONVERSION_ISSUES[transformation.type];
-        issues.push({ column: column.outputName, rule: transformation.type, severity: 'error', ...conversionIssue });
+      if (!failedConversion && !isBlank(before) && isBlank(value) && conversionIssue(transformation.type)) {
+        failedConversion = conversionIssue(transformation.type);
+        issues.push({ column: column.outputName, rule: transformation.type, severity: 'error', ...failedConversion });
       }
     }
 
-    const validations = conversionIssue ? [] : [...(column.required ? [{ type: 'REQUIRED' }] : []), ...(column.validations || [])];
+    const validations = failedConversion ? [] : [...(column.required ? [{ type: 'REQUIRED' }] : []), ...(column.validations || [])];
     for (const validation of validations) {
       const issue = validateValue(value, validation, sourceValue);
       if (issue) issues.push({ column: column.outputName, rule: validation.type, ...issue });

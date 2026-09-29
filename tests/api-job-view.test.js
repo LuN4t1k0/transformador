@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { planVitalPagexTemplate } = require('../packages/shared/templates');
+const { planVitalPagexTemplate } = require('../packages/packs/chile/planvital-pagex');
 const { serializeJob, validateWorkingTemplatePayload } = require('../apps/api/src/jobs/job-view');
 const { createRouter } = require('../apps/api/src/http');
 
