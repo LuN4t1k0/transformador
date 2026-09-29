@@ -30,6 +30,8 @@ services:
       DATABASE_URL: postgres://transformador:transformador@postgres:5432/transformador
       REDIS_URL: redis://redis:6379
       TEMP_DIR: /tmp/previley-excel-transformer
+      # Asistente de plantillas (se toma del archivo .env local, que no se sube a git).
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "4000:4000"
     volumes:
