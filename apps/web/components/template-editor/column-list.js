@@ -254,7 +254,7 @@ function ColumnCard({ column, index, total, row, sample, sampleRows = null, head
           <div className="px-2">{sampleRows?.length > 1 ? <SampleTable column={column} rows={sampleRows} /> : <SampleLine column={column} sample={sample} />}</div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <label className="mr-1 inline-flex items-center gap-1.5 text-xs text-ink-700">
             <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={column.required} onChange={(event) => onChange({ ...column, required: event.target.checked })} />
             Obligatoria

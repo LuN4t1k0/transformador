@@ -35,7 +35,7 @@ function knownHeaderNames(columns) {
 }
 
 // Loads an Excel only to try the template on real rows; nothing is saved.
-function SampleLoader({ sample, onLoaded }) {
+export function SampleLoader({ sample, onLoaded }) {
   const inputId = useId();
   const [state, setState] = useState({ loading: false, error: '' });
 

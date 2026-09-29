@@ -7,7 +7,7 @@ import { AlertCircle, ArrowLeft, Copy, FilePlus2, FileSpreadsheet, Loader2, Penc
 import { FileDropzone } from '../../../components/file-dropzone';
 import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
-import { TemplateForm } from '../../../components/template-editor/template-form';
+import { TemplateWizard } from '../../../components/template-editor/template-wizard';
 import { api } from '../../../lib/api';
 import { validateExcelFile } from '../../../lib/file-validation';
 import { createColumn, reviveSampleRows } from '../../../lib/template-editor';
@@ -82,7 +82,7 @@ function ExampleSources({ examples, onChangeSheet, isBusy }) {
     );
   };
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-ink-200 bg-white p-3 shadow-panel">
+    <div className="flex flex-wrap items-end gap-3">
       {item('input', 'Excel que recibes')}
       {item('output', 'Ejemplo del destino')}
       {isBusy ? <Loader2 size={18} className="mb-2 animate-spin text-cobalt-600" aria-hidden="true" /> : null}
@@ -245,8 +245,16 @@ function NewTemplate() {
   else if (editor) {
     body = (
       <>
-        {examples ? <ExampleSources examples={examples} isBusy={rerunning} onChangeSheet={changeExampleSheet} /> : null}
-        <TemplateForm key={editor.key || 'editor'} initial={editor.initial} initialSample={editor.sample} outputExample={editor.outputExample || null} report={editor.report} note={editor.note} submitLabel="Crear plantilla" onSubmit={save} />
+        <TemplateWizard
+          key={editor.key || 'editor'}
+          initial={editor.initial}
+          initialSample={editor.sample}
+          outputExample={editor.outputExample || null}
+          report={editor.report}
+          note={editor.note}
+          files={examples ? <ExampleSources examples={examples} isBusy={rerunning} onChangeSheet={changeExampleSheet} /> : null}
+          onSubmit={save}
+        />
       </>
     );
   } else if (method === 'example') {
@@ -263,13 +271,13 @@ function NewTemplate() {
       <BaseTemplatePicker onPick={(base) => setEditor({ key: base.id, initial: fromBase(base), note: `Basada en «${base.name}» v${base.version}. Cambia lo necesario y guárdala con otro nombre.` })} />
     );
   } else if (method === 'blank') {
-    body = <TemplateForm initial={EMPTY_TEMPLATE} submitLabel="Crear plantilla" note="Puedes cargar un Excel de prueba en «Columnas» para elegir el origen y ver la vista previa." onSubmit={save} />;
+    body = <TemplateWizard initial={EMPTY_TEMPLATE} onSubmit={save} />;
   } else {
     body = <MethodChooser onChoose={setMethod} />;
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <Link href="/templates" className="inline-flex items-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-900">
         <ArrowLeft size={15} aria-hidden="true" />
         Plantillas
