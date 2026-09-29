@@ -180,6 +180,18 @@ function createTemplateService({ templates, storage, config, audit = { record: a
       return { fileName: `ejemplo-${template.name}.xlsx`, buffer: await buildExampleWorkbook(configuration) };
     },
 
+    // Deleting asks the requester to type the template's name or the word "eliminar", checked here too.
+    async remove(templateId, { confirmation } = {}, user) {
+      const template = await requireTemplate(templateId);
+      const typed = String(confirmation || '').trim().toLowerCase();
+      if (typed !== 'eliminar' && typed !== template.name.trim().toLowerCase()) {
+        throw new HttpError(400, 'CONFIRMATION_REQUIRED', 'Para eliminar la plantilla escribe «eliminar» o su nombre exacto.');
+      }
+      await templates.markDeleted(templateId);
+      await auditTemplate(template, user, 'TEMPLATE_DELETED');
+      return { deleted: true };
+    },
+
     async setArchived(templateId, archived, user) {
       await requireTemplate(templateId);
       const updated = await templates.setArchived(templateId, archived).catch(translateNameConflict);

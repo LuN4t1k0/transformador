@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, Copy, Download, History, Loader2, Pencil, Upload } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, Copy, Download, History, Loader2, Pencil, Trash2, Upload } from 'lucide-react';
+import { DeleteTemplateDialog } from '../../../components/template-editor/delete-template-dialog';
 import { downloadBlob } from '../../../lib/download';
 import { ReuseUploadButton } from '../../../components/reuse-upload-button';
 import { buttonStyles, Notice } from '../../../components/panel';
@@ -27,6 +28,8 @@ export default function TemplateDetailPage() {
   const [error, setError] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [advanced] = useAdvancedMode();
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     api.getTemplate(templateId).then((loaded) => {
@@ -106,6 +109,10 @@ export default function TemplateDetailPage() {
                 <button type="button" className={buttonStyles.secondary} disabled={isBusy} onClick={toggleArchived}>
                   {template.archivedAt ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />}
                   {template.archivedAt ? 'Restaurar' : 'Archivar'}
+                </button>
+                <button type="button" className={buttonStyles.danger} disabled={isBusy} onClick={() => setDeleting(true)}>
+                  <Trash2 size={16} aria-hidden="true" />
+                  Eliminar
                 </button>
               </> : null}
               </div>
@@ -217,6 +224,16 @@ export default function TemplateDetailPage() {
           </>
         ) : null}
       </div>
+      {deleting && template ? (
+        <DeleteTemplateDialog
+          template={template}
+          onCancel={() => setDeleting(false)}
+          onDelete={async (confirmation) => {
+            await api.deleteTemplate(template.id, confirmation);
+            router.push(`/templates?eliminada=${encodeURIComponent(template.name)}`);
+          }}
+        />
+      ) : null}
     </Shell>
   );
 }

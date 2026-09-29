@@ -156,7 +156,7 @@ function createTemplateRepository(pool) {
   const versionCache = new Map();
 
   async function getActive(templateId) {
-    const { rows } = await pool.query(`${TEMPLATE_SELECT} where t.id = $1`, [templateId]);
+    const { rows } = await pool.query(`${TEMPLATE_SELECT} where t.id = $1 and t.deleted_at is null`, [templateId]);
     return rows[0] ? toTemplate(rows[0]) : null;
   }
 
@@ -178,7 +178,7 @@ function createTemplateRepository(pool) {
     },
 
     async list({ includeArchived = false } = {}) {
-      const { rows } = await pool.query(`${TEMPLATE_SELECT} ${includeArchived ? '' : 'where t.archived_at is null'} order by t.name`);
+      const { rows } = await pool.query(`${TEMPLATE_SELECT} where t.deleted_at is null ${includeArchived ? '' : 'and t.archived_at is null'} order by t.name`);
       return rows.map(toTemplate);
     },
 
@@ -234,10 +234,20 @@ function createTemplateRepository(pool) {
       return getActive(templateId);
     },
 
+    // Hidden everywhere from now on; also archived so its name can be used again (the unique index covers
+    // non-archived templates). Versions stay for the conversions that used them.
+    async markDeleted(templateId) {
+      const { rowCount } = await pool.query(
+        'update templates set deleted_at = now(), archived_at = coalesce(archived_at, now()), updated_at = now() where id = $1 and deleted_at is null',
+        [templateId]
+      );
+      return rowCount > 0;
+    },
+
     async facets() {
       const { rows } = await pool.query(
         `select array_remove(array_agg(distinct destination), null) as destinations, array_remove(array_agg(distinct process), null) as processes
-         from templates where archived_at is null`
+         from templates where archived_at is null and deleted_at is null`
       );
       return { destinations: (rows[0].destinations || []).sort(), processes: (rows[0].processes || []).sort() };
     }

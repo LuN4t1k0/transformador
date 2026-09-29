@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, Download, Loader2, Pencil, Plus, Search, Upload } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, Loader2, Pencil, Plus, Search, Upload } from 'lucide-react';
 import { buttonStyles, Notice } from '../../components/panel';
 import { Shell } from '../../components/shell';
 import { ReuseUploadButton } from '../../components/reuse-upload-button';
@@ -60,6 +60,11 @@ export default function TemplatesPage() {
   const [destination, setDestination] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [advanced] = useAdvancedMode();
+  // Set by the detail page after deleting a template, to confirm what happened.
+  const [deletedName, setDeletedName] = useState('');
+  useEffect(() => {
+    setDeletedName(new URLSearchParams(window.location.search).get('eliminada') || '');
+  }, []);
 
   useEffect(() => {
     setTemplates(null);
@@ -121,6 +126,7 @@ export default function TemplatesPage() {
           </div>
         ) : null}
 
+        {deletedName ? <div className="mb-3 mt-3"><Notice tone="success" icon={CheckCircle2} role="status">Plantilla «{deletedName}» eliminada.</Notice></div> : null}
         {error ? <Notice tone="danger" icon={AlertCircle} role="alert">No pudimos cargar las plantillas: {error.message}</Notice> : null}
         {actionError ? <div className="mt-3"><Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice></div> : null}
         {!templates && !error ? (

@@ -13,6 +13,8 @@ const { parseNumber } = require('../../../transformations/src/number');
 const CONSONANTS = 'bcdfghjklmnprstvz';
 const VOWELS = 'aeiou';
 // Connectors of names and addresses: not identifying, and needed to split compound surnames.
+// Terms that often appear in explanations and templates; fakes must never collide with them.
+const RESERVED_WORDS = ['rut', 'afp', 'dv', 'dni', 'id', 'total', 'monto', 'fecha', 'nombre', 'nombres', 'apellido', 'codigo', 'periodo', 'sueldo', 'bono'];
 const KEEP_WORDS = new Set(['de', 'del', 'la', 'las', 'los', 'da', 'das', 'do', 'dos', 'di', 'van', 'von', 'der', 'y', 'e', 'san', 'santa', 'sin', 'con', 'el']);
 
 function isBlank(value) {
@@ -33,13 +35,18 @@ function createPseudonymizer({ secret = crypto.randomBytes(16) } = {}) {
   const usedWords = new Set();
   const keyMap = new Map();
   const reverse = new Map();
+  const reserved = new Set(RESERVED_WORDS);
+  const reserve = (text) => {
+    for (const word of stripAccents(String(text || '')).toLowerCase().match(/\p{L}+/gu) || []) reserved.add(word);
+  };
 
   function fakeWord(word) {
     const lower = stripAccents(word).toLowerCase();
     if (KEEP_WORDS.has(lower) || word.length < 2) return word;
     if (!wordMap.has(lower)) {
       let fake = '';
-      for (let attempt = 0; !fake || usedWords.has(fake); attempt += 1) {
+      // A fake word never equals a real word of the headers or a common term (e.g. "ANA" → "RUT").
+      for (let attempt = 0; !fake || usedWords.has(fake) || reserved.has(fake); attempt += 1) {
         const bytes = digest('word', `${lower}#${attempt}`);
         fake = Array.from({ length: lower.length }, (_, index) => (index % 2 === 0 ? CONSONANTS[bytes[index % 32] % CONSONANTS.length] : VOWELS[bytes[index % 32] % VOWELS.length])).join('');
       }
@@ -98,7 +105,10 @@ function createPseudonymizer({ secret = crypto.randomBytes(16) } = {}) {
   }
 
   function rows(headers, list) {
+    headers.forEach(reserve);
     const keep = categoricalColumns(headers, list);
+    // Categories travel as they are, so their words must not be produced as fakes either.
+    for (const row of list) for (const header of keep) reserve(row.values?.[header]);
     return list.map((row) => ({
       ...row,
       values: Object.fromEntries(Object.entries(row.values || {}).map(([header, value]) => [header, keep.has(header) ? value : text(value)]))
@@ -109,9 +119,12 @@ function createPseudonymizer({ secret = crypto.randomBytes(16) } = {}) {
   function reveal(value) {
     if (typeof value !== 'string') return value;
     if (reverse.has(value)) return reverse.get(value);
+    // Inside free text only whole words of 4+ letters are restored, so short fakes never touch real words.
     let revealed = value;
     for (const [fake, real] of [...reverse.entries()].sort((a, b) => b[0].length - a[0].length)) {
-      if (fake.length >= 3 && revealed.includes(fake)) revealed = revealed.split(fake).join(real);
+      if (fake.length < 4 || !revealed.includes(fake)) continue;
+      const escaped = fake.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      revealed = revealed.replace(new RegExp(`(?<![\\p{L}\\d])${escaped}(?![\\p{L}\\d])`, 'gu'), real);
     }
     return revealed;
   }

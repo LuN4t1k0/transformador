@@ -80,6 +80,7 @@ async function main() {
     ['POST', '/templates/:templateId/versions', async ({ user, params, request }) => ({ template: await templateService.addVersion(params.templateId, (await readJson(request)).configuration, user) })],
     ['POST', '/templates/:templateId/duplicate', async ({ user, params, request }) => ({ status: 201, body: { template: await templateService.duplicate(params.templateId, await readJson(request), user) } })],
     ['POST', '/templates/:templateId/archive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, true, user) })],
+    ['POST', '/templates/:templateId/delete', async ({ user, params, request }) => templateService.remove(params.templateId, await readJson(request), user)],
     ['POST', '/templates/:templateId/unarchive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, false, user) })],
     ['GET', '/jobs', async ({ user }) => ({ jobs: await jobService.list(user) })],
     ['POST', '/jobs', async ({ user, request }) => ({ status: 201, body: { job: await jobService.create(request, user) } })],

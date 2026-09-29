@@ -124,6 +124,10 @@ export function createHttpApi(baseUrl) {
     async setTemplateArchived(templateId, archived) {
       return (await getJson(`/templates/${templateId}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' })).template;
     },
+    // `confirmation` is what the user typed: the word «eliminar» or the template's name.
+    async deleteTemplate(templateId, confirmation) {
+      return getJson(`/templates/${templateId}/delete`, { method: 'POST', json: { confirmation } });
+    },
     async listJobs() {
       return (await getJson('/jobs')).jobs;
     },

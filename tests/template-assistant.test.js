@@ -56,6 +56,21 @@ test('pseudonymizes identifiers and names consistently, keeps numbers, dates and
   assert.deepEqual(pseudo.revealDeep({ type: 'CONSTANT', value: name.split(' ')[2] }), { type: 'CONSTANT', value: 'FUENTE' });
 });
 
+test('fake words never collide with real words, and explanations keep their real words', () => {
+  for (let run = 0; run < 3000; run += 1) {
+    const pseudo = createPseudonymizer();
+    const rows = pseudo.rows(['RUT', 'Nombre', 'AFP'], [
+      { values: { RUT: '12.345.678-5', Nombre: 'ANA', AFP: 'Capital' } },
+      { values: { RUT: '9.876.543-3', Nombre: 'EVA', AFP: 'Capital' } },
+      { values: { RUT: '10.231.091-8', Nombre: 'ANA', AFP: 'Capital' } }
+    ]);
+    const fakes = rows.map((row) => row.values.Nombre);
+    assert.ok(!fakes.includes('RUT') && !fakes.includes('AFP'), `fake «${fakes}» collides with a header`);
+    assert.equal(pseudo.reveal('Listo: RUT sin puntos y códigos de AFP para ANA.'), 'Listo: RUT sin puntos y códigos de AFP para ANA.');
+    assert.equal(pseudo.reveal(fakes[0]), 'ANA', 'an exact value is still restored');
+  }
+});
+
 test('scores each destination column against the paired example rows', () => {
   const pairs = input.rows.map((row, index) => ({ input: row, output: output.rows[index] }));
   const evaluation = evaluateTemplate(currentTemplate, pairs, outputHeaders);
