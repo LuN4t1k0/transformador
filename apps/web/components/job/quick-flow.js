@@ -8,26 +8,9 @@ import { maskValue } from '../../lib/preview';
 import { formatCell } from '../../lib/template-editor';
 import { buttonStyles, Notice } from '../panel';
 import { FilePreview } from '../template-editor/file-preview';
+import { StepRail } from './step-rail';
 
-const cardClass = 'rounded-lg border border-ink-200 bg-white shadow-panel';
 const sourceTypes = new Set(['COLUMN', 'SPLIT_WORD', 'SPLIT_WORD_RANGE']);
-
-function Step({ number, title, done, children, action }) {
-  return (
-    <section className={cardClass}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 px-4 py-3 sm:px-5">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-ink-900">
-          <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${done ? 'bg-mint-600 text-white' : 'bg-cobalt-600 text-white'}`}>
-            {done ? <Check size={14} aria-hidden="true" /> : number}
-          </span>
-          {title}
-        </h2>
-        {action}
-      </div>
-      <div className="p-4 sm:p-5">{children}</div>
-    </section>
-  );
-}
 
 function SheetChooser({ job, onSelect, isBusy }) {
   const sheets = job.sheets.filter((sheet) => sheet.rowCount > 0);
@@ -47,7 +30,7 @@ function SheetChooser({ job, onSelect, isBusy }) {
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-ink-900">{sheet.name}</span>
             <span className="block text-sm text-ink-500">{sheet.rowCount} filas</span>
-            <span className="mt-1 block truncate text-xs text-ink-500">{sheet.headers.slice(0, 5).join(' · ')}{sheet.headers.length > 5 ? ' …' : ''}</span>
+            <span className="mt-1 block truncate text-xs text-ink-500">{sheet.headers.slice(0, 5).join(', ')}{sheet.headers.length > 5 ? ' …' : ''}</span>
           </span>
         </button>
       ))}
@@ -115,45 +98,43 @@ function TemplateChooser({ job, onApply, onAdvanced, isBusy, allowAutoApply }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-ink-700">
-        {recommended.length
-          ? `${recommended.length === 1 ? 'Esta plantilla reconoce' : 'Estas plantillas reconocen'} todas las columnas de tu archivo:`
-          : 'Ninguna plantilla reconoce todas las columnas. Elige la más cercana y te mostraremos qué falta:'}
-      </p>
-      <div className="grid gap-2" role="radiogroup" aria-label="Plantilla">
-        {visible.map((item, index) => (
-          <button
-            key={item.templateId}
-            type="button"
-            role="radio"
-            aria-checked={false}
-            disabled={isBusy}
-            className="flex w-full items-start gap-3 rounded-lg border border-ink-200 bg-white p-4 text-left hover:border-cobalt-500 hover:bg-cobalt-50/50"
-            onClick={() => onApply({ templateId: item.templateId })}
-          >
-            <FileSpreadsheet className="mt-0.5 shrink-0 text-cobalt-600" size={20} aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-ink-900">{item.template.name}</span>
-                {index === 0 && isFullMatch(item) ? <span className="inline-flex items-center gap-1 rounded-full bg-mint-50 px-2 text-xs font-semibold text-mint-600 ring-1 ring-inset ring-mint-100"><Sparkles size={12} aria-hidden="true" />Recomendada</span> : null}
-              </span>
-              <span className="block text-xs text-ink-500">
-                {[item.template.destination, item.template.process].filter(Boolean).join(' · ') || 'Sin clasificar'}
-                {item.lastUsedAt ? ' · la usaste antes' : ''}
-              </span>
-              <span className={`mt-1 block text-xs ${isFullMatch(item) ? 'text-mint-600' : 'text-amber-700'}`}>
-                {isFullMatch(item) ? 'Reconoce todas las columnas' : `Reconoce ${item.matched} de ${item.total} columnas`}
-              </span>
-            </span>
-          </button>
-        ))}
+      <div className="grid gap-2" role="list" aria-label="Plantillas">
+        {visible.map((item, index) => {
+          const full = isFullMatch(item);
+          const best = index === 0 && full;
+          const share = item.total ? item.matched / item.total : 0;
+          return (
+            <div key={item.templateId} role="listitem" className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-md border bg-white px-4 py-3.5 ${best ? 'border-cobalt-600 shadow-[inset_4px_0_0_#2f6b4f]' : 'border-ink-200'}`}>
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-base font-bold text-ink-900">{item.template.name}</span>
+                  <span className="text-sm text-ink-500">{[item.template.destination, item.template.process].filter(Boolean).join(', ')}</span>
+                </p>
+                <p className="text-sm text-ink-700">
+                  {full ? `Calza con las ${item.total} columnas de origen.` : `Calza con ${item.matched} de ${item.total} columnas; faltarían ${item.total - item.matched}.`}
+                  {item.lastUsedAt ? ' La usaste antes.' : ''}
+                </p>
+                <span aria-hidden="true" className="mt-1.5 block h-1.5 max-w-xs overflow-hidden rounded-full bg-ink-100">
+                  <span className={`block h-full ${full ? 'bg-cobalt-600' : 'bg-amber-400'}`} style={{ width: `${Math.round(share * 100)}%` }} />
+                </span>
+              </div>
+              <button type="button" disabled={isBusy} className={best ? buttonStyles.primary : buttonStyles.secondary} onClick={() => onApply({ templateId: item.templateId })}>
+                Usar esta
+              </button>
+            </div>
+          );
+        })}
+        <div role="listitem" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-md border border-dashed border-ink-300 px-4 py-3.5">
+          <div>
+            <p className="font-bold text-ink-900">No está la que necesito</p>
+            <p className="text-sm text-ink-700">Crea una plantilla nueva a partir de este archivo (usa el modo avanzado).</p>
+          </div>
+          <button type="button" className={buttonStyles.secondary} onClick={onAdvanced}>Crear plantilla</button>
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        {!showAll && ranked.length > visible.length ? (
-          <button type="button" className="font-medium text-cobalt-700 hover:underline" onClick={() => setShowAll(true)}>Ver todas las plantillas ({ranked.length})</button>
-        ) : null}
-        <button type="button" className="text-ink-500 hover:text-ink-900 hover:underline" onClick={onAdvanced}>¿No está la plantilla? Créala en modo avanzado</button>
-      </div>
+      {!showAll && ranked.length > visible.length ? (
+        <button type="button" className="text-sm font-semibold text-cobalt-700 hover:underline" onClick={() => setShowAll(true)}>Ver todas las plantillas ({ranked.length})</button>
+      ) : null}
     </div>
   );
 }
@@ -170,7 +151,6 @@ function ColumnReview({ evaluation, headers, sample, onChangeSource, onConfirm, 
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-ink-700">Revisa {problems.length === 1 ? 'esta columna' : `estas ${problems.length} columnas`} antes de generar:</p>
       <ul className="space-y-2">
         {problems.map(({ column, status, reason }) => {
           const example = sample ? sampleText(column, sample.result.output[column.outputName]) : '';
@@ -232,10 +212,44 @@ export function QuickFlow({ job, template, evaluation, results, design = null, p
     setAutoApplied(Boolean(options.auto));
   }
 
-  if (!job.selectedSheet || changingSheet) {
-    return (
-      <Step number={1} title="¿Qué hoja quieres convertir?">
-        <p className="mb-3 text-sm text-ink-700">Tu archivo tiene {withData.length} hojas con datos.</p>
+  const pickingSheet = !job.selectedSheet || changingSheet;
+  const needsReview = !pickingSheet && !showTemplatePicker && evaluation && !evaluation.isComplete;
+  const pendingCount = evaluation ? evaluation.counts.pending + evaluation.counts.missing : 0;
+  const columnStatus = evaluation ? new Map(evaluation.rows.map((row) => [row.column.outputName, row.status])) : null;
+  const hasParameters = Boolean(template?.parameters?.length);
+  const onPreview = !pickingSheet && !showTemplatePicker;
+
+  const steps = [
+    {
+      id: 'sheet',
+      label: 'Hoja',
+      detail: job.selectedSheet ? `${job.selectedSheet}, ${sheet?.rowCount ?? 0} filas` : 'Elige con cuál trabajar',
+      state: pickingSheet ? 'current' : 'done',
+      onClick: withData.length > 1 && !pickingSheet ? () => setChangingSheet(true) : undefined
+    },
+    {
+      id: 'template',
+      label: 'Plantilla',
+      detail: template ? (job.template ? job.template.name : 'Nueva, sin guardar') : 'Elige la salida',
+      state: pickingSheet ? 'todo' : showTemplatePicker ? 'current' : 'done',
+      onClick: template && !showTemplatePicker ? () => setChangingTemplate(true) : undefined
+    },
+    {
+      id: 'columns',
+      label: 'Columnas',
+      detail: onPreview && evaluation ? (evaluation.isComplete ? `Las ${evaluation.counts.total} listas` : `${pendingCount} por revisar`) : 'Se revisan en la vista previa',
+      state: !onPreview ? 'todo' : needsReview ? 'current' : 'done'
+    },
+    ...(hasParameters ? [{ id: 'data', label: 'Datos del archivo', detail: 'Se piden antes de generar', state: onPreview && !needsReview ? 'current' : 'todo' }] : []),
+    { id: 'generate', label: 'Generar', detail: 'Crea el archivo final', state: onPreview && !needsReview && !hasParameters ? 'current' : 'todo' }
+  ];
+
+  let content;
+  if (pickingSheet) {
+    content = (
+      <section>
+        <h2 className="text-xl font-bold text-ink-900">¿Qué hoja convertimos?</h2>
+        <p className="mb-4 mt-1 text-ink-500">Tu archivo tiene {withData.length} hojas con datos.</p>
         <SheetChooser
           job={job}
           isBusy={isBusy}
@@ -244,75 +258,83 @@ export function QuickFlow({ job, template, evaluation, results, design = null, p
             setChangingSheet(false);
           }}
         />
-      </Step>
+      </section>
     );
-  }
+  } else if (showTemplatePicker) {
+    content = (
+      <section>
+        <h2 className="text-xl font-bold text-ink-900">¿A qué lo convertimos?</h2>
+        <p className="mb-4 mt-1 text-ink-500">Hoja «{job.selectedSheet}», {sheet?.rowCount ?? 0} filas y {sheet?.headers.length ?? 0} columnas. Ordenamos las plantillas por cuánto calzan con tu archivo.</p>
+        <TemplateChooser job={job} isBusy={isBusy} onApply={apply} onAdvanced={onAdvanced} allowAutoApply={!template && !changingTemplate} />
+        {changingTemplate ? <button type="button" className="mt-3 text-sm font-semibold text-ink-500 hover:underline" onClick={() => setChangingTemplate(false)}>Seguir con la plantilla actual</button> : null}
+      </section>
+    );
+  } else {
+    content = (
+      <div className="space-y-6">
+        {autoApplied || job.reusedFromJobId ? (
+          <p className="flex items-center gap-1.5 text-sm text-mint-600">
+            <Sparkles size={14} aria-hidden="true" />
+            {autoApplied ? 'Usamos la misma plantilla que la última vez.' : 'Usamos la misma configuración de tu conversión anterior.'}
+          </p>
+        ) : null}
 
-  return (
-    <div className="space-y-4">
-      <Step
-        number={1}
-        title={showTemplatePicker ? '¿Para qué destino es este archivo?' : `Plantilla: ${job.template ? job.template.name : 'nueva'}`}
-        done={!showTemplatePicker}
-        action={!showTemplatePicker ? <button type="button" className="text-sm font-medium text-cobalt-700 hover:underline" onClick={() => setChangingTemplate(true)}>Cambiar</button> : null}
-      >
-        {showTemplatePicker ? (
-          <TemplateChooser job={job} isBusy={isBusy} onApply={apply} onAdvanced={onAdvanced} allowAutoApply={!template && !changingTemplate} />
-        ) : (
-          <div className="space-y-1 text-sm text-ink-700">
-            {autoApplied ? <p className="flex items-center gap-1.5 text-mint-600"><Sparkles size={14} aria-hidden="true" />Usamos la misma plantilla que la última vez.</p> : null}
-            {!autoApplied && job.reusedFromJobId ? <p className="flex items-center gap-1.5 text-mint-600"><Sparkles size={14} aria-hidden="true" />Usamos la misma configuración de tu conversión anterior.</p> : null}
-            <p>
-              Hoja «{job.selectedSheet}» · {sheet?.rowCount} filas
-              {withData.length > 1 ? <> · <button type="button" className="font-medium text-cobalt-700 hover:underline" onClick={() => setChangingSheet(true)}>cambiar hoja</button></> : null}
-            </p>
-            <p className={evaluation?.isComplete ? 'text-mint-600' : 'text-amber-700'}>
-              {evaluation?.isComplete
-                ? `Todas las columnas (${evaluation.counts.total}) están listas.`
-                : `${evaluation.counts.ok} de ${evaluation.counts.total} columnas listas.`}
-            </p>
+        {needsReview ? (
+          <section>
+            <h2 className="text-xl font-bold text-ink-900">Revisa {pendingCount === 1 ? 'esta columna' : `estas ${pendingCount} columnas`}</h2>
+            <p className="mb-3 mt-1 text-ink-500">Están marcadas en ámbar o rojo en la grilla de abajo.</p>
+            <ColumnReview evaluation={evaluation} headers={headers} sample={sample} onChangeSource={onChangeSource} onConfirm={onConfirm} onConfirmAll={onConfirmAll} />
+          </section>
+        ) : null}
+
+        <section>
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="text-xl font-bold text-ink-900">Así quedará tu archivo</h2>
+            {evaluation ? (
+              <span className={`text-sm font-semibold ${evaluation.isComplete ? 'text-mint-600' : 'text-amber-700'}`}>
+                {evaluation.counts.ok} de {evaluation.counts.total} columnas listas
+              </span>
+            ) : null}
             {job.template ? (
-              <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-cobalt-700 hover:underline" onClick={async () => downloadBlob(await api.downloadTemplateExample(job.template.id))}>
-                <Download size={13} aria-hidden="true" />
-                Excel de ejemplo de esta plantilla
+              <button type="button" className="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-cobalt-700 hover:underline" onClick={async () => downloadBlob(await api.downloadTemplateExample(job.template.id))}>
+                <Download size={14} aria-hidden="true" />
+                Excel de ejemplo de la plantilla
               </button>
             ) : null}
           </div>
-        )}
-      </Step>
+          {results ? <FilePreview template={template} results={results} sampleCount={sampleCount} design={design} columnStatus={columnStatus} /> : <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>}
+        </section>
 
-      {!showTemplatePicker && evaluation && !evaluation.isComplete ? (
-        <Step number={2} title="Revisa estas columnas">
-          <ColumnReview evaluation={evaluation} headers={headers} sample={sample} onChangeSource={onChangeSource} onConfirm={onConfirm} onConfirmAll={onConfirmAll} />
-        </Step>
-      ) : null}
-
-      {!showTemplatePicker ? (
-        <Step number={evaluation?.isComplete ? 2 : 3} title="Así quedará tu archivo" done={false}>
-          {parametersForm ? <div className="mb-4">{parametersForm}</div> : null}
-          {results ? <FilePreview template={template} results={results} sampleCount={sampleCount} design={design} /> : <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>}
-
-          <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-ink-100 pt-4">
-            <label className="text-xs text-ink-500">
-              Si alguna fila tiene errores
+        <section className="space-y-4 rounded-md border border-ink-200 bg-white p-4">
+          {parametersForm}
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="text-sm text-ink-700">
+              Si una fila tiene errores
               <span className="relative mt-1 block">
-                <select className="h-9 appearance-none rounded-md border border-ink-200 bg-white pl-2 pr-8 text-sm text-ink-900" value={mode} onChange={(event) => setMode(event.target.value)}>
+                <select className="h-10 appearance-none rounded-md border border-ink-200 bg-white pl-3 pr-9 text-sm text-ink-900" value={mode} onChange={(event) => setMode(event.target.value)}>
                   <option value="LENIENT">Sacarla del archivo y entregármela aparte</option>
                   <option value="STRICT">No generar el archivo</option>
                 </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2 top-2.5 text-ink-400" aria-hidden="true" />
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-3 text-ink-400" aria-hidden="true" />
               </span>
             </label>
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {blockedReason ? <p id="quick-blocked-reason" className="text-sm text-ink-500">{blockedReason}</p> : null}
+              {blockedReason ? <p id="quick-blocked-reason" className="text-sm text-ink-700">{blockedReason}</p> : null}
               <button type="button" className={buttonStyles.primary} disabled={isBusy || Boolean(blockedReason)} aria-describedby={blockedReason ? 'quick-blocked-reason' : undefined} onClick={() => onGenerate(mode)}>
                 <Play size={16} aria-hidden="true" />
                 Generar archivo
               </button>
             </div>
           </div>
-        </Step>
-      ) : null}
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[232px_minmax(0,1fr)]">
+      <StepRail steps={steps} label="Pasos de la conversión" />
+      <div className="min-w-0">{content}</div>
     </div>
   );
 }

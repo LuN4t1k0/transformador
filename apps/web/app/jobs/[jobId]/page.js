@@ -13,7 +13,6 @@ import { ParametersForm, parametersBlockedReason } from '../../../components/job
 import { ParametersContext } from '../../../components/template-editor/parameters-context';
 import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
-import { StatusPill } from '../../../components/status-pill';
 import { formatTime, JobStatusBadge } from '../../../components/job-status';
 import { GenerateStep } from '../../../components/job/generate-step';
 import { JobActivity } from '../../../components/job/job-activity';
@@ -27,8 +26,8 @@ import { OutputEditor } from '../../../components/template-editor/output-editor'
 import { RowStepsEditor, RowStepsNote } from '../../../components/template-editor/row-steps-editor';
 import { withColumns } from '../../../lib/template-editor';
 import { api } from '../../../lib/api';
-import { formatFileSize } from '../../../lib/file-validation';
 import { useJob } from '../../../lib/hooks/use-job';
+import { StepRail } from '../../../components/job/step-rail';
 import { useWorkingTemplate } from '../../../lib/hooks/use-working-template';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 import { reviveSampleRows } from '../../../lib/template-editor';
@@ -48,16 +47,6 @@ const SECTIONS = [
 
 const RUNNING = new Set(['QUEUED_TRANSFORMATION', 'TRANSFORMING', 'VALIDATING', 'GENERATING']);
 const ANALYZING = new Set(['QUEUED_ANALYSIS', 'ANALYZING']);
-
-function Counts({ counts }) {
-  return (
-    <span className="flex flex-wrap gap-1.5">
-      {counts.pending ? <StatusPill value="REQUIERE_CONFIRMACION" label={`${counts.pending} por confirmar`} /> : null}
-      {counts.missing ? <StatusPill value="FALTANTE" label={`${counts.missing} sin origen`} /> : null}
-      {!counts.pending && !counts.missing ? <StatusPill value="OK" label="Todo resuelto" /> : null}
-    </span>
-  );
-}
 
 function SaveIndicator({ saveState }) {
   if (saveState.status === 'saving' || saveState.status === 'pending') {
@@ -85,38 +74,6 @@ function useSample(jobId, sheetName, enabled) {
   return rows;
 }
 
-function SectionTabs({ activeId, onSelect, badges }) {
-  return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border border-ink-200 bg-white p-1" role="tablist" aria-label="Pasos">
-      {SECTIONS.map((section, index) => {
-        const isActive = section.id === activeId;
-        const badge = badges[section.id];
-        return (
-          <button
-            key={section.id}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            aria-controls="job-section-panel"
-            className={`flex h-9 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-sm font-medium sm:px-3 ${
-              isActive ? 'bg-cobalt-50 text-cobalt-700' : 'text-ink-500 hover:bg-ink-50 hover:text-ink-900'
-            }`}
-            onClick={() => onSelect(section.id)}
-          >
-            <span className="hidden text-xs tabular-nums text-ink-400 lg:inline">{index + 1}</span>
-            <span className="sm:hidden" aria-hidden="true">{section.shortLabel || section.label}</span>
-            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">{section.label}</span>
-            {badge === true ? <Check size={14} className="text-mint-600" aria-label="completo" /> : null}
-            {typeof badge === 'number' ? (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-700">{badge}<span className="sr-only"> pendientes</span></span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function Prerequisite({ message, actionLabel, onAction }) {
   return (
     <div className="flex flex-col items-center rounded-lg border border-dashed border-ink-300 px-4 py-10 text-center">
@@ -127,77 +84,6 @@ function Prerequisite({ message, actionLabel, onAction }) {
         <ArrowRight size={16} aria-hidden="true" />
       </button>
     </div>
-  );
-}
-
-function getNextStep(job, template, evaluation, activeId) {
-  if (ANALYZING.has(job.status)) return { hint: 'Estamos leyendo las hojas y encabezados del archivo.' };
-  if (RUNNING.has(job.status)) return { hint: 'Procesando todas las filas.' };
-  if (job.status === 'READY_TO_DOWNLOAD') return { hint: 'El archivo está listo. Descárgalo antes de que expire.' };
-  if (job.status === 'DOWNLOADED') return { hint: 'Puedes volver a descargarlo hasta que expire, o eliminar los archivos ahora.' };
-  if (job.status !== 'READY') return { hint: 'Esta conversión terminó. Sube otro archivo para empezar una nueva.' };
-  if (!job.selectedSheet) return { section: 'sheet', label: 'Elegir hoja', hint: 'El archivo tiene varias hojas con datos: elige con cuál trabajar.' };
-  if (!template) return { section: 'template', label: 'Elegir plantilla', hint: 'Elige una plantilla guardada o crea una nueva desde este archivo.' };
-  if (!evaluation.isComplete) {
-    return activeId === 'columns'
-      ? { hint: 'Resuelve las columnas marcadas para continuar.' }
-      : { section: 'columns', label: 'Resolver columnas', hint: 'Hay columnas pendientes antes de generar.' };
-  }
-  if (activeId === 'generate') return { hint: 'Todo listo. Decide si guardas la plantilla y genera el archivo.' };
-  if (activeId === 'preview') return { section: 'generate', label: 'Ir a generar', hint: 'Si la vista previa se ve bien, genera el archivo.' };
-  return { section: 'preview', label: 'Ver vista previa', hint: 'Las columnas están listas. Revisa el resultado antes de generar.' };
-}
-
-function ContextPanel({ job, template, evaluation, saveState, activeId, onGo }) {
-  const next = getNextStep(job, template, evaluation, activeId);
-
-  return (
-    <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
-      <section className="rounded-lg border border-ink-200 bg-white p-4 shadow-panel">
-        <h2 className="text-sm font-semibold text-ink-900">Resumen</h2>
-        <dl className="mt-3 space-y-3 text-sm">
-          <div>
-            <dt className="text-xs text-ink-500">Archivo</dt>
-            <dd className="truncate font-medium text-ink-900">{job.fileName}</dd>
-            <dd className="text-xs text-ink-500">{formatFileSize(job.fileSize)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-ink-500">Hoja</dt>
-            <dd className="font-medium text-ink-900">{job.selectedSheet || <span className="text-ink-400">Sin elegir</span>}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-ink-500">Plantilla</dt>
-            <dd className="font-medium text-ink-900">
-              {job.template ? `${job.template.name} v${job.template.version}` : template ? 'Nueva, sin guardar' : <span className="text-ink-400">Sin elegir</span>}
-            </dd>
-            {template ? <dd className="text-xs text-ink-500">{describeOutput(template.output)}</dd> : null}
-          </div>
-          {evaluation && job.status === 'READY' ? (
-            <div>
-              <dt className="text-xs text-ink-500">Columnas</dt>
-              <dd className="mt-1"><Counts counts={evaluation.counts} /></dd>
-            </div>
-          ) : null}
-          {template && job.status === 'READY' ? <dd><SaveIndicator saveState={saveState} /></dd> : null}
-        </dl>
-      </section>
-
-      <section className="rounded-lg border border-cobalt-100 bg-cobalt-50 p-4 text-sm">
-        <h2 className="font-semibold text-cobalt-700">Siguiente paso</h2>
-        <p className="mt-1 leading-6 text-ink-700">{next.hint}</p>
-        {next.section ? (
-          <button type="button" className={`${buttonStyles.primary} mt-3 w-full`} onClick={() => onGo(next.section)}>
-            {next.label}
-            <ArrowRight size={16} aria-hidden="true" />
-          </button>
-        ) : null}
-      </section>
-
-      <p className="flex items-start gap-2 px-1 text-xs leading-5 text-ink-500">
-        <ShieldCheck size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Tus archivos se eliminan automáticamente a las {formatTime(job.expiresAt)}.
-      </p>
-    </aside>
   );
 }
 
@@ -435,7 +321,7 @@ function JobWorkspace({ job, setJob }) {
 
   if (!advanced) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-6xl space-y-4">
         {actionError ? <Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice> : null}
         {isEditable && saveState.status === 'error' ? (
           <Notice tone="danger" icon={CloudOff} role="alert">No se guardaron los últimos cambios: {saveState.error?.message}</Notice>
@@ -480,16 +366,47 @@ function JobWorkspace({ job, setJob }) {
   const nextSection = isEditable ? SECTIONS[sectionIndex + 1] : null;
   const previousSection = isEditable ? SECTIONS[sectionIndex - 1] : null;
 
+  // The steps double as the summary: each one says what was decided or what is missing.
+  const sheetInfo = job.sheets.find((candidate) => candidate.name === job.selectedSheet);
+  const stepDetail = {
+    sheet: job.selectedSheet ? `${job.selectedSheet}, ${sheetInfo?.rowCount ?? 0} filas` : 'Sin elegir',
+    template: job.template ? `${job.template.name} v${job.template.version}` : template ? 'Nueva, sin guardar' : 'Sin elegir',
+    columns: evaluation ? (evaluation.isComplete ? `Las ${evaluation.counts.total} listas` : `${pending} por revisar`) : 'Después de la plantilla',
+    rows: template?.rowSteps ? `${Object.keys(template.rowSteps).length} ${Object.keys(template.rowSteps).length === 1 ? 'paso' : 'pasos'} configurados` : 'Sin cambios',
+    output: template ? describeOutput(template.output) : 'Después de la plantilla',
+    preview: 'Primeras filas del archivo',
+    generate: 'Guardar y generar'
+  };
+  const railSteps = SECTIONS.map((candidate) => ({
+    id: candidate.id,
+    label: candidate.label,
+    detail: stepDetail[candidate.id],
+    state: candidate.id === sectionId ? 'current' : typeof badges[candidate.id] === 'number' ? 'attention' : badges[candidate.id] === true ? 'done' : 'todo',
+    onClick: () => setActiveId(candidate.id)
+  }));
+
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className={isEditable ? 'grid gap-6 lg:grid-cols-[232px_minmax(0,1fr)]' : ''}>
+      {isEditable ? (
+        <div className="space-y-4">
+          <StepRail steps={railSteps} label="Pasos de la conversión" />
+          <div className="hidden space-y-2 px-2.5 text-xs text-ink-500 lg:block">
+            {template ? <SaveIndicator saveState={saveState} /> : null}
+            <p className="flex items-start gap-1.5">
+              <ShieldCheck size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+              Tus archivos se eliminan solos a las {formatTime(job.expiresAt)}.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="min-w-0 space-y-4">
-        {isEditable ? <SectionTabs activeId={sectionId} onSelect={setActiveId} badges={badges} /> : null}
         {actionError ? <Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice> : null}
         {isEditable && saveState.status === 'error' ? (
           <Notice tone="danger" icon={CloudOff} role="alert">No se guardaron los últimos cambios: {saveState.error?.message}</Notice>
         ) : null}
 
-        <div id="job-section-panel" role={isEditable ? 'tabpanel' : undefined}>
+        <div id="job-section-panel">
           <Panel
             headingRef={headingRef}
             title={isEditable ? section.title : ANALYZING.has(job.status) ? 'Analizando archivo' : RUNNING.has(job.status) ? 'Procesando archivo' : 'Resultado'}
@@ -509,7 +426,7 @@ function JobWorkspace({ job, setJob }) {
               </button>
             ) : <span />}
             {nextSection ? (
-              <button type="button" className={buttonStyles.secondary} onClick={() => setActiveId(nextSection.id)}>
+              <button type="button" className={buttonStyles.primary} onClick={() => setActiveId(nextSection.id)}>
                 {nextSection.label}
                 <ArrowRight size={16} aria-hidden="true" />
               </button>
@@ -519,8 +436,6 @@ function JobWorkspace({ job, setJob }) {
 
         <JobActivity job={job} />
       </div>
-
-      <ContextPanel job={job} template={template} evaluation={evaluation} saveState={saveState} activeId={sectionId} onGo={setActiveId} />
     </div>
   );
 }
@@ -533,7 +448,7 @@ export default function JobPage() {
   return (
     <Shell>
       <div className="mx-auto max-w-6xl">
-        <div className={advanced ? '' : 'mx-auto max-w-4xl'}>
+        <div>
           <Link href="/jobs" className="inline-flex items-center gap-1 text-sm font-medium text-ink-500 hover:text-ink-900">
             <ArrowLeft size={15} aria-hidden="true" />
             Historial
@@ -551,16 +466,20 @@ export default function JobPage() {
               <p className="font-semibold">No encontramos esta conversión</p>
               <p className="mt-0.5">{error.message}</p>
             </Notice>
-            <Link href="/jobs/new" className={`${buttonStyles.primary} mt-4`}>Convertir un archivo</Link>
+            <Link href="/" className={`${buttonStyles.primary} mt-4`}>Convertir un archivo</Link>
           </div>
         ) : (
           <>
-            <div className={`mb-5 mt-3 flex flex-wrap items-start justify-between gap-3 ${advanced ? '' : 'mx-auto max-w-4xl'}`}>
+            <div className="mb-6 mt-3 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <h1 className="truncate text-2xl font-semibold text-ink-900">{job.fileName}</h1>
-                <p className="mt-1 text-sm text-ink-500">
-                  Subido a las {formatTime(job.createdAt)}
-                  {advanced ? <> · <span className="font-mono text-xs">{job.id}</span></> : null}
+                <h1 className="truncate text-[28px] font-bold leading-tight text-ink-900">{job.fileName}</h1>
+                <p className="mt-1 text-ink-500">
+                  {[
+                    job.selectedSheet ? `Hoja «${job.selectedSheet}», ${(job.sheets.find((sheet) => sheet.name === job.selectedSheet)?.rowCount ?? 0).toLocaleString('es-CL')} filas` : null,
+                    job.template ? `plantilla ${job.template.name} v${job.template.version}` : null,
+                    `subido a las ${formatTime(job.createdAt)}`
+                  ].filter(Boolean).join(', ').replace(/^./, (letter) => letter.toUpperCase())}.
+                  {advanced ? <span className="ml-2 font-mono text-xs text-ink-400">{job.id}</span> : null}
                 </p>
               </div>
               <JobStatusBadge status={job.status} />
