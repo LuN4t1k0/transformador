@@ -7,6 +7,10 @@ import { AlertCircle, ArrowLeft, ArrowRight, Check, CloudOff, FileSearch, Loader
 import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
 import { runRows } from '@previley-transformer/template-engine/src/run.js';
 import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
+import { previewParameters } from '@previley-transformer/template-engine/src/params.js';
+import { previewDesign } from '@previley-transformer/template-engine/src/output-design.js';
+import { ParametersForm, parametersBlockedReason } from '../../../components/job/parameters-form';
+import { ParametersContext } from '../../../components/template-editor/parameters-context';
 import { buttonStyles, Notice, Panel } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { StatusPill } from '../../../components/status-pill';
@@ -223,22 +227,26 @@ function JobWorkspace({ job, setJob }) {
     () => (template && headers ? evaluateColumns(template.columns, headers, new Set(draft.confirmedIds)) : null),
     [template, headers, draft.confirmedIds]
   );
+  // Values for the template's parameters, typed before generating; the preview uses them as they are typed.
+  const [paramValues, setParamValues] = useState(() => job.runParameters || {});
+  const params = useMemo(() => previewParameters(template?.parameters || [], paramValues), [template?.parameters, paramValues]);
   const results = useMemo(() => {
     if (!template || !sampleRows?.length) return null;
     try {
-      return runRows(sampleRows, template);
+      return runRows(sampleRows, template, new Date(), params);
     } catch {
       return null;
     }
-  }, [template, sampleRows]);
+  }, [template, sampleRows, params]);
   const preview = useMemo(() => {
     if (!template || !sampleRows?.length) return null;
     try {
-      return previewRows(sampleRows, template);
+      const rows = previewRows(sampleRows, template, new Date(), params);
+      return { ...rows, design: previewDesign(template, rows.results, { inputName: job.fileName.replace(/\.xlsx$/i, ''), sheet: job.selectedSheet, now: new Date(), params }) };
     } catch {
       return null;
     }
-  }, [template, sampleRows]);
+  }, [template, sampleRows, params, job.fileName, job.selectedSheet]);
   const sampleAt = Math.min(sampleIndex, (sampleRows?.length || 1) - 1);
   const sample = results?.length ? { values: sampleRows[sampleAt].values, result: results[sampleAt] } : null;
 
@@ -309,7 +317,7 @@ function JobWorkspace({ job, setJob }) {
       if (!saved?.id) return;
       reset(saved);
     }
-    const queued = await run(() => api.transformJob(job.id, { mode }));
+    const queued = await run(() => api.transformJob(job.id, { mode, parameters: paramValues }));
     if (queued?.id) setJob(queued);
   }
 
@@ -320,9 +328,11 @@ function JobWorkspace({ job, setJob }) {
     columns: template ? (pending || true) : null
   };
 
+  const parametersBlocked = parametersBlockedReason(template?.parameters, paramValues);
   const generateBlocked = saveState.status === 'error'
     ? `No se pudieron guardar los cambios: ${saveState.error?.message}`
-    : evaluation && !evaluation.isComplete ? `Resuelve ${pending} ${pending === 1 ? 'columna pendiente' : 'columnas pendientes'} en «Columnas».` : null;
+    : evaluation && !evaluation.isComplete ? `Resuelve ${pending} ${pending === 1 ? 'columna pendiente' : 'columnas pendientes'} en «Columnas».` : parametersBlocked;
+  const parametersForm = <ParametersForm parameters={template?.parameters} values={paramValues} onChange={setParamValues} disabled={isBusy} />;
 
   function renderSection() {
     if (!isEditable) {
@@ -398,13 +408,15 @@ function JobWorkspace({ job, setJob }) {
       if (!preview) return <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Preparando vista previa…</p>;
       return (
         <>
+          {template.parameters?.length ? <div className="mb-3">{parametersForm}</div> : null}
           <RowStepsNote preview={preview} sampleCount={sampleRows.length} />
-          <FilePreview template={template} results={preview.results} sampleCount={sampleRows.length} />
+          <FilePreview template={template} results={preview.results} sampleCount={sampleRows.length} design={preview.design} />
         </>
       );
     }
     return (
       <GenerateStep
+        parametersForm={parametersForm}
         job={job}
         template={template}
         evaluation={evaluation}
@@ -434,13 +446,15 @@ function JobWorkspace({ job, setJob }) {
             template={template}
             evaluation={evaluation}
             results={preview?.results || null}
+            design={preview?.design || null}
+            parametersForm={parametersForm}
             sampleCount={sampleRows?.length}
             sample={sample}
             headers={headers || []}
             isBusy={isBusy}
             blockedReason={saveState.status === 'error'
               ? generateBlocked
-              : evaluation && !evaluation.isComplete ? `Revisa ${pending === 1 ? 'la columna marcada' : `las ${pending} columnas marcadas`} arriba.` : null}
+              : evaluation && !evaluation.isComplete ? `Revisa ${pending === 1 ? 'la columna marcada' : `las ${pending} columnas marcadas`} arriba.` : parametersBlocked}
             onSelectSheet={(name) => replaceFromServer(() => api.selectSheet(job.id, name))}
             onApply={(selection) => replaceFromServer(() => api.applyTemplate(job.id, selection))}
             onChangeSource={changeSource}
@@ -558,7 +572,9 @@ export default function JobPage() {
                 </Notice>
               </div>
             ) : null}
-            <JobWorkspace key={job.id} job={job} setJob={setJob} />
+            <ParametersContext.Provider value={job.workingTemplate?.parameters || []}>
+              <JobWorkspace key={job.id} job={job} setJob={setJob} />
+            </ParametersContext.Provider>
           </>
         )}
       </div>

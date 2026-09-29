@@ -102,3 +102,11 @@ test('removing a column drops row steps that used it and keeps the rest', async 
   });
   assert.equal('rowSteps' in withColumns({ columns, rowSteps: { sort: [{ columnId: 'b', direction: 'ASC' }] } }, [columns[0]]), false);
 });
+
+test('removing a column also drops its totals and the split that used it', async () => {
+  const { withColumns } = await load();
+  const columns = [{ id: 'a', outputName: 'A' }, { id: 'b', outputName: 'B' }];
+  const output = { format: 'XLSX', totals: { label: 'TOTAL', columns: [{ columnId: 'a', op: 'SUM' }, { columnId: 'b', op: 'SUM' }] }, split: { columnId: 'b', mode: 'SHEETS' } };
+  assert.deepEqual(withColumns({ columns, output }, [columns[0]]).output, { format: 'XLSX', totals: { label: 'TOTAL', columns: [{ columnId: 'a', op: 'SUM' }] } });
+  assert.deepEqual(withColumns({ columns, output }, [columns[1]]).output.totals.columns, [{ columnId: 'b', op: 'SUM' }]);
+});

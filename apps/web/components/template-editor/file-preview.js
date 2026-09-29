@@ -38,10 +38,29 @@ function FixedWidthRuler({ columns }) {
   );
 }
 
-export function FilePreview({ template, results, sampleCount = results.length }) {
+function DesignSummary({ design, output }) {
+  if (!design) return null;
+  const parts = design.parts || [];
+  return (
+    <div className="space-y-0.5 text-xs text-ink-500">
+      <p>Archivo: <span className="font-mono text-ink-900">{design.fileName}</span></p>
+      {parts.length ? (
+        <p>
+          {output.split.mode === 'SHEETS' ? `${parts.length} ${parts.length === 1 ? 'hoja' : 'hojas'}` : `${parts.length} ${parts.length === 1 ? 'archivo' : 'archivos'} dentro del .zip`} con estas filas de ejemplo:{' '}
+          {parts.map((part) => `${part.fileName || part.name} (${part.rows})`).join(', ')}. La tabla muestra todas las filas; el encabezado y los totales, los de la primera parte.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function FilePreview({ template, results, sampleCount = results.length, design = null }) {
   const [asText, setAsText] = useState(false);
   const { columns, output } = template;
   const rowValues = results.map((result) => columns.map((column) => cellText(column, result.output[column.outputName])));
+  const totalsValues = design?.totalsRow ? columns.map((column) => cellText(column, design.totalsRow.output[column.outputName])) : null;
+  const headerLines = design?.headerLines || [];
+  const footerLines = design?.footerLines || [];
   // One line per problem: columns sharing the same issue on the same rows are listed together.
   const issueGroups = (() => {
     const byColumn = new Map();
@@ -66,7 +85,7 @@ export function FilePreview({ template, results, sampleCount = results.length })
   let body;
   if (output.format === 'FIXED_WIDTH') {
     const line = (values) => values.map((value, index) => formatFixedWidthValue(value, columns[index].fixedWidth)).join('');
-    const lines = [...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line)];
+    const lines = [...headerLines, ...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines];
     body = (
       <>
         <TextPreview lines={lines} />
@@ -76,10 +95,11 @@ export function FilePreview({ template, results, sampleCount = results.length })
   } else if (output.format === 'DELIMITED' && asText) {
     const delimiter = output.delimiter;
     const line = (values) => values.map((value) => escapeDelimited(value, delimiter)).join(delimiter === '\t' ? '\t' : delimiter);
-    body = <TextPreview lines={[...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line)]} />;
+    body = <TextPreview lines={[...headerLines, ...(output.includeHeaders ? [line(columns.map((column) => column.outputName))] : []), ...rowValues.map(line), ...(totalsValues ? [line(totalsValues)] : []), ...footerLines]} />;
   } else {
     body = (
       <div className="overflow-x-auto rounded-lg border border-ink-200">
+        {headerLines.length ? <div className="border-b border-ink-100 bg-white px-3 py-1.5 font-mono text-xs text-ink-700">{headerLines.map((text, index) => <p key={index}>{text || ' '}</p>)}</div> : null}
         <table className="w-full text-left text-sm">
           <thead className="bg-ink-50 text-xs text-ink-500">
             <tr>
@@ -104,13 +124,23 @@ export function FilePreview({ template, results, sampleCount = results.length })
               </tr>
             ))}
           </tbody>
+          {totalsValues ? (
+            <tfoot className="border-t border-ink-200 bg-ink-50">
+              <tr>
+                <th scope="row" className="sticky left-0 bg-ink-50 px-3 py-1.5 text-xs font-normal text-ink-400">Totales</th>
+                {totalsValues.map((value, index) => <td key={columns[index].id} className="whitespace-nowrap px-3 py-1.5 font-semibold text-ink-900">{value}</td>)}
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
+        {footerLines.length ? <div className="border-t border-ink-100 bg-white px-3 py-1.5 font-mono text-xs text-ink-700">{footerLines.map((text, index) => <p key={index}>{text || ' '}</p>)}</div> : null}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      <DesignSummary design={design} output={output} />
       {output.format === 'DELIMITED' ? (
         <div className="flex gap-1 text-sm" role="group" aria-label="Modo de vista">
           <button type="button" aria-pressed={!asText} className={`rounded-md px-2.5 py-1 ${!asText ? 'bg-cobalt-50 font-medium text-cobalt-700' : 'text-ink-500 hover:bg-ink-50'}`} onClick={() => setAsText(false)}>Tabla</button>

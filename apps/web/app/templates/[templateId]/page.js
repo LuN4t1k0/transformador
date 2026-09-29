@@ -10,7 +10,7 @@ import { buttonStyles, Notice } from '../../../components/panel';
 import { Shell } from '../../../components/shell';
 import { formatDateTime } from '../../../components/job-status';
 import { api } from '../../../lib/api';
-import { describeOutput, describeRowSteps, describeSource, describeTransformations } from '../../../lib/templates';
+import { describeOutput, describeOutputDesign, describeParameter, describeRowSteps, describeSource, describeTransformations } from '../../../lib/templates';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 
 export default function TemplateDetailPage() {
@@ -118,6 +118,22 @@ export default function TemplateDetailPage() {
                     </Link>
                   ) : null}
                 </div>
+                {shown.configuration.parameters?.length ? (
+                  <div className="border-b border-ink-100 px-4 py-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Parámetros que se piden al generar</h3>
+                    <ul className="mt-1 space-y-0.5 text-sm text-ink-700">
+                      {shown.configuration.parameters.map((parameter) => <li key={parameter.id}>{describeParameter(parameter)}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+                {describeOutputDesign(shown.configuration.output, shown.configuration.columns).length ? (
+                  <div className="border-b border-ink-100 px-4 py-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Diseño del archivo</h3>
+                    <ul className="mt-1 space-y-0.5 text-sm text-ink-700">
+                      {describeOutputDesign(shown.configuration.output, shown.configuration.columns).map((line) => <li key={line} className="break-words">{line}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
                 {shown.configuration.rowSteps ? (
                   <div className="border-b border-ink-100 px-4 py-3">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Filas</h3>
@@ -146,7 +162,10 @@ export default function TemplateDetailPage() {
                             {column.required ? <span className="ml-2 text-xs text-ink-500">Obligatoria</span> : null}
                           </td>
                           <td className="px-4 py-2 text-ink-700">
-                            {describeSource(column.source, new Map(shown.configuration.columns.map((other) => [other.id, other.outputName])))}
+                            {describeSource(column.source, new Map([
+                              ...shown.configuration.columns.map((other) => [other.id, other.outputName]),
+                              ...(shown.configuration.parameters || []).map((parameter) => [`param:${parameter.id}`, parameter.name])
+                            ]))}
                             {column.aliases?.length ? <span className="block text-xs text-ink-400">También reconoce: {column.aliases.join(', ')}</span> : null}
                           </td>
                           <td className="px-4 py-2">

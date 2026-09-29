@@ -3,6 +3,7 @@
 import { Plus, X } from 'lucide-react';
 import { CalcEditor, defaultCalc } from './calc-editor';
 import { CaseEditor, CoalesceEditor, DateCalcEditor, defaultRule, MapEditor, RowNumberEditor, TemplateTextEditor } from './rule-editors';
+import { useTemplateParameters } from './parameters-context';
 
 export const inputClass = 'h-9 w-full min-w-0 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900';
 const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
@@ -33,11 +34,13 @@ const SOURCE_GROUPS = [
 const RULE_EDITORS = { CASE: CaseEditor, MAP: MapEditor, COALESCE: CoalesceEditor, TEMPLATE: TemplateTextEditor, DATE_CALC: DateCalcEditor, ROW_NUMBER: RowNumberEditor, CALC: CalcEditor };
 
 function SourceTypeSelect({ id, value, onChange }) {
+  const parameters = useTemplateParameters();
   return (
     <select id={id} className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>
       {SOURCE_GROUPS.map((group) => (
         <optgroup key={group.label} label={group.label}>
           {group.types.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+          {group.label === 'Otros' && (parameters.length || value === 'PARAM') ? <option value="PARAM">Parámetro (se pide al generar)</option> : null}
         </optgroup>
       ))}
     </select>
@@ -72,8 +75,9 @@ function defaultColumn(source) {
   return source.parts?.find((part) => part.type === 'COLUMN')?.column || '';
 }
 
-export function convertSource(source, type, headers) {
+export function convertSource(source, type, headers, parameters = []) {
   const column = defaultColumn(source);
+  if (type === 'PARAM') return { type: 'PARAM', paramId: parameters[0]?.id || '' };
   if (RULE_EDITORS[type] && type !== 'CALC') return defaultRule(type, column ? [column, ...(headers || [])] : headers);
   if (type === 'COLUMN') return { type: 'COLUMN', column };
   if (type === 'SPLIT') return { type: 'SPLIT_WORD', column, index: 0 };
@@ -84,13 +88,14 @@ export function convertSource(source, type, headers) {
 }
 
 export function SourceEditor({ idPrefix, source, headers, suggestions, outputColumns = [], onChange }) {
+  const parameters = useTemplateParameters();
   const RuleEditor = RULE_EDITORS[source.type];
   if (RuleEditor) {
     return (
       <div className="space-y-3">
         <div className="max-w-xs">
           <label className={labelClass} htmlFor={`${idPrefix}-type`}>Origen</label>
-          <SourceTypeSelect id={`${idPrefix}-type`} value={source.type} onChange={(type) => onChange(convertSource(source, type, headers))} />
+          <SourceTypeSelect id={`${idPrefix}-type`} value={source.type} onChange={(type) => onChange(convertSource(source, type, headers, parameters))} />
         </div>
         <RuleEditor idPrefix={idPrefix} source={source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={onChange} />
       </div>
@@ -103,10 +108,20 @@ export function SourceEditor({ idPrefix, source, headers, suggestions, outputCol
     <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
       <div>
         <label className={labelClass} htmlFor={`${idPrefix}-type`}>Origen</label>
-        <SourceTypeSelect id={`${idPrefix}-type`} value={kind} onChange={(type) => onChange(convertSource(source, type, headers))} />
+        <SourceTypeSelect id={`${idPrefix}-type`} value={kind} onChange={(type) => onChange(convertSource(source, type, headers, parameters))} />
       </div>
 
       <div className="min-w-0">
+        {source.type === 'PARAM' ? (
+          <>
+            <label className={labelClass} htmlFor={`${idPrefix}-param`}>Parámetro</label>
+            <select id={`${idPrefix}-param`} className={inputClass} value={source.paramId} onChange={(event) => onChange({ type: 'PARAM', paramId: event.target.value })}>
+              {!parameters.some((parameter) => parameter.id === source.paramId) ? <option value={source.paramId}>Elegir parámetro…</option> : null}
+              {parameters.map((parameter) => <option key={parameter.id} value={parameter.id}>{parameter.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-ink-500">Toma el valor que se escribe al generar el archivo (igual para todas las filas).</p>
+          </>
+        ) : null}
         {source.type === 'COLUMN' ? (
           <>
             <label className={labelClass} htmlFor={`${idPrefix}-column`}>Columna</label>

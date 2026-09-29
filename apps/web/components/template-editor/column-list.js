@@ -10,6 +10,7 @@ import { FormatEditor } from './format-editor';
 import { defaultCalc } from './calc-editor';
 import { convertSource } from './source-editor';
 import { inputClass, SourceEditor } from './source-editor';
+import { useTemplateParameters } from './parameters-context';
 
 const iconButton = 'flex h-8 w-8 items-center justify-center rounded-md text-ink-500 hover:bg-ink-100 hover:text-ink-900 disabled:opacity-30 disabled:hover:bg-transparent';
 
@@ -19,6 +20,7 @@ function sourceSample(values, source) {
   if (source.type === 'CONSTANT') return source.value;
   if (source.type === 'CONCAT') return source.parts.map((part) => (part.type === 'COLUMN' ? formatCell(values[part.column]) : part.value)).filter(Boolean).join(source.separator);
   if (['CALC', 'CASE', 'MAP', 'COALESCE', 'TEMPLATE', 'DATE_CALC', 'ROW_NUMBER'].includes(source.type)) return 'regla';
+  if (source.type === 'PARAM') return 'parámetro';
   return null;
 }
 
@@ -77,6 +79,7 @@ function FixedWidthEditor({ idPrefix, column, onChange }) {
 
 // Direct mapping from the row: pick the file column (or leave empty / use a fixed value) without opening the editor.
 function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }) {
+  const parameters = useTemplateParameters();
   const { source } = column;
   if (!['COLUMN', 'EMPTY'].includes(source.type)) {
     return <span className="block truncate text-xs text-ink-700" title={describeSource(source, outputNames)}>{describeSource(source, outputNames)}</span>;
@@ -99,6 +102,8 @@ function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }
         } else if (choice === '__calc') {
           onChange({ ...column, source: defaultCalc(headers[0]), transformations: [], reviewed: false }, { sourceChanged: true });
           onExpand();
+        } else if (choice.startsWith('__param:')) {
+          onChange({ ...column, source: { type: 'PARAM', paramId: choice.slice(8) }, reviewed: false }, { sourceChanged: true });
         } else if (choice.startsWith('__rule:')) {
           onChange({ ...column, source: convertSource(source, choice.slice(7), headers), transformations: [], reviewed: false }, { sourceChanged: true });
           onExpand();
@@ -114,6 +119,11 @@ function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }
       <optgroup label="Columnas de tu archivo">
         {headers.map((header) => <option key={header} value={header}>{header}</option>)}
       </optgroup>
+      {parameters.length ? (
+        <optgroup label="Parámetros (se piden al generar)">
+          {parameters.map((parameter) => <option key={parameter.id} value={`__param:${parameter.id}`}>{parameter.name}</option>)}
+        </optgroup>
+      ) : null}
       <optgroup label="Otras opciones">
         <option value="__constant">Valor fijo…</option>
         <option value="__calc">Cálculo (%, suma, resta…)…</option>
@@ -253,7 +263,9 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
   const [expandedId, setExpandedId] = useState(null);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [compact, setCompact] = useState(columns.length > 8);
-  const outputNames = new Map(columns.map((column) => [column.id, column.outputName]));
+  const parameters = useTemplateParameters();
+  // Names shown in summaries: columns by id, parameters as `param:<id>`.
+  const outputNames = new Map([...columns.map((column) => [column.id, column.outputName]), ...parameters.map((parameter) => [`param:${parameter.id}`, parameter.name])]);
   const pendingIds = (evaluation?.rows || []).filter((row) => row.status === 'REQUIERE_CONFIRMACION').map((row) => row.column.id);
   const rowsById = new Map((evaluation?.rows || []).map((row) => [row.column.id, row]));
   const flaggedOk = columns.filter((column) => flagged.has(column.id) && (rowsById.get(column.id)?.status || 'OK') === 'OK').map((column) => column.id);

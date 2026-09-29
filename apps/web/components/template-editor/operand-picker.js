@@ -25,12 +25,14 @@ function decode(value, previous) {
 
 // Picks the value a function uses: an earlier column of the template, a file column, a number or a text.
 export function OperandPicker({ id, label = 'Valor', operand, headers, suggestions = [], outputColumns = [], outputLabel = 'Columnas anteriores de esta plantilla', allowText = false, allowEmpty = false, emptyLabel = 'Vacío', onChange }) {
+  const parameters = useTemplateParameters();
   const fileColumns = headers || suggestions;
   const current = encode(operand);
   // Without a test Excel there is no header list to check against, so file columns are shown as written.
   const known = ['num', 'txt', 'empty'].includes(current)
     || fileColumns.includes(operand?.column)
-    || outputColumns.some((column) => column.id === operand?.columnId);
+    || outputColumns.some((column) => column.id === operand?.columnId)
+    || parameters.some((parameter) => parameter.id === operand?.paramId);
 
   return (
     <div className="flex min-w-0 flex-1 gap-2">

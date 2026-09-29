@@ -5,6 +5,10 @@ import { AlertCircle, FileSpreadsheet, Loader2, Save, Sparkles } from 'lucide-re
 import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
 import { runRows } from '@previley-transformer/template-engine/src/run.js';
 import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
+import { previewParameters } from '@previley-transformer/template-engine/src/params.js';
+import { previewDesign } from '@previley-transformer/template-engine/src/output-design.js';
+import { ParametersContext } from './parameters-context';
+import { ParametersEditor } from './parameters-editor';
 import { api } from '../../lib/api';
 import { reviveSampleRows } from '../../lib/template-editor';
 import { buttonStyles, Notice, Panel } from '../panel';
@@ -77,23 +81,26 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
     () => (sample ? evaluateColumns(template.columns, sample.headers, new Set(template.columns.map((column) => column.id))) : null),
     [template.columns, sample]
   );
+  // Parameters take their default value in the preview.
+  const params = useMemo(() => previewParameters(template.parameters || []), [template.parameters]);
   // Column examples use each row on its own; the preview applies the row steps (filter, group, sort…).
   const results = useMemo(() => {
     if (!sample?.rows?.length) return null;
     try {
-      return runRows(sample.rows, template);
+      return runRows(sample.rows, template, new Date(), params);
     } catch {
       return null;
     }
-  }, [template, sample]);
+  }, [template, sample, params]);
   const preview = useMemo(() => {
     if (!sample?.rows?.length) return null;
     try {
-      return previewRows(sample.rows, template);
+      const rows = previewRows(sample.rows, template, new Date(), params);
+      return { ...rows, design: previewDesign(template, rows.results, { inputName: sample.fileName.replace(/\.xlsx$/i, ''), sheet: sample.sheet, now: new Date(), params }) };
     } catch {
       return null;
     }
-  }, [template, sample]);
+  }, [template, sample, params]);
 
   useEffect(() => {
     api.getTemplateFacets().then(setFacets).catch(() => {});
@@ -112,6 +119,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   const setMeta = (field) => (event) => setTemplate({ ...template, [field]: event.target.value });
 
   return (
+    <ParametersContext.Provider value={template.parameters || []}>
     <form className="space-y-5" onSubmit={submit}>
       <Panel title="Datos de la plantilla" description={note}>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -134,6 +142,10 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
             <input id="template-description" maxLength={500} className={inputClass} value={template.description || ''} onChange={setMeta('description')} />
           </div>
         </div>
+      </Panel>
+
+      <Panel title="Parámetros" description="Opcional: valores que se piden cada vez que se genera el archivo, como el periodo o una fecha de corte.">
+        <ParametersEditor parameters={template.parameters || []} onChange={(parameters) => setTemplate({ ...template, parameters })} />
       </Panel>
 
       {report?.mode === 'BY_EXAMPLE' || report?.mode === 'OUTPUT_ONLY' ? (
@@ -195,7 +207,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
       {preview ? (
         <Panel title="Vista previa" description={`Así quedaría el archivo con las primeras filas de «${sample.fileName}».`}>
           <RowStepsNote preview={preview} sampleCount={sample.rows.length} />
-          <FilePreview template={template} results={preview.results} sampleCount={sample.rows.length} />
+          <FilePreview template={template} results={preview.results} sampleCount={sample.rows.length} design={preview.design} />
         </Panel>
       ) : null}
 
@@ -208,5 +220,6 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
         </button>
       </div>
     </form>
+    </ParametersContext.Provider>
   );
 }

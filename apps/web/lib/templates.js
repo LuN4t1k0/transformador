@@ -45,6 +45,7 @@ function describeOperand(operand, outputNames) {
   if (operand.type === 'TEXT') return `"${operand.value}"`;
   if (operand.type === 'NUMBER') return String(operand.value).replace('.', ',');
   if (operand.type === 'OUTPUT') return `«${outputNames?.get(operand.columnId) || 'columna anterior'}»`;
+  if (operand.type === 'PARAM') return `parámetro «${outputNames?.get(`param:${operand.paramId}`) || operand.paramId}»`;
   return `«${operand.column}»`;
 }
 
@@ -64,6 +65,7 @@ export function describeSource(source, outputNames) {
   if (source.type === 'SPLIT_WORD') return `${source.delimiter ? 'Parte' : 'Palabra'} ${source.index + 1} de «${source.column}»`;
   if (source.type === 'SPLIT_WORD_RANGE') return `Desde ${source.delimiter ? 'la parte' : 'la palabra'} ${source.start + 1} de «${source.column}»`;
   if (source.type === 'CONSTANT') return `Valor fijo «${source.value}»`;
+  if (source.type === 'PARAM') return `Valor del ${describeOperand(source, outputNames)}`;
   if (source.type === 'CALC') return describeCalc(source, outputNames);
   if (source.type === 'CASE') {
     const first = source.cases[0];
@@ -108,6 +110,29 @@ export function describeRowSteps(steps, columns) {
     lines.push(`Agrupar por ${names(steps.group.columnIds)}${summaries.length ? `: ${summaries.join(', ')}` : ''}`);
   }
   if (steps.sort?.length) lines.push(`Ordenar por ${steps.sort.map((key) => `«${outputNames.get(key.columnId) || key.columnId}» ${key.direction === 'DESC' ? '↓' : '↑'}`).join(', ')}`);
+  return lines;
+}
+
+const TOTAL_LABELS = { SUM: 'suma', COUNT: 'cantidad', AVERAGE: 'promedio', MIN: 'mínimo', MAX: 'máximo' };
+const CELL_FORMAT_LABELS = { NUMBER: 'número', NUMBER_2: 'número con 2 decimales', PERCENT: 'porcentaje', DATE: 'fecha', TEXT: 'texto' };
+const PARAMETER_TYPE_LABELS = { TEXT: 'texto', NUMBER: 'número', DATE: 'fecha' };
+
+export function describeParameter(parameter) {
+  const details = [PARAMETER_TYPE_LABELS[parameter.type], parameter.required ? 'obligatorio' : null, parameter.defaultValue ? `por defecto ${parameter.defaultValue}` : null].filter(Boolean);
+  return `${parameter.name} (${details.join(', ')})`;
+}
+
+// One sentence per design option of the output, for the template detail.
+export function describeOutputDesign(output, columns) {
+  const names = new Map(columns.map((column) => [column.id, column.outputName]));
+  const lines = [];
+  if (output.fileName) lines.push(`Nombre del archivo: ${output.fileName}`);
+  if (output.headerLines?.length) lines.push(`Encabezado: ${output.headerLines.join(' / ')}`);
+  if (output.totals) lines.push(`Fila «${output.totals.label}» con ${output.totals.columns.map((total) => `${TOTAL_LABELS[total.op]} de «${names.get(total.columnId)}»`).join(', ')}`);
+  if (output.footerLines?.length) lines.push(`Pie: ${output.footerLines.join(' / ')}`);
+  if (output.split) lines.push(`${output.split.mode === 'SHEETS' ? 'Una hoja' : 'Un archivo (en un .zip)'} por cada valor de «${names.get(output.split.columnId)}»`);
+  const formatted = columns.filter((column) => column.cellFormat);
+  if (formatted.length) lines.push(`Celdas de Excel: ${formatted.map((column) => `«${column.outputName}» como ${CELL_FORMAT_LABELS[column.cellFormat]}`).join(', ')}`);
   return lines;
 }
 

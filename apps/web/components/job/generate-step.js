@@ -88,7 +88,7 @@ function SaveOptions({ job, template, choice, setChoice, meta, setMeta, facets }
   );
 }
 
-export function GenerateStep({ job, template, evaluation, onSave, onTransform, isBusy, blockedReason }) {
+export function GenerateStep({ job, template, evaluation, onSave, onTransform, isBusy, blockedReason, parametersForm = null }) {
   const [choice, setChoice] = useState('NONE');
   const [meta, setMeta] = useState({ name: '', destination: job.template?.destination || '', process: job.template?.process || '', description: '' });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
@@ -122,6 +122,8 @@ export function GenerateStep({ job, template, evaluation, onSave, onTransform, i
 
         </div>
       </dl>
+
+      {template.parameters?.length ? parametersForm : null}
 
       <SaveOptions job={job} template={template} choice={choice} setChoice={setChoice} meta={meta} setMeta={setMeta} facets={facets} />
 

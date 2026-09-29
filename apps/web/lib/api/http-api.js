@@ -141,8 +141,8 @@ export function createHttpApi(baseUrl) {
     async getSample(jobId) {
       return getJson(`/jobs/${jobId}/sample`);
     },
-    async transformJob(jobId, { mode = 'LENIENT' } = {}) {
-      return (await getJson(`/jobs/${jobId}/transform`, { method: 'POST', json: { mode } })).job;
+    async transformJob(jobId, { mode = 'LENIENT', parameters = {} } = {}) {
+      return (await getJson(`/jobs/${jobId}/transform`, { method: 'POST', json: { mode, parameters } })).job;
     },
     async purgeJob(jobId) {
       return (await getJson(`/jobs/${jobId}/purge`, { method: 'POST' })).job;

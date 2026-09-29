@@ -130,6 +130,16 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
           </div>
         ))}
       </dl>
+      {job.outputFileName ? (
+        <p className="mt-3 text-sm text-ink-700">
+          Archivo: <span className="font-mono">{job.outputFileName}</span>
+          {summary.parts?.length ? (
+            <span className="block text-xs text-ink-500">
+              {job.workingTemplate?.output?.split?.mode === 'SHEETS' ? 'Hojas' : 'Archivos dentro del .zip'}: {summary.parts.map((part) => `${part.fileName || part.name} (${part.rows})`).join(', ')}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
       {excludedRows || steps?.duplicateRows || (steps && steps.outputRows !== summary.validRows) ? (
         <p className="mt-2 text-sm text-ink-500">
           {[

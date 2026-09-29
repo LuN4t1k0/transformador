@@ -134,6 +134,7 @@ export function hasTemplateChanges(base, draft) {
   const shape = (template) => JSON.stringify({
     output: template.output,
     rowSteps: template.rowSteps || null,
+    parameters: template.parameters || null,
     columns: template.columns.map(({ position, aliases, reviewed, ...column }) => column)
   });
   return shape(base) !== shape(draft);
@@ -165,9 +166,10 @@ export function isRutColumn(column) {
 // Replaces the columns and drops row step references to columns that no longer exist,
 // so deleting a column never leaves the template invalid.
 export function withColumns(template, columns) {
-  const steps = template.rowSteps;
-  if (!steps) return { ...template, columns };
   const ids = new Set(columns.map((column) => column.id));
+  const output = pruneOutput(template.output, ids);
+  const steps = template.rowSteps;
+  if (!steps) return { ...template, output, columns };
   const keep = (list) => list.filter((id) => ids.has(id));
   const usesMissing = (condition) => [condition.left, condition.right].some((operand) => operand?.type === 'OUTPUT' && !ids.has(operand.columnId));
   const next = { ...steps };
@@ -190,5 +192,18 @@ export function withColumns(template, columns) {
     else delete next.sort;
   }
   const { rowSteps, ...rest } = template;
-  return Object.keys(next).length ? { ...rest, columns, rowSteps: next } : { ...rest, columns };
+  return Object.keys(next).length ? { ...rest, output, columns, rowSteps: next } : { ...rest, output, columns };
+}
+
+// The totals row and the split use column ids too.
+function pruneOutput(output, ids) {
+  if (!output) return output;
+  const next = { ...output };
+  if (output.totals) {
+    const totals = output.totals.columns.filter((total) => ids.has(total.columnId));
+    if (totals.length) next.totals = { ...output.totals, columns: totals };
+    else delete next.totals;
+  }
+  if (output.split && !ids.has(output.split.columnId)) delete next.split;
+  return next;
 }

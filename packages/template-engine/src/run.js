@@ -86,8 +86,8 @@ function transformTemplateRow(values, template, context) {
   return result;
 }
 
-function runRows(rows, template, now = new Date()) {
-  return rows.map(({ rowNumber, values }, rowIndex) => ({ rowNumber, ...transformTemplateRow(values, template, { rowIndex, now }) }));
+function runRows(rows, template, now = new Date(), params = undefined) {
+  return rows.map(({ rowNumber, values }, rowIndex) => ({ rowNumber, ...transformTemplateRow(values, template, { rowIndex, now, ...(params ? { params } : {}) }) }));
 }
 
 module.exports = { orderedColumns, createSummaryAccumulator, runRows, transformTemplateRow, checkFixedWidth, formatFixedWidthValue };
