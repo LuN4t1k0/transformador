@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Download, History, Loader2, Repeat, Search, Trash2 } from 'lucide-react';
-import { formatTime, JobStatusBadge } from '../../components/job-status';
+import { formatTime, JobStatusText } from '../../components/job-status';
 import { buttonStyles, Notice } from '../../components/panel';
 import { ConfirmDialog } from '../../components/confirm-dialog';
 import { Shell } from '../../components/shell';
@@ -19,7 +19,8 @@ const FILTERS = [
   { id: 'failed', label: 'Con error', test: (job) => job.status === 'FAILED' },
   { id: 'all', label: 'Todos', test: () => true }
 ];
-const quietLink = 'inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-cobalt-700 hover:underline';
+const quietLink = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-cobalt-700 hover:underline';
+const iconButton = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-400 hover:bg-rose-50 hover:text-rose-700';
 
 function dayLabel(date) {
   const day = new Date(date);
@@ -49,36 +50,33 @@ function templateLabel(job) {
 function JobRow({ job, onDownload, onDelete }) {
   const rows = job.summary?.rowSteps?.outputRows ?? job.summary?.validRows;
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-100 py-3">
-      <div className="min-w-0 flex-1 basis-60">
+    <li className="flex items-center gap-3 border-b border-ink-100 py-3">
+      <div className="min-w-0 flex-1">
         <Link href={`/jobs/${job.id}`} className="block truncate font-semibold text-ink-900 hover:underline">{job.fileName}</Link>
-        <p className="text-sm text-ink-500">
-          {templateLabel(job)}
-          {rows !== undefined && rows !== null ? `, ${rows.toLocaleString('es-CL')} filas` : ''}
-          {job.files?.rejectedRows ? `, ${job.files.rejectedRows} rechazadas` : ''}
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-ink-500">
+          <JobStatusText status={job.status} />
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{templateLabel(job)}</span>
+          {rows !== undefined && rows !== null ? <><span aria-hidden="true">·</span><span className="tabular-nums">{rows.toLocaleString('es-CL')} filas{job.files?.rejectedRows ? `, ${job.files.rejectedRows} rechazadas` : ''}</span></> : null}
+          <span aria-hidden="true">·</span>
+          <span className="tabular-nums">{formatTime(job.createdAt)}</span>
         </p>
       </div>
-      <JobStatusBadge status={job.status} />
-      <span className="w-12 text-right text-sm tabular-nums text-ink-500">{formatTime(job.createdAt)}</span>
-      <div className="flex min-w-[10rem] flex-wrap justify-end gap-x-4 gap-y-1">
-        {DOWNLOADABLE.has(job.status) ? (
-          <button type="button" className={quietLink} onClick={() => onDownload(job)}>
-            <Download size={15} aria-hidden="true" />
-            Descargar
-          </button>
-        ) : job.status === 'READY' ? (
-          <Link href={`/jobs/${job.id}`} className={quietLink}>Continuar</Link>
-        ) : job.status === 'FAILED' ? (
-          <Link href={`/jobs/${job.id}`} className={quietLink}>Ver qué pasó</Link>
-        ) : null}
-        {job.workingTemplate && !OPEN.has(job.status) ? (
-          <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={quietLink}>Repetir con otro archivo</ReuseUploadButton>
-        ) : null}
-        <button type="button" className={`${quietLink} text-ink-500`} onClick={() => onDelete(job)} title="Eliminar del historial">
-          <Trash2 size={15} aria-hidden="true" />
-          Eliminar
+      {DOWNLOADABLE.has(job.status) ? (
+        <button type="button" className={quietLink} onClick={() => onDownload(job)}>
+          <Download size={15} aria-hidden="true" />
+          Descargar
         </button>
-      </div>
+      ) : job.status === 'READY' ? (
+        <Link href={`/jobs/${job.id}`} className={quietLink}>Continuar</Link>
+      ) : job.status === 'FAILED' ? (
+        <Link href={`/jobs/${job.id}`} className={quietLink}>Ver qué pasó</Link>
+      ) : job.workingTemplate && !OPEN.has(job.status) ? (
+        <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={quietLink}>Repetir</ReuseUploadButton>
+      ) : null}
+      <button type="button" className={iconButton} aria-label={`Eliminar ${job.fileName} del historial`} title="Eliminar del historial" onClick={() => onDelete(job)}>
+        <Trash2 size={16} aria-hidden="true" />
+      </button>
     </li>
   );
 }

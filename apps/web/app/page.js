@@ -7,7 +7,7 @@ import { AlertCircle, Download, Loader2, Trash2, Upload } from 'lucide-react';
 import { FileDropzone } from '../components/file-dropzone';
 import { BatchConvert } from '../components/home/batch-convert';
 import { ConfirmDialog } from '../components/confirm-dialog';
-import { formatDateTime, JobStatusBadge } from '../components/job-status';
+import { formatDateTime, JobStatusText } from '../components/job-status';
 import { buttonStyles, Notice } from '../components/panel';
 import { ReuseUploadButton } from '../components/reuse-upload-button';
 import { Shell } from '../components/shell';
@@ -15,7 +15,8 @@ import { api } from '../lib/api';
 import { downloadBlob } from '../lib/download';
 import { validateExcelFile } from '../lib/file-validation';
 
-const quietLink = 'inline-flex items-center gap-1.5 text-sm font-semibold text-cobalt-700 hover:underline';
+const quietLink = 'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-cobalt-700 hover:underline';
+const iconButton = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-400 hover:bg-rose-50 hover:text-rose-700';
 
 // Conversions that still need something from the user or can still be downloaded.
 const OPEN_STATUSES = new Set(['QUEUED_ANALYSIS', 'ANALYZING', 'READY', 'QUEUED_TRANSFORMATION', 'TRANSFORMING', 'VALIDATING', 'GENERATING', 'READY_TO_DOWNLOAD', 'DOWNLOADED']);
@@ -63,23 +64,27 @@ function OpenJob({ job, onDownload, onDelete }) {
   const downloadable = DOWNLOADABLE.has(job.status);
   const running = !downloadable && job.status !== 'READY';
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-100 py-3">
-      <div className="min-w-0 flex-1 basis-56">
+    <li className="flex items-center gap-3 border-b border-ink-100 py-3">
+      <div className="min-w-0 flex-1">
         <Link href={`/jobs/${job.id}`} className="block truncate font-semibold text-ink-900 hover:underline">{job.fileName}</Link>
-        <p className="text-sm text-ink-500">{job.template ? job.template.name : 'Sin plantilla elegida'}, {formatDateTime(job.createdAt)}</p>
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-ink-500">
+          <JobStatusText status={job.status} />
+          <span aria-hidden="true">·</span>
+          <span className="truncate">{job.template ? job.template.name : 'Sin plantilla'}</span>
+          <span aria-hidden="true">·</span>
+          <span className="tabular-nums">{formatDateTime(job.createdAt)}</span>
+        </p>
       </div>
-      <JobStatusBadge status={job.status} />
       {downloadable ? (
-        <button type="button" className={buttonStyles.primary} onClick={() => onDownload(job)}>
-          <Download size={16} aria-hidden="true" />
-          Descargar archivo
+        <button type="button" className={quietLink} onClick={() => onDownload(job)}>
+          <Download size={15} aria-hidden="true" />
+          Descargar
         </button>
       ) : (
-        <Link href={`/jobs/${job.id}`} className={buttonStyles.secondary}>{running ? 'Ver avance' : 'Continuar'}</Link>
+        <Link href={`/jobs/${job.id}`} className={quietLink}>{running ? 'Ver avance' : 'Continuar'}</Link>
       )}
-      <button type="button" className={buttonStyles.secondary} title="Eliminar de la lista" onClick={() => onDelete(job)}>
+      <button type="button" className={iconButton} aria-label={`Eliminar ${job.fileName}`} title="Eliminar" onClick={() => onDelete(job)}>
         <Trash2 size={16} aria-hidden="true" />
-        Eliminar
       </button>
     </li>
   );

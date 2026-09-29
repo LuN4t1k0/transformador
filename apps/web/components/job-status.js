@@ -39,6 +39,27 @@ export function JobStatusBadge({ status }) {
   );
 }
 
+// Quiet variant for lists: a colored dot and the label, no pill.
+const dotTones = {
+  review: { dot: 'bg-amber-400', text: 'text-amber-700' },
+  progress: { dot: 'bg-cobalt-600 animate-pulse', text: 'text-cobalt-700' },
+  success: { dot: 'bg-mint-600', text: 'text-mint-600' },
+  danger: { dot: 'bg-rose-600', text: 'text-rose-700' },
+  muted: { dot: 'bg-ink-300', text: 'text-ink-500' },
+  expired: { dot: 'bg-ink-300', text: 'text-ink-500' }
+};
+
+export function JobStatusText({ status }) {
+  const view = JOB_STATUS_VIEW[status] || { label: status, tone: 'muted' };
+  const tone = dotTones[view.tone];
+  return (
+    <span className={`inline-flex items-center gap-1.5 font-medium ${tone.text}`}>
+      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
+      {view.label}
+    </span>
+  );
+}
+
 export function formatTime(isoDate) {
   return new Date(isoDate).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
