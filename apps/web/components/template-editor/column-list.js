@@ -191,7 +191,44 @@ function CompactRow({ column, index, row, sample, headers, outputNames, flag, on
   );
 }
 
-function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onSplitName, onRemove, onConfirm, collapsible = true }) {
+// The selected column in the workbench: its first rows, from the file to the final value, next to its settings.
+function SampleTable({ column, rows }) {
+  const mask = (value) => maskValue(column, formatCell(value, column));
+  return (
+    <div className="mt-2 overflow-hidden rounded-md border border-ink-200 bg-white text-xs">
+      <table className="w-full table-fixed border-collapse">
+        <thead className="bg-ink-50 text-left text-ink-500">
+          <tr>
+            <th scope="col" className="px-2 py-1 font-medium">En tu archivo</th>
+            <th scope="col" className="px-2 py-1 font-medium">En el archivo final</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ values, result }) => {
+            const issues = result.issues.filter((issue) => issue.column === column.outputName);
+            const hasError = issues.some((issue) => issue.severity === 'error');
+            return (
+              <tr key={result.rowNumber} className="border-t border-ink-100 align-top">
+                <td className="truncate px-2 py-1 text-ink-500">{mask(sourceSample(values, column.source)) || '—'}</td>
+                <td className={`px-2 py-1 font-mono ${hasError ? 'text-rose-700' : 'font-semibold text-ink-900'}`}>
+                  <span className="block truncate">{mask(result.output[column.outputName]) || '—'}</span>
+                  {issues.map((issue) => (
+                    <span key={issue.code} className="flex items-center gap-1 font-sans font-normal text-rose-700">
+                      <AlertCircle size={12} aria-hidden="true" />
+                      {describeIssue(issue)}
+                    </span>
+                  ))}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ColumnCard({ column, index, total, row, sample, sampleRows = null, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onSplitName, onRemove, onConfirm, collapsible = true }) {
   const idPrefix = `column-${column.id}`;
   const status = row?.status;
   const tone = status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : status === 'REQUIERE_CONFIRMACION' ? 'border-amber-200 bg-amber-50/40' : 'border-ink-200 bg-white';
@@ -214,7 +251,7 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, o
             {formats.length ? ` · ${formats.join(' · ')}` : ''}
             {isFixedWidth && column.fixedWidth ? ` · ${column.fixedWidth.length} caracteres` : ''}
           </p>
-          <div className="px-2"><SampleLine column={column} sample={sample} /></div>
+          <div className="px-2">{sampleRows?.length > 1 ? <SampleTable column={column} rows={sampleRows} /> : <SampleLine column={column} sample={sample} />}</div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -267,7 +304,7 @@ const DOT = { OK: 'bg-mint-600', REQUIERE_CONFIRMACION: 'bg-amber-400', FALTANTE
 // `layout="workbench"`: a navigator on the left and the selected column's editor on the right, followed by
 // `renderPreview()` (the live file). `selectedId` / `onSelect` keep the selection in the parent, so the preview
 // can highlight and select columns too.
-export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, isFixedWidth = false, flagged = new Map(), onFlagResolve = () => {}, layout = 'list', selectedId = null, onSelect = () => {}, renderPreview = null }) {
+export function ColumnList({ columns, onChange, headers = null, suggestions = [], evaluation = null, onConfirm = null, onConfirmAll = null, sample = null, sampleRows = null, isFixedWidth = false, flagged = new Map(), onFlagResolve = () => {}, layout = 'list', selectedId = null, onSelect = () => {}, renderPreview = null }) {
   const [expandedId, setExpandedId] = useState(null);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [compact, setCompact] = useState(columns.length > 8);
@@ -382,7 +419,7 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
         <div className="min-w-0 space-y-6">
           {selected ? (
             <ul aria-label="Columna seleccionada">
-              <ColumnCard key={selected.id} {...cardProps(selected, selectedIndex)} isExpanded collapsible={false} onToggle={() => {}} />
+              <ColumnCard key={selected.id} {...cardProps(selected, selectedIndex)} sampleRows={sampleRows} isExpanded collapsible={false} onToggle={() => {}} />
             </ul>
           ) : null}
           {renderPreview ? renderPreview() : null}

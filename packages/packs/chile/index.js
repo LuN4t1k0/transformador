@@ -139,7 +139,9 @@ const chilePack = {
   ],
 
   sensitive: {
+    // Also by name: a RUT copied as it comes (no RUT format or validation) is still a RUT.
     isSensitive: (column) => column?.semanticType === 'CHILEAN_RUT'
+      || /\bRUT\b/i.test(`${column?.outputName || ''} ${column?.source?.column || ''}`)
       || (column?.transformations || []).some((transformation) => transformation.type === 'RUT_FORMAT')
       || (column?.validations || []).some((validation) => validation.type === 'VALID_RUT'),
     mask: maskRut

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AlertCircle, Check, CheckCircle2, Clock, Download, FileWarning, FilePlus2, Loader2, Repeat, Trash2, Upload, XCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Clock, Download, FileSpreadsheet, FileWarning, FilePlus2, Loader2, Repeat, Trash2, Upload, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { formatTime } from '../job-status';
 import { describeIssue, describeIssueHint } from '../../lib/templates';
@@ -108,45 +108,55 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
   const invalidRows = summary.totalRows - summary.validRows - excludedRows;
   const steps = summary.rowSteps;
   const stats = [
-    { label: 'Filas totales', value: summary.totalRows },
+    { label: 'Filas leídas', value: summary.totalRows },
     { label: 'Filas en el archivo', value: steps?.outputRows ?? summary.validRows, tone: (steps?.outputRows ?? summary.validRows) ? 'text-mint-600' : 'text-rose-700' },
     { label: 'Filas rechazadas', value: invalidRows, tone: invalidRows ? 'text-rose-700' : undefined },
     { label: 'Advertencias', value: summary.warningCount, tone: summary.warningCount ? 'text-amber-700' : undefined }
   ];
 
   const outputRows = steps?.outputRows ?? summary.validRows;
+  const empty = outputRows === 0 && summary.totalRows > 0;
+  const downloadLabel = job.status === 'DOWNLOADED' ? 'Descargar de nuevo' : 'Descargar archivo';
 
   return (
     <div>
-      {outputRows === 0 && summary.totalRows > 0 ? (
+      {empty ? (
         <div className="mb-4">
           <Notice tone="danger" icon={AlertCircle} role="alert">El archivo salió sin filas: todas fueron rechazadas. Revisa los problemas de abajo, corrige las filas o repite la conversión ajustando las columnas.</Notice>
         </div>
       ) : null}
-      {job.status === 'DOWNLOADED' ? (
-        <div className="mb-4">
-          <Notice tone="success" icon={CheckCircle2} role="status">Archivo descargado. Puedes volver a descargarlo hasta las {formatTime(job.expiresAt)}.</Notice>
-        </div>
-      ) : null}
 
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="rounded-md border border-ink-200 bg-ink-50 p-3">
+      {/* The generated file first: what it is, how many rows it has and the action to take it. */}
+      <div className={`flex flex-wrap items-center gap-x-4 gap-y-3 rounded-md border p-4 ${empty ? 'border-ink-200 bg-white' : 'border-mint-600/30 bg-mint-50'}`}>
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md ${empty ? 'bg-ink-100 text-ink-500' : 'bg-mint-600 text-white'}`} aria-hidden="true">
+          {empty ? <FileWarning size={22} /> : <FileSpreadsheet size={22} />}
+        </span>
+        <div className="min-w-0 flex-1 basis-56">
+          <p className="truncate font-mono text-[15px] font-semibold text-ink-900">{job.outputFileName || 'Archivo generado'}</p>
+          <p className="text-sm text-ink-700">
+            {outputRows.toLocaleString('es-CL')} {outputRows === 1 ? 'fila' : 'filas'}
+            {job.status === 'DOWNLOADED' ? ' · ya lo descargaste' : ''} · disponible hasta las {formatTime(job.expiresAt)}
+          </p>
+          {summary.parts?.length ? (
+            <p className="text-xs text-ink-500">
+              {job.workingTemplate?.output?.split?.mode === 'SHEETS' ? 'Hojas' : 'Archivos dentro del .zip'}: {summary.parts.map((part) => `${part.fileName || part.name} (${part.rows})`).join(', ')}
+            </p>
+          ) : null}
+        </div>
+        <button type="button" className={empty ? buttonStyles.secondary : buttonStyles.primary} disabled={isBusy} onClick={() => onDownload('output')}>
+          <Download size={16} aria-hidden="true" />
+          {downloadLabel}
+        </button>
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 overflow-hidden rounded-md border border-ink-200 bg-white sm:grid-cols-4">
+        {stats.map((stat, index) => (
+          <div key={stat.label} className={`px-4 py-2.5 ${index ? 'border-ink-100 sm:border-l' : ''} ${index % 2 ? 'border-l' : ''} ${index > 1 ? 'border-t sm:border-t-0' : ''}`}>
             <dt className="text-xs font-medium text-ink-500">{stat.label}</dt>
-            <dd className={`mt-1 text-xl font-semibold tabular-nums ${stat.tone || 'text-ink-900'}`}>{stat.value}</dd>
+            <dd className={`text-lg font-semibold tabular-nums ${stat.tone || 'text-ink-900'}`}>{stat.value.toLocaleString('es-CL')}</dd>
           </div>
         ))}
       </dl>
-      {job.outputFileName ? (
-        <p className="mt-3 text-sm text-ink-700">
-          Archivo: <span className="font-mono">{job.outputFileName}</span>
-          {summary.parts?.length ? (
-            <span className="block text-xs text-ink-500">
-              {job.workingTemplate?.output?.split?.mode === 'SHEETS' ? 'Hojas' : 'Archivos dentro del .zip'}: {summary.parts.map((part) => `${part.fileName || part.name} (${part.rows})`).join(', ')}
-            </span>
-          ) : null}
-        </p>
-      ) : null}
       {excludedRows || steps?.duplicateRows || (steps && steps.outputRows !== summary.validRows) ? (
         <p className="mt-2 text-sm text-ink-500">
           {[
@@ -185,16 +195,8 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-        <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={buttonStyles.secondary}>Repetir con otro archivo</ReuseUploadButton>
-        <button type="button" className={outputRows ? buttonStyles.primary : buttonStyles.secondary} disabled={isBusy} onClick={() => onDownload('output')}>
-          <Download size={16} aria-hidden="true" />
-          {job.status === 'DOWNLOADED' ? 'Descargar de nuevo' : 'Descargar archivo'}
-        </button>
-      </div>
-
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 pt-4 text-sm">
-        <p className="text-ink-500">Los archivos se eliminan automáticamente a las {formatTime(job.expiresAt)}.</p>
+        <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={buttonStyles.secondary}>Repetir con otro archivo</ReuseUploadButton>
         {confirmPurge ? (
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-ink-700">¿Eliminar el archivo generado, los rechazos y el Excel original?</span>

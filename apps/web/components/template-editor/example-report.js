@@ -5,7 +5,7 @@ import { listPacks } from '../../lib/packs.js';
 import { Notice } from '../panel';
 
 // What was learned from the destination example and what is left for the assistant or for the user.
-export function ExampleReport({ report, assistantAvailable = false }) {
+export function ExampleReport({ report, assistantAvailable = false, onOpenAssistant = null }) {
   if (!(report?.mode === 'BY_EXAMPLE' || report?.mode === 'OUTPUT_ONLY')) return null;
   const keyLabels = listPacks().flatMap((pack) => (pack.keys || []).map((key) => key.label));
   const pending = report.unresolved.length + (report.suggested?.length || 0);
@@ -28,7 +28,13 @@ export function ExampleReport({ report, assistantAvailable = false }) {
       ) : null}
       {report.unresolved.length ? <p className="mt-0.5"><span className="font-medium">Por definir:</span> {report.unresolved.join(', ')}.</p> : null}
       {pending ? (
-        <p className="mt-0.5">{assistantAvailable ? 'Pídele al asistente (más abajo) que proponga lo que falta, o complétalo a mano en cada columna.' : 'Complétalo a mano en cada columna.'}</p>
+        <p className="mt-0.5">
+          {assistantAvailable && onOpenAssistant ? (
+            <>
+              <button type="button" className="font-semibold underline underline-offset-2 hover:no-underline" onClick={onOpenAssistant}>Pídele al asistente</button> que proponga lo que falta, o complétalo a mano en cada columna.
+            </>
+          ) : 'Complétalo a mano en cada columna.'}
+        </p>
       ) : null}
       {report.ignored?.length ? <p className="mt-0.5 text-ink-500">Ignoramos del ejemplo: {report.ignored.join(', ')} (columnas ocultas o vacías).</p> : null}
     </Notice>

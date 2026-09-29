@@ -127,7 +127,7 @@ function TemplateChooser({ job, onApply, onAdvanced, isBusy, allowAutoApply }) {
         <div role="listitem" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-md border border-dashed border-ink-300 px-4 py-3.5">
           <div>
             <p className="font-bold text-ink-900">No está la que necesito</p>
-            <p className="text-sm text-ink-700">Crea una plantilla nueva a partir de este archivo (usa el modo avanzado).</p>
+            <p className="text-sm text-ink-700">Crea una plantilla nueva a partir de este archivo; te guiamos paso a paso.</p>
           </div>
           <button type="button" className={buttonStyles.secondary} onClick={onAdvanced}>Crear plantilla</button>
         </div>
@@ -144,50 +144,104 @@ function sampleText(column, value) {
   return maskValue(column, text);
 }
 
-// Only the columns that need attention, with the minimum controls to resolve them.
+const listNames = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names.at(-1)}` : names[0]);
+
+// A column without a source: pick one of the file's columns, leave it empty or type a fixed value.
+function MissingSource({ column, headers, onChangeSource }) {
+  const [fixed, setFixed] = useState(null);
+  const id = `missing-${column.id}`;
+  return (
+    <div className="mt-2">
+      <label htmlFor={id} className="block text-xs text-ink-500">¿De dónde sale?</label>
+      <select
+        id={id}
+        className="mt-1 h-9 w-full max-w-sm rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
+        value={fixed === null ? '' : '__CONSTANT__'}
+        onChange={(event) => {
+          const choice = event.target.value;
+          if (choice === '__CONSTANT__') setFixed('');
+          else if (choice === '__EMPTY__') onChangeSource(column, { type: 'EMPTY' });
+          else if (choice) onChangeSource(column, choice);
+        }}
+      >
+        <option value="">Elegir…</option>
+        <optgroup label="Una columna de tu archivo">
+          {headers.map((header) => <option key={header} value={header}>{header}</option>)}
+        </optgroup>
+        <optgroup label="Otra opción">
+          <option value="__EMPTY__">Dejarla vacía</option>
+          <option value="__CONSTANT__">Escribir un valor fijo…</option>
+        </optgroup>
+      </select>
+      {fixed !== null ? (
+        <form
+          className="mt-2 flex max-w-sm gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (fixed.trim()) onChangeSource(column, { type: 'CONSTANT', value: fixed.trim() });
+          }}
+        >
+          <label className="sr-only" htmlFor={`${id}-fixed`}>Valor fijo para {column.outputName}</label>
+          <input id={`${id}-fixed`} autoFocus className="h-9 min-w-0 flex-1 rounded-md border border-ink-200 bg-white px-2 text-sm" placeholder="El mismo valor en todas las filas" value={fixed} onChange={(event) => setFixed(event.target.value)} />
+          <button type="submit" className={buttonStyles.secondary} disabled={!fixed.trim()}>Usar</button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+// Only the columns that need attention, with the minimum controls to resolve them. Columns asking to be
+// checked for the same reason (e.g. the three parts of a full name) are shown together with one confirmation.
 function ColumnReview({ evaluation, headers, sample, onChangeSource, onConfirm, onConfirmAll }) {
   const problems = evaluation.rows.filter((row) => row.status !== 'OK');
   const pending = problems.filter((row) => row.status === 'REQUIERE_CONFIRMACION');
+  const cards = [];
+  for (const row of problems) {
+    const group = row.status === 'REQUIERE_CONFIRMACION' && cards.find((card) => card.status === row.status && card.reason === row.reason);
+    if (group) group.rows.push(row);
+    else cards.push({ key: row.column.id, status: row.status, reason: row.reason, rows: [row] });
+  }
+  const example = (column) => (sample ? sampleText(column, sample.result.output[column.outputName]) : '');
 
   return (
     <div className="space-y-3">
       <ul className="space-y-2">
-        {problems.map(({ column, status, reason }) => {
-          const example = sample ? sampleText(column, sample.result.output[column.outputName]) : '';
-          const canPickColumn = status === 'FALTANTE' && (sourceTypes.has(column.source.type) || column.source.type === 'EMPTY');
+        {cards.map(({ key, status, reason, rows }) => {
+          const names = rows.map((row) => row.column.outputName);
+          const column = rows[0].column;
+          const canPickSource = status === 'FALTANTE' && (sourceTypes.has(column.source.type) || column.source.type === 'EMPTY' || column.source.type === 'CONSTANT');
+          const examples = rows.map((row) => ({ name: row.column.outputName, text: example(row.column) })).filter((item) => item.text);
           return (
-            <li key={column.id} className={`rounded-lg border p-3 ${status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
+            <li key={key} className={`rounded-lg border p-3 ${status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-900">{column.outputName}</p>
+                  <p className="text-sm font-semibold text-ink-900">{listNames(names)}</p>
                   <p className="text-xs text-ink-700">{reason}</p>
-                  {status === 'REQUIERE_CONFIRMACION' && example ? <p className="mt-1 text-xs text-ink-500">Resultado de ejemplo: <span className="font-mono font-semibold text-ink-900">{example}</span></p> : null}
+                  {status === 'REQUIERE_CONFIRMACION' && examples.length ? (
+                    <p className="mt-1 text-xs text-ink-500">
+                      {rows.length > 1 ? 'Resultados de ejemplo: ' : 'Resultado de ejemplo: '}
+                      {examples.map((item, index) => (
+                        <span key={item.name}>
+                          {index ? ' · ' : ''}
+                          {rows.length > 1 ? `${item.name} ` : ''}<span className="font-mono font-semibold text-ink-900">{item.text}</span>
+                        </span>
+                      ))}
+                    </p>
+                  ) : null}
                 </div>
                 {status === 'REQUIERE_CONFIRMACION' ? (
-                  <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => onConfirm(column.id)}>
+                  <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 text-sm font-semibold text-amber-700 hover:bg-amber-50" onClick={() => (rows.length > 1 ? onConfirmAll(rows.map((row) => row.column.id)) : onConfirm(column.id))}>
                     <Check size={14} aria-hidden="true" />
-                    Está bien
+                    {rows.length > 1 ? 'Están bien' : 'Está bien'}
                   </button>
                 ) : null}
               </div>
-              {canPickColumn ? (
-                <label className="mt-2 block text-xs text-ink-500">
-                  ¿En qué columna de tu archivo viene?
-                  <select
-                    className="mt-1 h-9 w-full max-w-sm rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900"
-                    value=""
-                    onChange={(event) => onChangeSource(column, event.target.value)}
-                  >
-                    <option value="">Elegir columna…</option>
-                    {headers.map((header) => <option key={header} value={header}>{header}</option>)}
-                  </select>
-                </label>
-              ) : null}
+              {canPickSource ? <MissingSource column={column} headers={headers} onChangeSource={onChangeSource} /> : null}
             </li>
           );
         })}
       </ul>
-      {pending.length > 1 ? (
+      {cards.filter((card) => card.status === 'REQUIERE_CONFIRMACION').length > 1 ? (
         <button type="button" className={buttonStyles.secondary} onClick={() => onConfirmAll(pending.map((row) => row.column.id))}>
           <CheckCircle2 size={16} aria-hidden="true" />
           Revisé los ejemplos, todo está bien
@@ -283,7 +337,7 @@ export function QuickFlow({ job, template, evaluation, results, design = null, p
     content = (
       <section>
         <h2 className="text-xl font-bold text-ink-900">¿A qué lo convertimos?</h2>
-        <p className="mb-4 mt-1 text-ink-500">Hoja «{job.selectedSheet}», {sheet?.rowCount ?? 0} filas y {sheet?.headers.length ?? 0} columnas. Ordenamos las plantillas por cuánto calzan con tu archivo.</p>
+        <p className="mb-4 mt-1 text-ink-500">Ordenamos las plantillas por cuántas de tus {sheet?.headers.length ?? 0} columnas reconocen.</p>
         <TemplateChooser job={job} isBusy={isBusy} onApply={apply} onAdvanced={onAdvanced} allowAutoApply={!template && !changingTemplate} />
         {changingTemplate ? <button type="button" className="mt-3 text-sm font-semibold text-ink-500 hover:underline" onClick={() => setChangingTemplate(false)}>Seguir con la plantilla actual</button> : null}
       </section>

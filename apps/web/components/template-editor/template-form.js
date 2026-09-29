@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useMemo, useState } from 'react';
-import { AlertCircle, FileSpreadsheet, Loader2, Save, Sparkles } from 'lucide-react';
+import { AlertCircle, FileSpreadsheet, Loader2, Save, Sparkles, X } from 'lucide-react';
 import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
 import { runRows } from '@previley-transformer/template-engine/src/run.js';
 import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
@@ -78,6 +78,15 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
   const [activeTab, setActiveTab] = useState('columns');
+  // The assistant lives in a side panel, so it can be opened from any tab and keeps its proposal while open or closed.
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  useEffect(() => {
+    if (!assistantOpen) return undefined;
+    document.getElementById('assistant-instruction')?.focus();
+    const onKey = (event) => event.key === 'Escape' && setAssistantOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [assistantOpen]);
   const [columnsView, setColumnsView] = useState('workbench');
   const [selectedId, setSelectedId] = useState(null);
   const [state, setState] = useState({ saving: false, error: null });
@@ -101,7 +110,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
     if (!sample?.rows?.length) return null;
     try {
       const rows = previewRows(sample.rows, template, new Date(), params);
-      return { ...rows, design: previewDesign(template, rows.results, { inputName: sample.fileName.replace(/\.xlsx$/i, ''), sheet: sample.sheet, now: new Date(), params }) };
+      return { ...rows, design: previewDesign(template.name?.trim() ? template : { ...template, name: 'nombre-plantilla' }, rows.results, { inputName: sample.fileName.replace(/\.xlsx$/i, ''), sheet: sample.sheet, now: new Date(), params }) };
     } catch {
       return null;
     }
@@ -175,16 +184,11 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
           {sample?.exampleRows ? (
             <button
               type="button"
-              className={buttonStyles.secondary}
+              className={assistantOpen ? `${buttonStyles.secondary} border-cobalt-600 text-cobalt-700` : buttonStyles.secondary}
               title="La IA propone de dónde sale cada columna comparando tus archivos"
-              onClick={() => {
-                setActiveTab('columns');
-                // After the tab renders, bring the assistant into view and put the cursor in its instructions.
-                setTimeout(() => {
-                  document.getElementById('asistente')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  document.getElementById('assistant-instruction')?.focus({ preventScroll: true });
-                }, 50);
-              }}
+              aria-expanded={assistantOpen}
+              aria-controls="asistente"
+              onClick={() => setAssistantOpen((open) => !open)}
             >
               <Sparkles size={16} aria-hidden="true" />
               Asistente
@@ -249,7 +253,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
 
       {activeTab === 'columns' ? (
       <div className="space-y-5" role="tabpanel" aria-label="Columnas">
-      <ExampleReport report={report} assistantAvailable={Boolean(sample?.exampleRows)} />
+      <ExampleReport report={report} assistantAvailable={Boolean(sample?.exampleRows)} onOpenAssistant={() => setAssistantOpen(true)} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[70ch] text-sm text-ink-500">
@@ -277,22 +281,11 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
         suggestions={suggestions}
         evaluation={evaluation}
         sample={results?.length ? { values: sample.rows[0].values, result: results[0] } : null}
+        sampleRows={results?.length ? results.slice(0, 5).map((result, index) => ({ values: sample.rows[index].values, result })) : null}
         isFixedWidth={template.output.format === 'FIXED_WIDTH'}
       />
       {columnsView === 'list' ? renderPreview({ selectable: true }) : null}
 
-      <div id="asistente" className="scroll-mt-40">
-      <AssistantPanel
-        template={template}
-        sample={sample}
-        outputExample={outputExample}
-        onApply={(proposal) => {
-          // The proposal replaces columns, output and row steps; the template's own data stays as the user wrote it.
-          setTemplate({ ...template, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : { rowSteps: undefined }) });
-          setFlagged(new Map());
-        }}
-      />
-      </div>
       </div>
       ) : null}
 
@@ -322,6 +315,29 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
           </section>
           {renderPreview()}
         </div>
+      ) : null}
+
+      {sample?.exampleRows ? (
+        <aside id="asistente" aria-label="Asistente" hidden={!assistantOpen} className="fixed inset-0 z-40 !mt-0 overflow-y-auto border-l border-ink-200 bg-canvas px-4 pb-6 shadow-2xl lg:left-auto lg:w-[560px]">
+          <div className="sticky top-0 z-10 -mx-4 mb-2 flex justify-end bg-canvas px-4 py-3">
+            <button type="button" className={buttonStyles.secondary} onClick={() => setAssistantOpen(false)}>
+              <X size={16} aria-hidden="true" />
+              Cerrar
+            </button>
+          </div>
+          <AssistantPanel
+            template={template}
+            sample={sample}
+            outputExample={outputExample}
+            onApply={(proposal) => {
+              // The proposal replaces columns, output and row steps; the template's own data stays as the user wrote it.
+              setTemplate({ ...template, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : { rowSteps: undefined }) });
+              setFlagged(new Map());
+              setActiveTab('columns');
+              setAssistantOpen(false);
+            }}
+          />
+        </aside>
       ) : null}
     </form>
     </ParametersContext.Provider>

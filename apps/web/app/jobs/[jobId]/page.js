@@ -363,9 +363,12 @@ function JobWorkspace({ job, setJob }) {
     );
   }
 
-  function changeSource(column, header) {
-    const source = column.source.type.startsWith('SPLIT') || column.source.type === 'NAME_PART' ? { ...column.source, column: header } : { type: 'COLUMN', column: header };
-    changeColumns(template.columns.map((candidate) => (candidate.id === column.id ? { ...candidate, source, reviewed: false } : candidate)), { unconfirm: column.id });
+  // `choice` is a header of the file, or a ready source: { type: 'EMPTY' } (the column becomes optional) or a CONSTANT.
+  function changeSource(column, choice) {
+    let change;
+    if (typeof choice === 'object') change = { source: choice, ...(choice.type === 'EMPTY' ? { required: false } : {}) };
+    else change = { source: column.source.type.startsWith('SPLIT') || column.source.type === 'NAME_PART' ? { ...column.source, column: choice } : { type: 'COLUMN', column: choice } };
+    changeColumns(template.columns.map((candidate) => (candidate.id === column.id ? { ...candidate, ...change, reviewed: false } : candidate)), { unconfirm: column.id });
   }
 
   if (!advanced) {

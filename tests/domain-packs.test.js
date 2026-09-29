@@ -39,6 +39,9 @@ test('with the Chile pack, RUT formats, validations, detectors, masking and seed
   assert.equal(detectSemanticType('RUT', ['12.345.678-5', '9.876.543-3']).type, 'CHILEAN_RUT');
   assert.equal(isSensitiveColumn(rutColumn), true);
   assert.equal(maskSensitive(rutColumn, '12.345.678-5'), '12.•••.•••-5');
+  // A RUT copied as it comes, with no RUT format, is recognized by its name.
+  assert.equal(isSensitiveColumn({ outputName: 'RUT', source: { type: 'COLUMN', column: 'Rut trabajador' }, transformations: [] }), true);
+  assert.equal(isSensitiveColumn({ outputName: 'Ruta', source: { type: 'COLUMN', column: 'Ruta' }, transformations: [] }), false);
   assert.deepEqual(seedTemplates().map((seed) => seed.slug), ['planvital-pagex']);
 });
 
