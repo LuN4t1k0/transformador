@@ -28,54 +28,91 @@ function comparable(value) {
   return normalizeHeader(text).toUpperCase();
 }
 
-// The column that identifies rows (a RUT, a customer code…) according to the enabled domain packs:
-// the one where most values are valid keys.
-function keyColumn(headers, rows, key) {
+// Where a file keeps the key that identifies rows (a RUT, a customer code…) according to the enabled packs:
+// one column where most values are valid keys, or two adjacent columns that together are (a RUT split into
+// its number and check digit).
+function keyReader(headers, rows, key) {
+  const shareOf = (read) => {
+    const values = rows.map(read).filter((value) => !isBlank(value));
+    return values.length ? values.filter((value) => key.key(value)).length / values.length : 0;
+  };
   let best = null;
-  for (const header of headers) {
-    const values = rows.map((row) => row.values[header]).filter((value) => !isBlank(value));
-    if (!values.length) continue;
-    const share = values.filter((value) => key.key(value)).length / values.length;
-    if (share >= 0.8 && (!best || share > best.share)) best = { header, share };
-  }
-  return best?.header || null;
+  const consider = (read, share, rank) => {
+    if (share >= 0.8 && (!best || share > best.share || (share === best.share && rank < best.rank))) best = { read, share, rank };
+  };
+  headers.forEach((header, index) => {
+    const single = (row) => row.values[header];
+    consider(single, shareOf(single), 0);
+    const next = headers[index + 1];
+    if (next === undefined) return;
+    const joined = (row) => (isBlank(row.values[header]) || isBlank(row.values[next]) ? null : `${String(row.values[header]).trim()}${String(row.values[next]).trim()}`);
+    consider(joined, shareOf(joined), 1);
+  });
+  return best ? (row) => key.key(best.read(row)) : null;
 }
 
 function findKey(input, inputRows, outputHeaders, outputRows) {
   for (const key of packKeys()) {
-    const inputColumn = keyColumn(input.headers, inputRows, key);
-    const outputColumn = keyColumn(outputHeaders, outputRows, key);
-    if (inputColumn && outputColumn) return { key, inputColumn, outputColumn };
+    const inputKey = keyReader(input.headers, inputRows, key);
+    const outputKey = keyReader(outputHeaders, outputRows, key);
+    if (inputKey && outputKey) return { key, inputKey, outputKey };
   }
   return null;
 }
 
+// Loose tokens of a row: whole values plus the words and numbers inside texts, to tell whether two rows
+// describe the same record even when the destination splits or reformats some fields.
+function rowTokens(row) {
+  const tokens = new Set();
+  for (const value of Object.values(row.values)) {
+    const whole = comparable(value);
+    if (whole.length >= 3) tokens.add(whole);
+    if (typeof value === 'string') for (const part of whole.split(/[^A-Z0-9]+/)) if (part.length >= 3) tokens.add(part);
+  }
+  return tokens;
+}
+
+// Pairing by position is only trusted when the paired rows visibly share data (same people in the same order);
+// otherwise comparing them would teach and score nonsense.
+function rowsCorrespond(pairs) {
+  if (!pairs.length) return false;
+  const matching = pairs.filter(({ input, output }) => {
+    const inputTokens = rowTokens(input);
+    return [...rowTokens(output)].filter((token) => inputTokens.has(token)).length >= 2;
+  }).length;
+  return matching / pairs.length >= 0.6;
+}
+
 // Pairs output example rows with input rows: by position when both files list the same rows in the same
-// order, otherwise by a key column (choosing, for repeated keys, the input row sharing most values).
+// order, otherwise by a key (choosing, for repeated keys, the input row sharing most values). When nothing
+// shows that the files share rows, there are no pairs.
 function alignRows(input, outputRows, outputHeaders) {
   const inputRows = input?.rows || [];
   if (!inputRows.length || !outputRows.length) return { mode: 'NONE', pairs: [] };
 
   const positional = () => outputRows.slice(0, inputRows.length).map((row, index) => ({ output: row, input: inputRows[index] }));
   const found = findKey(input, inputRows, outputHeaders, outputRows);
-  if (!found) return { mode: 'POSITION', pairs: positional() };
-  const keyOf = (row, column) => found.key.key(row.values[column]);
+  if (!found) {
+    const pairs = positional();
+    return rowsCorrespond(pairs) ? { mode: 'POSITION', pairs } : { mode: 'NONE', pairs: [] };
+  }
 
   const count = Math.min(inputRows.length, outputRows.length);
   let sameOrder = 0;
   for (let index = 0; index < count; index += 1) {
-    if (keyOf(inputRows[index], found.inputColumn) && keyOf(inputRows[index], found.inputColumn) === keyOf(outputRows[index], found.outputColumn)) sameOrder += 1;
+    const key = found.inputKey(inputRows[index]);
+    if (key && key === found.outputKey(outputRows[index])) sameOrder += 1;
   }
   if (count && sameOrder / count >= 0.8) return { mode: 'POSITION', pairs: positional() };
 
   const byKey = new Map();
   for (const row of inputRows) {
-    const key = keyOf(row, found.inputColumn);
+    const key = found.inputKey(row);
     if (key) byKey.set(key, [...(byKey.get(key) || []), row]);
   }
   const pairs = [];
   for (const row of outputRows) {
-    const candidates = byKey.get(keyOf(row, found.outputColumn)) || [];
+    const candidates = byKey.get(found.outputKey(row)) || [];
     if (!candidates.length) continue;
     const outputValues = new Set(Object.values(row.values).map(comparable).filter(Boolean));
     const shared = (candidate) => Object.values(candidate.values).map(comparable).filter((value) => outputValues.has(value)).length;

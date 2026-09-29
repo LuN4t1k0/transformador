@@ -109,3 +109,27 @@ test('a RUT split into number and check digit: learned from an example and not a
   assert.deepEqual(rows.map((row) => row.status), [MAPPING_STATUS.OK, MAPPING_STATUS.OK, MAPPING_STATUS.OK], 'different formats of the same origin need no confirmation');
   assert.deepEqual(transformRow({ 'Rut trabajador': '12.345.678-5', Nombre: 'Ana' }, validateTemplateConfig(template)).output, { RUT: '12345678', DV: '5', NOMBRE: 'Ana' });
 });
+
+test('rows are paired by a RUT split into number and check digit, and never by position when rows differ', () => {
+  const { alignRows } = require('../packages/template-engine/src/infer');
+  const people = [['12.345.678-5', 'Ana', 100], ['9.876.543-3', 'Beto', 200], ['10.231.091-8', 'Caro', 300]];
+  const input = { headers: ['RUT', 'Nombre', 'Monto'], rows: people.map(([RUT, Nombre, Monto]) => ({ values: { RUT, Nombre, Monto } })) };
+  // Destination in another order, with the RUT split in two columns.
+  const reordered = [people[2], people[0], people[1]].map(([rut, name, amount]) => {
+    const [body, dv] = rut.replace(/\./g, '').split('-');
+    return { values: { N: 1, RUT: body, DV: dv, NOMBRE: name.toUpperCase(), MONTO: amount } };
+  });
+  const byKey = alignRows(input, reordered, ['N', 'RUT', 'DV', 'NOMBRE', 'MONTO']);
+  assert.equal(byKey.mode, 'KEY');
+  assert.deepEqual(byKey.pairs.map((pair) => pair.input.values.Nombre), ['Caro', 'Ana', 'Beto']);
+
+  // Other people and nothing in common: no pairs instead of comparing row 1 with row 1.
+  const strangers = [{ values: { CODIGO: 'X-1', GLOSA: 'Uno', VALOR: 7 } }, { values: { CODIGO: 'X-2', GLOSA: 'Dos', VALOR: 8 } }];
+  const unrelated = alignRows({ headers: ['Nombre', 'Monto'], rows: [{ values: { Nombre: 'Ana', Monto: 100 } }, { values: { Nombre: 'Beto', Monto: 200 } }] }, strangers, ['CODIGO', 'GLOSA', 'VALOR']);
+  assert.deepEqual(unrelated, { mode: 'NONE', pairs: [] });
+
+  // Same records in the same order without any identifier: position is trusted because the rows share data.
+  const sameOrder = alignRows({ headers: ['Nombre', 'Monto', 'Fecha'], rows: [{ values: { Nombre: 'Ana Pérez', Monto: 100, Fecha: '01-05-2024' } }, { values: { Nombre: 'Beto Soto', Monto: 250, Fecha: '02-05-2024' } }] },
+    [{ values: { APELLIDO: 'PÉREZ', MONTO: 100, FECHA: '01-05-2024' } }, { values: { APELLIDO: 'SOTO', MONTO: 250, FECHA: '02-05-2024' } }], ['APELLIDO', 'MONTO', 'FECHA']);
+  assert.equal(sameOrder.mode, 'POSITION');
+});

@@ -131,6 +131,10 @@ export function AssistantPanel({ template, sample, outputExample, onApply }) {
               <p className="text-sm font-semibold text-ink-900">
                 Calce con tu ejemplo: {percent(result.before?.overall)} → {percent(result.after.overall)}
               </p>
+            ) : outputExample ? (
+              <Notice tone="warning" icon={AlertCircle}>
+                Tus dos archivos no tienen filas en común (por ejemplo, las mismas personas por su RUT), así que el asistente no pudo comprobar la propuesta fila a fila. Revísala en la vista previa antes de guardarla, o usa ejemplos que incluyan las mismas personas.
+              </Notice>
             ) : null}
             {result.explanation ? <p className="whitespace-pre-line text-sm text-ink-700">{plainText(result.explanation)}</p> : null}
             <Comparison current={template} result={result} />
