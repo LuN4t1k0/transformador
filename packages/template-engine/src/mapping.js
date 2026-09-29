@@ -83,7 +83,10 @@ function getConfirmationReason(column, columnsByOrigin) {
     return 'Separar por palabras no siempre es exacto (por ejemplo, apellidos compuestos). Revisa los ejemplos y confirma.';
   }
   if (column.source.type === 'COLUMN') {
-    const others = (columnsByOrigin.get(column.source.column) || []).filter((other) => other.id !== column.id);
+    // Sharing the origin is only suspicious when the values come out the same; different formats (e.g. a RUT's
+    // number in one column and its check digit in another) are clearly intended.
+    const sameOutput = (other) => JSON.stringify(other.transformations || []) === JSON.stringify(column.transformations || []);
+    const others = (columnsByOrigin.get(column.source.column) || []).filter((other) => other.id !== column.id && sameOutput(other));
     if (others.length) {
       return `«${column.source.column}» también alimenta ${others.map((other) => other.outputName).join(', ')}. Confirma que deben tener el mismo valor.`;
     }

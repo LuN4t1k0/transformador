@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Check, CheckCircle2, ChevronDown, Copy, LayoutList, ListFilter, Plus, Rows3, Trash2 } from 'lucide-react';
 import { maskValue } from '../../lib/preview';
-import { createColumn, duplicateColumn, formatCell, moveColumn } from '../../lib/template-editor';
+import { createColumn, duplicateColumn, formatCell, moveColumn, splitColumn } from '../../lib/template-editor';
 import { describeIssue, describeSource, describeTransformations } from '../../lib/templates';
 import { StatusPill } from '../status-pill';
 import { FormatEditor } from './format-editor';
@@ -190,7 +190,7 @@ function CompactRow({ column, index, row, sample, headers, outputNames, flag, on
   );
 }
 
-function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onRemove, onConfirm }) {
+function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onRemove, onConfirm }) {
   const idPrefix = `column-${column.id}`;
   const status = row?.status;
   const tone = status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : status === 'REQUIERE_CONFIRMACION' ? 'border-amber-200 bg-amber-50/40' : 'border-ink-200 bg-white';
@@ -249,7 +249,7 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, o
           <SourceEditor idPrefix={idPrefix} source={column.source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(source) => onChange({ ...column, source, reviewed: false }, { sourceChanged: true })} />
           {column.source.type === 'CALC'
             ? <p className="text-xs text-ink-500">El resultado de un cálculo es un número; el redondeo se define arriba.</p>
-            : <FormatEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} />}
+            : <FormatEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} onSplit={onSplit} />}
           {isFixedWidth ? <FixedWidthEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} /> : null}
         </div>
       ) : null}
@@ -367,6 +367,7 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
                 const next = duplicateColumn(columns, index);
                 onChange(next, { confirm: [column.id, next[index + 1].id] });
               }}
+              onSplit={(domain) => onChange(splitColumn(columns, index, domain))}
               onRemove={() => onChange(columns.filter((_, columnIndex) => columnIndex !== index))}
               onConfirm={onConfirm}
             />

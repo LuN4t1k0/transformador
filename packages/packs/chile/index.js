@@ -107,13 +107,21 @@ const chilePack = {
     }
   ],
 
+  // A destination may split the RUT into two columns: the number and the check digit.
+  derivedFormats: [
+    { transformations: [{ type: 'RUT_FORMAT', format: 'BODY' }], validations: [{ type: 'VALID_RUT' }] },
+    { transformations: [{ type: 'RUT_FORMAT', format: 'DV' }], validations: [{ type: 'VALID_RUT' }] }
+  ],
+
   formats: [
     {
       kind: 'RUT',
-      label: 'RUT',
+      label: 'RUT / dígito verificador',
       transformation: 'RUT_FORMAT',
       option: { key: 'format', label: 'Cómo escribir el RUT', choices: RUT_FORMATS, default: 'NO_DOTS_NO_DASH' },
-      validation: { type: 'VALID_RUT', label: 'Marcar como error si el dígito verificador no es válido' }
+      validation: { type: 'VALID_RUT', label: 'Marcar como error si el dígito verificador no es válido' },
+      // One click turns a full RUT column into two: the number and, right after it, the check digit.
+      split: { label: 'Separar en número y dígito verificador', parts: [{ option: 'BODY', suffix: '' }, { option: 'DV', suffix: ' DV' }] }
     }
   ],
 

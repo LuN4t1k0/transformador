@@ -118,6 +118,20 @@ export function createColumn(columns, fixedWidth) {
   };
 }
 
+// Splits a column into the parts a pack format offers (e.g. a RUT into its number and, right after it, the
+// check digit): the column keeps the first part and a new column is inserted for each other part.
+export function splitColumn(columns, index, domain) {
+  const original = columns[index];
+  const withOption = (column, option) => applyFormat(column, { ...parseFormat(column), kind: domain.kind, domainOption: option });
+  const [first, ...rest] = domain.split.parts;
+  const added = [];
+  for (const part of rest) {
+    const outputName = uniqueName(`${original.outputName}${part.suffix}`, [...columns, ...added]);
+    added.push({ ...withOption(structuredClone(original), part.option), id: newId(), outputName, aliases: [], reviewed: false, ...(original.fixedWidth ? { fixedWidth: { ...original.fixedWidth, length: Math.max(1, part.option === 'DV' ? 1 : original.fixedWidth.length) } } : {}) });
+  }
+  return [...columns.slice(0, index), withOption(original, first.option), ...added, ...columns.slice(index + 1)];
+}
+
 export function duplicateColumn(columns, index) {
   const original = columns[index];
   const copy = { ...structuredClone(original), id: newId(), outputName: uniqueName(`${original.outputName} copia`, columns), aliases: [], reviewed: false };

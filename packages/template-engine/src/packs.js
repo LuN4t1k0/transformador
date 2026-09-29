@@ -11,6 +11,7 @@
 //   detectors: [{ type, label, detect(header, values) → { confidence, evidence } }],
 //   keys: [{ id, label, key(value) → normalized key | null }]           row identifiers for learning by example
 //   formatDetectors: [{ stage: 'EARLY' | 'LATE', detect(texts) → { transformations, validations, semanticTypes } | null }]
+//   derivedFormats: [{ transformations, validations }]                  parts to try when learning by example
 //   formats: [{ kind, label, transformation, option: { key, label, choices, default }, validation? }]  editor formats
 //   sensitive: { isSensitive(column) → boolean, mask(text) → text }   masking in on-screen samples
 //   templates: [{ slug, configuration }]                                  seed templates
@@ -51,6 +52,7 @@ const packDetectors = () => fromPacks('detectors');
 const packKeys = () => fromPacks('keys');
 const packFormatDetectors = (stage) => fromPacks('formatDetectors').filter((detector) => detector.stage === stage);
 const packFormats = () => fromPacks('formats');
+const packDerivedFormats = () => fromPacks('derivedFormats');
 const packTemplates = () => fromPacks('templates');
 
 function packIssueText(kind, code) {
@@ -82,6 +84,7 @@ module.exports = {
   packKeys,
   packFormatDetectors,
   packFormats,
+  packDerivedFormats,
   packTemplates,
   packIssueText,
   isSensitiveColumn,

@@ -1,6 +1,6 @@
 const { transformRow } = require('./engine');
 const { createTemplateFromHeaders, findHeader, normalizeHeader } = require('./mapping');
-const { packKeys, packFormatDetectors } = require('./packs');
+const { packKeys, packFormatDetectors, packDerivedFormats } = require('./packs');
 const { parseNumber } = require('../../transformations/src/number');
 
 // Learns a template by example: given rows of the file users receive (input) and rows of the file the
@@ -345,17 +345,29 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
     if (pairs.length) {
       const expected = pairs.map((pair) => valueOf(pair.output));
       const pairedInputs = pairs.map((pair) => pair.input);
-      let best = null;
-      for (const candidate of candidates) {
-        const score = scoreCandidate(candidate, outputName, formatSpec, pairedInputs, expected);
-        const key = [score, -candidate.rank, nameSimilarity(outputName, candidate.source.column), -candidate.order];
-        if (!best || isBetter(key, best.key)) best = { candidate, score, key };
+      const findBest = (spec) => {
+        let best = null;
+        for (const candidate of candidates) {
+          const score = scoreCandidate(candidate, outputName, spec, pairedInputs, expected);
+          const key = [score, -candidate.rank, nameSimilarity(outputName, candidate.source.column), -candidate.order];
+          if (!best || isBetter(key, best.key)) best = { candidate, score, key, spec };
+        }
+        return best;
+      };
+      let best = findBest(formatSpec);
+      // Parts of a value that packs know how to derive (e.g. a RUT's number or check digit alone) are only
+      // tried when the value's own format does not reproduce the example.
+      if (!best || best.score < MIN_SCORE) {
+        for (const derived of packDerivedFormats()) {
+          const found = findBest(derived);
+          if (found && found.score >= MIN_SCORE && (!best || found.score > best.score)) best = found;
+        }
       }
       const compared = expected.filter((value) => !isBlank(value)).length;
       if (best && best.score >= MIN_SCORE && compared >= Math.min(2, pairs.length)) {
         report.learned += 1;
         report.byName[outputName] = { method: 'EXAMPLE', score: best.score };
-        return { ...column, source: best.candidate.source, reviewed: true };
+        return { ...column, ...best.spec, source: best.candidate.source, reviewed: true };
       }
     }
 

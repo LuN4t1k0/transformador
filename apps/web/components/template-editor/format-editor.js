@@ -1,12 +1,13 @@
 'use client';
 
+import { Columns2 } from 'lucide-react';
 import { applyFormat, DATE_INPUT_OPTIONS, DATE_OUTPUT_OPTIONS, domainFormats as getDomainFormats, parseFormat } from '../../lib/template-editor';
 import { inputClass } from './source-editor';
 
 const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
 const checkboxClass = 'inline-flex items-center gap-2 text-sm text-ink-700';
 
-export function FormatEditor({ idPrefix, column, onChange }) {
+export function FormatEditor({ idPrefix, column, onChange, onSplit = null }) {
   const format = parseFormat(column);
   const set = (changes) => onChange(applyFormat(column, { ...format, ...changes }));
   // Formats contributed by the domain packs (e.g. RUT), shown next to the core ones.
@@ -40,6 +41,15 @@ export function FormatEditor({ idPrefix, column, onChange }) {
                   <input type="checkbox" className="h-4 w-4 accent-cobalt-600" checked={format.domainValidate} onChange={(event) => set({ domainValidate: event.target.checked })} />
                   {domain.validation.label}
                 </label>
+              ) : null}
+              {domain.split && onSplit && !domain.split.parts.some((part) => part.option === format.domainOption) ? (
+                <div>
+                  <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 px-2 text-xs font-medium text-cobalt-700 hover:bg-cobalt-50" onClick={() => onSplit(domain)}>
+                    <Columns2 size={14} aria-hidden="true" />
+                    {domain.split.label}
+                  </button>
+                  <p className="mt-1 text-xs text-ink-500">Esta columna queda con el primero y se agrega una columna nueva a continuación con el segundo.</p>
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -110,3 +110,18 @@ test('removing a column also drops its totals and the split that used it', async
   assert.deepEqual(withColumns({ columns, output }, [columns[0]]).output, { format: 'XLSX', totals: { label: 'TOTAL', columns: [{ columnId: 'a', op: 'SUM' }] } });
   assert.deepEqual(withColumns({ columns, output }, [columns[1]]).output.totals.columns, [{ columnId: 'b', op: 'SUM' }]);
 });
+
+test('splits a RUT column into the number and a new check digit column right after it', async () => {
+  const { splitColumn, domainFormats } = await load();
+  const rut = domainFormats().find((format) => format.kind === 'RUT');
+  const columns = [
+    { id: 'a', outputName: 'RUT', source: { type: 'COLUMN', column: 'Rut' }, transformations: [{ type: 'RUT_FORMAT', format: 'NO_DOTS_DASH' }], validations: [{ type: 'VALID_RUT' }] },
+    { id: 'b', outputName: 'NOMBRE', source: { type: 'COLUMN', column: 'Nombre' }, transformations: [], validations: [] }
+  ];
+  const next = splitColumn(columns, 0, rut);
+  assert.deepEqual(next.map((column) => column.outputName), ['RUT', 'RUT DV', 'NOMBRE']);
+  assert.deepEqual(next.map((column) => column.transformations), [[{ type: 'RUT_FORMAT', format: 'BODY' }], [{ type: 'RUT_FORMAT', format: 'DV' }], []]);
+  assert.deepEqual(next[1].validations, [{ type: 'VALID_RUT' }]);
+  assert.deepEqual(next[1].source, { type: 'COLUMN', column: 'Rut' });
+  validateTemplateConfig({ name: 'T', columns: next });
+});

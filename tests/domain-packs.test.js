@@ -77,3 +77,35 @@ test('a new pack plugs in formats and validations without touching the core', ()
     assert.deepEqual(transformRow({ Correo: 'x@gmail.com' }, template).issues.map(describeIssue), ['Debe ser un correo de empresa']);
   });
 });
+
+test('a RUT split into number and check digit: learned from an example and not asked to confirm', () => {
+  const { inferTemplate } = require('../packages/template-engine/src/infer');
+  const { evaluateColumns, MAPPING_STATUS } = require('../packages/template-engine/src/mapping');
+  const input = {
+    headers: ['Rut trabajador', 'Nombre'],
+    rows: [
+      { values: { 'Rut trabajador': '12.345.678-5', Nombre: 'Ana' } },
+      { values: { 'Rut trabajador': '9.876.543-3', Nombre: 'Beto' } },
+      { values: { 'Rut trabajador': '10.231.091-8', Nombre: 'Caro' } }
+    ]
+  };
+  const output = {
+    headers: ['RUT', 'DV', 'NOMBRE'],
+    rows: [
+      { values: { RUT: '12345678', DV: '5', NOMBRE: 'Ana' } },
+      { values: { RUT: '9876543', DV: '3', NOMBRE: 'Beto' } },
+      { values: { RUT: '10231091', DV: '8', NOMBRE: 'Caro' } }
+    ]
+  };
+  const { template } = inferTemplate({ input, output, sheet: 'Hoja1' });
+  const byName = Object.fromEntries(template.columns.map((column) => [column.outputName, column]));
+  assert.deepEqual(byName.RUT.source, { type: 'COLUMN', column: 'Rut trabajador' });
+  assert.deepEqual(byName.RUT.transformations, [{ type: 'RUT_FORMAT', format: 'BODY' }]);
+  assert.deepEqual(byName.DV.source, { type: 'COLUMN', column: 'Rut trabajador' });
+  assert.deepEqual(byName.DV.transformations, [{ type: 'RUT_FORMAT', format: 'DV' }]);
+
+  const columns = validateTemplateConfig(template).columns.map((column) => ({ ...column, reviewed: false }));
+  const { rows } = evaluateColumns(columns, input.headers, new Set());
+  assert.deepEqual(rows.map((row) => row.status), [MAPPING_STATUS.OK, MAPPING_STATUS.OK, MAPPING_STATUS.OK], 'different formats of the same origin need no confirmation');
+  assert.deepEqual(transformRow({ 'Rut trabajador': '12.345.678-5', Nombre: 'Ana' }, validateTemplateConfig(template)).output, { RUT: '12345678', DV: '5', NOMBRE: 'Ana' });
+});
