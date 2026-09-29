@@ -148,3 +148,22 @@ test('the service is disabled without a key, reads dates and records only metada
   assert.equal(JSON.stringify(events).includes('PÉREZ'), false);
   assert.deepEqual(Object.keys(events[0].metadata).sort(), ['durationMs', 'inputRows', 'model', 'outputRows', 'outputTokens', 'promptTokens', 'proposed', 'pseudonymized', 'turns']);
 });
+
+test('explains which Gemini quota ran out and how long to wait', () => {
+  const { quotaMessage } = require('../apps/api/src/assistant/gemini');
+  const quota = (quotaId, retryDelay) => ({ error: { details: [
+    { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId, quotaValue: '20', quotaDimensions: { model: 'gemini-x' } }] },
+    ...(retryDelay ? [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay }] : [])
+  ] } });
+
+  const minute = quotaMessage(quota('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '37.2s'), 'gemini-x');
+  assert.equal(minute.waitSeconds, 38);
+  assert.match(minute.message, /20 solicitudes por minuto/);
+  assert.match(minute.message, /38 segundos/);
+
+  const daily = quotaMessage(quota('GenerateRequestsPerDayPerProjectPerModel-FreeTier'), 'gemini-x', new Date('2026-09-29T15:00:00Z'));
+  assert.match(daily.message, /cuota diaria de Gemini para gemini-x \(20 solicitudes por día\)/);
+  assert.match(daily.message, /cerca de las 04:00\sa\.\sm\.\shora de Chile/);
+
+  assert.match(quotaMessage({}, 'gemini-x').message, /Espera un minuto/);
+});
