@@ -62,5 +62,5 @@ table,
     linear-gradient(to right, #e6ece8 1px, transparent 1px),
     linear-gradient(to bottom, #e6ece8 1px, transparent 1px);
   background-size: 112px 34px;
-  background-position: 38px 26px;
+  background-position: 38px -1px;
 }
