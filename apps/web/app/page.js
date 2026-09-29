@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, ArrowRight, Download, FileSpreadsheet, Loader2, Repeat, ShieldCheck, Upload } from 'lucide-react';
+import { AlertCircle, Download, Loader2, Upload } from 'lucide-react';
 import { FileDropzone } from '../components/file-dropzone';
 import { BatchConvert } from '../components/home/batch-convert';
 import { formatDateTime, JobStatusBadge } from '../components/job-status';
@@ -12,11 +12,15 @@ import { ReuseUploadButton } from '../components/reuse-upload-button';
 import { Shell } from '../components/shell';
 import { api } from '../lib/api';
 import { downloadBlob } from '../lib/download';
-import { formatFileSize, MAX_FILE_SIZE_BYTES, validateExcelFile } from '../lib/file-validation';
+import { validateExcelFile } from '../lib/file-validation';
 
-const linkButton = 'inline-flex items-center gap-1 text-xs font-semibold text-cobalt-700 hover:underline';
+const quietLink = 'inline-flex items-center gap-1.5 text-sm font-semibold text-cobalt-700 hover:underline';
 
-function UploadCard({ defaultTemplateId }) {
+// Conversions that still need something from the user or can still be downloaded.
+const OPEN_STATUSES = new Set(['QUEUED_ANALYSIS', 'ANALYZING', 'READY', 'QUEUED_TRANSFORMATION', 'TRANSFORMING', 'VALIDATING', 'GENERATING', 'READY_TO_DOWNLOAD', 'DOWNLOADED']);
+const DOWNLOADABLE = new Set(['READY_TO_DOWNLOAD', 'DOWNLOADED']);
+
+function Upload_({ defaultTemplateId }) {
   const router = useRouter();
   const [state, setState] = useState({ uploading: false, error: '' });
   const [batch, setBatch] = useState(null);
@@ -36,86 +40,79 @@ function UploadCard({ defaultTemplateId }) {
     }
   }
 
-  return (
-    <section className="rounded-lg border border-ink-200 bg-white p-4 shadow-panel sm:p-5">
-      <h2 className="mb-3 text-base font-semibold text-ink-900">Convertir un archivo</h2>
-      {batch ? (
+  if (batch) {
+    return (
+      <section className="rounded-md border border-ink-200 bg-white p-4 sm:p-5">
         <BatchConvert files={batch} defaultTemplateId={defaultTemplateId} onClose={() => setBatch(null)} />
-      ) : state.uploading ? (
-        <p className="flex min-h-40 items-center justify-center gap-2 text-sm text-ink-700">
-          <Loader2 size={18} className="animate-spin text-cobalt-600" aria-hidden="true" />
-          Subiendo archivo…
-        </p>
-      ) : (
-        <FileDropzone error={state.error} onFile={handleFile} multiple onFiles={setBatch} />
-      )}
-      <p className="mt-3 flex items-start gap-2 text-xs text-ink-500">
-        <ShieldCheck size={14} className="mt-px shrink-0" aria-hidden="true" />
-        Hasta {formatFileSize(MAX_FILE_SIZE_BYTES)} por archivo. Tus archivos son temporales y se eliminan automáticamente.
+      </section>
+    );
+  }
+  if (state.uploading) {
+    return (
+      <p className="flex min-h-[238px] items-center justify-center gap-2 rounded-md border border-ink-200 bg-white text-sm text-ink-700">
+        <Loader2 size={18} className="animate-spin text-cobalt-600" aria-hidden="true" />
+        Subiendo y leyendo el archivo…
       </p>
-    </section>
+    );
+  }
+  return <FileDropzone variant="sheet" error={state.error} onFile={handleFile} multiple onFiles={setBatch} />;
+}
+
+function OpenJob({ job, onDownload }) {
+  const downloadable = DOWNLOADABLE.has(job.status);
+  const running = !downloadable && job.status !== 'READY';
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-100 py-3">
+      <div className="min-w-0 flex-1 basis-56">
+        <Link href={`/jobs/${job.id}`} className="block truncate font-semibold text-ink-900 hover:underline">{job.fileName}</Link>
+        <p className="text-sm text-ink-500">{job.template ? job.template.name : 'Sin plantilla elegida'}, {formatDateTime(job.createdAt)}</p>
+      </div>
+      <JobStatusBadge status={job.status} />
+      {downloadable ? (
+        <button type="button" className={buttonStyles.primary} onClick={() => onDownload(job)}>
+          <Download size={16} aria-hidden="true" />
+          Descargar archivo
+        </button>
+      ) : (
+        <Link href={`/jobs/${job.id}`} className={buttonStyles.secondary}>{running ? 'Ver avance' : 'Continuar'}</Link>
+      )}
+    </li>
   );
 }
 
-function RecentJobs({ jobs }) {
-  if (!jobs.length) return null;
+function FrequentTemplates({ templates, used }) {
   return (
-    <section className="rounded-lg border border-ink-200 bg-white shadow-panel">
-      <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 sm:px-5">
-        <h2 className="text-base font-semibold text-ink-900">Últimas conversiones</h2>
-        <Link href="/jobs" className={linkButton}>Ver historial <ArrowRight size={14} aria-hidden="true" /></Link>
+    <section>
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <h2 className="text-lg font-bold text-ink-900">{used ? 'Tus plantillas frecuentes' : 'Plantillas disponibles'}</h2>
+        <Link href="/templates" className={quietLink}>Ver todas</Link>
       </div>
-      <ul className="divide-y divide-ink-100">
-        {jobs.slice(0, 5).map((job) => (
-          <li key={job.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
-            <div className="min-w-0 flex-1 basis-56">
-              <Link href={`/jobs/${job.id}`} className="block truncate text-sm font-medium text-ink-900 hover:underline">{job.fileName}</Link>
-              <p className="text-xs text-ink-500">{job.template ? job.template.name : 'Sin plantilla'} · {formatDateTime(job.createdAt)}</p>
-            </div>
-            <JobStatusBadge status={job.status} />
-            {job.workingTemplate ? (
-              <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={linkButton}>Repetir con otro archivo</ReuseUploadButton>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function TemplateShortcuts({ templates, title }) {
-  if (!templates.length) return null;
-  return (
-    <section className="rounded-lg border border-ink-200 bg-white shadow-panel">
-      <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 sm:px-5">
-        <h2 className="text-base font-semibold text-ink-900">{title}</h2>
-        <Link href="/templates" className={linkButton}>Todas <ArrowRight size={14} aria-hidden="true" /></Link>
-      </div>
-      <ul className="divide-y divide-ink-100">
-        {templates.map((template) => (
-          <li key={template.id} className="px-4 py-3 sm:px-5">
-            <div className="flex items-start gap-2">
-              <FileSpreadsheet size={18} className="mt-0.5 shrink-0 text-cobalt-600" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink-900">{template.name}</p>
-                <p className="truncate text-xs text-ink-500">{[template.destination, template.process].filter(Boolean).join(' · ') || 'Sin clasificar'}</p>
+      {templates.length ? (
+        <ul className="border-t border-ink-200">
+          {templates.map((template) => (
+            <li key={template.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink-100 py-3">
+              <div className="min-w-0 flex-1 basis-40">
+                <Link href={`/templates/${template.id}`} className="block truncate font-semibold text-ink-900 hover:underline">{template.name}</Link>
+                <p className="truncate text-sm text-ink-500">{[template.destination, template.process].filter(Boolean).join(', ') || 'Sin destino asignado'}</p>
               </div>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 pl-6">
-              <ReuseUploadButton templateId={template.id} icon={Upload} className={linkButton}>Usar con un archivo</ReuseUploadButton>
-              <button type="button" className={linkButton} onClick={async () => downloadBlob(await api.downloadTemplateExample(template.id))}>
-                <Download size={14} aria-hidden="true" />Excel de ejemplo
+              <ReuseUploadButton templateId={template.id} icon={Upload} className={quietLink}>Usar</ReuseUploadButton>
+              <button type="button" className={`${quietLink} text-ink-500`} title="Descarga un Excel con las columnas que espera esta plantilla" onClick={async () => downloadBlob(await api.downloadTemplateExample(template.id))}>
+                <Download size={14} aria-hidden="true" />
+                Ejemplo
               </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="border-t border-ink-200 pt-3 text-sm text-ink-500">Todavía no hay plantillas. Créalas en Plantillas con el modo avanzado.</p>
+      )}
     </section>
   );
 }
 
 export default function HomePage() {
   const [data, setData] = useState({ jobs: null, templates: null, error: null });
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     Promise.all([api.listJobs(), api.listTemplates()])
@@ -127,36 +124,51 @@ export default function HomePage() {
   const usedTemplates = useMemo(() => {
     const byId = new Map();
     for (const job of data.jobs || []) if (job.template && !byId.has(job.template.id)) byId.set(job.template.id, job.template);
-    const active = new Set((data.templates || []).map((template) => template.id));
-    return [...byId.values()].filter((template) => active.has(template.id)).slice(0, 4);
+    const active = new Map((data.templates || []).map((template) => [template.id, template]));
+    return [...byId.keys()].filter((id) => active.has(id)).map((id) => active.get(id)).slice(0, 4);
   }, [data]);
   const shortcutTemplates = usedTemplates.length ? usedTemplates : (data.templates || []).slice(0, 4);
+  const openJobs = (data.jobs || []).filter((job) => OPEN_STATUSES.has(job.status)).slice(0, 5);
+
+  async function download(job) {
+    setActionError('');
+    try {
+      downloadBlob(await api.downloadJob(job.id, 'output'));
+    } catch (error) {
+      setActionError(error.message);
+    }
+  }
 
   return (
     <Shell>
       <div className="mx-auto max-w-6xl">
-        <div className="mb-5">
-          <h1 className="text-2xl font-semibold text-ink-900">Convertir Excel</h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-500">
-            Sube tu Excel tal como lo tienes: reconocemos sus columnas, aplicamos la plantilla del destino y te mostramos cómo quedará antes de generarlo.
+        <div className="mb-6">
+          <h1 className="text-[28px] font-bold leading-tight text-ink-900">Convertir un Excel</h1>
+          <p className="mt-1 max-w-[62ch] text-ink-500">
+            Súbelo tal como lo recibiste. Reconocemos sus columnas, sugerimos la plantilla del destino y te mostramos el resultado antes de generarlo.
           </p>
         </div>
 
         {data.error ? <div className="mb-4"><Notice tone="danger" icon={AlertCircle} role="alert">{data.error.message}</Notice></div> : null}
+        {actionError ? <div className="mb-4"><Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice></div> : null}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-5">
-            <UploadCard defaultTemplateId={usedTemplates[0]?.id} />
-            {data.jobs ? <RecentJobs jobs={data.jobs} /> : null}
-          </div>
-          <div className="space-y-5">
-            {data.templates ? (
-              <TemplateShortcuts templates={shortcutTemplates} title={usedTemplates.length ? 'Tus plantillas' : 'Plantillas disponibles'} />
+        <Upload_ defaultTemplateId={usedTemplates[0]?.id} />
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <section>
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h2 className="text-lg font-bold text-ink-900">Continúa donde quedaste</h2>
+              <Link href="/jobs" className={quietLink}>Historial</Link>
+            </div>
+            {data.jobs === null ? (
+              <p className="flex items-center gap-2 border-t border-ink-200 pt-3 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Cargando…</p>
+            ) : openJobs.length ? (
+              <ul className="border-t border-ink-200">{openJobs.map((job) => <OpenJob key={job.id} job={job} onDownload={download} />)}</ul>
             ) : (
-              <p className="flex items-center gap-2 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Cargando…</p>
+              <p className="border-t border-ink-200 pt-3 text-sm text-ink-500">No tienes conversiones pendientes. Las terminadas y expiradas están en el Historial.</p>
             )}
-            <Link href="/templates" className={`${buttonStyles.secondary} w-full`}>Ver todas las plantillas</Link>
-          </div>
+          </section>
+          {data.templates ? <FrequentTemplates templates={shortcutTemplates} used={usedTemplates.length > 0} /> : null}
         </div>
       </div>
     </Shell>

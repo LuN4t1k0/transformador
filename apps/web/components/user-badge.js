@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserCircle } from 'lucide-react';
 import { api } from '../lib/api';
 
-export function UserBadge() {
+function initials(name) {
+  return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0].toUpperCase()).join('');
+}
+
+export function UserBadge({ variant = 'compact' }) {
   const [state, setState] = useState({ user: null, error: null });
 
   useEffect(() => {
@@ -21,9 +24,9 @@ export function UserBadge() {
   if (!state.user) return null;
 
   return (
-    <div className="flex h-9 min-w-0 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-medium text-ink-700">
-      <UserCircle size={17} className="shrink-0" aria-hidden="true" />
-      <span className="truncate">{state.user.displayName}</span>
+    <div className="flex min-w-0 items-center gap-2 text-sm text-ink-700" title={state.user.displayName}>
+      <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cobalt-50 text-xs font-bold text-cobalt-700">{initials(state.user.displayName)}</span>
+      <span className={variant === 'rail' ? 'truncate' : 'sr-only'}>{state.user.displayName}</span>
     </div>
   );
 }

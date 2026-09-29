@@ -1,18 +1,19 @@
 import { AlertCircle, CheckCircle2, CircleDashed, Clock, Loader2, XCircle } from 'lucide-react';
 
+// One status language across the app: green ready, amber needs a look, red error, grey nothing left to do.
 const tones = {
-  neutral: { icon: CircleDashed, className: 'bg-ink-100 text-ink-700 ring-ink-200' },
+  review: { icon: CircleDashed, className: 'bg-amber-100 text-amber-700 ring-amber-200' },
   progress: { icon: Loader2, className: 'bg-cobalt-50 text-cobalt-700 ring-cobalt-100', spin: true },
   success: { icon: CheckCircle2, className: 'bg-mint-50 text-mint-600 ring-mint-100' },
   danger: { icon: AlertCircle, className: 'bg-rose-50 text-rose-700 ring-rose-200' },
   muted: { icon: XCircle, className: 'bg-ink-100 text-ink-500 ring-ink-200' },
-  expired: { icon: Clock, className: 'bg-amber-50 text-amber-700 ring-amber-200' }
+  expired: { icon: Clock, className: 'bg-ink-100 text-ink-500 ring-ink-200' }
 };
 
 export const JOB_STATUS_VIEW = {
   QUEUED_ANALYSIS: { label: 'Leyendo archivo', tone: 'progress' },
   ANALYZING: { label: 'Leyendo archivo', tone: 'progress' },
-  READY: { label: 'Listo para revisar', tone: 'neutral' },
+  READY: { label: 'Por revisar', tone: 'review' },
   QUEUED_TRANSFORMATION: { label: 'En espera', tone: 'progress' },
   TRANSFORMING: { label: 'Generando', tone: 'progress' },
   VALIDATING: { label: 'Validando', tone: 'progress' },
@@ -26,7 +27,7 @@ export const JOB_STATUS_VIEW = {
 };
 
 export function JobStatusBadge({ status }) {
-  const view = JOB_STATUS_VIEW[status] || { label: status, tone: 'neutral' };
+  const view = JOB_STATUS_VIEW[status] || { label: status, tone: 'muted' };
   const tone = tones[view.tone];
   const Icon = tone.icon;
 
