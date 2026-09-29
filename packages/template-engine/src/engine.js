@@ -1,5 +1,6 @@
 const { parseNumber } = require('../../transformations/src/number');
 const { parseDate } = require('../../transformations/src/date');
+const { fullNamePart } = require('../../transformations/src/names');
 const { packTransformation, packValidation } = require('./packs');
 const {
   transformText,
@@ -200,6 +201,7 @@ function resolveSource(row, source, context = emptyContext()) {
       .map(displayText);
     return values.length ? values.join(source.separator ?? '') : null;
   }
+  if (source.type === 'NAME_PART') return fullNamePart(row[source.column], source);
   if (source.type === 'SPLIT_WORD') return splitParts(row[source.column], source.delimiter)[source.index] || null;
   if (source.type === 'SPLIT_WORD_RANGE') {
     const parts = splitParts(row[source.column], source.delimiter).slice(source.start || 0, source.end);

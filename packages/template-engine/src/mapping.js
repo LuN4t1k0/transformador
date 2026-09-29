@@ -5,7 +5,7 @@ const MAPPING_STATUS = Object.freeze({
 });
 
 const SPLIT_TYPES = new Set(['SPLIT_WORD', 'SPLIT_WORD_RANGE']);
-const SINGLE_COLUMN_TYPES = new Set(['COLUMN', ...SPLIT_TYPES]);
+const SINGLE_COLUMN_TYPES = new Set(['COLUMN', 'NAME_PART', ...SPLIT_TYPES]);
 
 function normalizeHeader(value) {
   return String(value ?? '')
@@ -79,6 +79,9 @@ function resolveTemplateForHeaders(template, headers) {
 }
 
 function getConfirmationReason(column, columnsByOrigin) {
+  if (column.source.type === 'NAME_PART') {
+    return 'Separar un nombre completo no siempre es exacto (por ejemplo, con apellidos o nombres compuestos). Revisa los ejemplos y confirma.';
+  }
   if (SPLIT_TYPES.has(column.source.type)) {
     return 'Separar por palabras no siempre es exacto (por ejemplo, apellidos compuestos). Revisa los ejemplos y confirma.';
   }

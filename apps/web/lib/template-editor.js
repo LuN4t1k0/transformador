@@ -132,6 +132,19 @@ export function splitColumn(columns, index, domain) {
   return [...columns.slice(0, index), withOption(original, first.option), ...added, ...columns.slice(index + 1)];
 }
 
+// Replaces a column with three: paternal surname, maternal surname and given names of the same full name.
+export function splitNameColumn(columns, index, source) {
+  const original = columns[index];
+  const parts = [['PATERNAL', 'APELLIDO PATERNO'], ['MATERNAL', 'APELLIDO MATERNO'], ['NAMES', 'NOMBRES']];
+  const others = columns.filter((_, position) => position !== index);
+  const created = [];
+  parts.forEach(([part, name], position) => {
+    const outputName = uniqueName(name, [...others, ...created]);
+    created.push({ ...structuredClone(original), id: position === 0 ? original.id : newId(), outputName, aliases: position === 0 ? original.aliases || [] : [], reviewed: false, source: { type: 'NAME_PART', column: source.column, order: source.order, part } });
+  });
+  return [...columns.slice(0, index), ...created, ...columns.slice(index + 1)];
+}
+
 export function duplicateColumn(columns, index) {
   const original = columns[index];
   const copy = { ...structuredClone(original), id: newId(), outputName: uniqueName(`${original.outputName} copia`, columns), aliases: [], reviewed: false };

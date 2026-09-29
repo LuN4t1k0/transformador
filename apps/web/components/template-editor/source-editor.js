@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, X } from 'lucide-react';
+import { Columns3, Plus, X } from 'lucide-react';
 import { CalcEditor, defaultCalc } from './calc-editor';
 import { CaseEditor, CoalesceEditor, DateCalcEditor, defaultRule, MapEditor, RowNumberEditor, TemplateTextEditor } from './rule-editors';
 import { useTemplateParameters } from './parameters-context';
@@ -11,6 +11,7 @@ const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
 const SOURCE_GROUPS = [
   { label: 'Tomar del archivo', types: [
     { value: 'COLUMN', label: 'Columna del archivo' },
+    { value: 'NAME_PART', label: 'Parte de un nombre completo (apellidos, nombres)' },
     { value: 'SPLIT', label: 'Separar (por palabras u otro separador)' },
     { value: 'CONCAT', label: 'Unir varias columnas' },
     { value: 'COALESCE', label: 'Primer valor no vacío' }
@@ -29,6 +30,19 @@ const SOURCE_GROUPS = [
     { value: 'ROW_NUMBER', label: 'Número correlativo' }
   ] },
   { label: 'Otros', types: [{ value: 'EMPTY', label: 'Vacía' }] }
+];
+
+export const NAME_ORDERS = [
+  { value: 'SURNAMES_FIRST', label: 'Apellidos y nombres (PÉREZ SOTO JUAN)' },
+  { value: 'NAMES_FIRST', label: 'Nombres y apellidos (JUAN PÉREZ SOTO)' }
+];
+
+export const NAME_PARTS = [
+  { value: 'PATERNAL', label: 'Apellido paterno' },
+  { value: 'MATERNAL', label: 'Apellido materno' },
+  { value: 'NAMES', label: 'Nombres' },
+  { value: 'FIRST_NAME', label: 'Primer nombre' },
+  { value: 'SURNAMES', label: 'Ambos apellidos' }
 ];
 
 const RULE_EDITORS = { CASE: CaseEditor, MAP: MapEditor, COALESCE: CoalesceEditor, TEMPLATE: TemplateTextEditor, DATE_CALC: DateCalcEditor, ROW_NUMBER: RowNumberEditor, CALC: CalcEditor };
@@ -81,13 +95,14 @@ export function convertSource(source, type, headers, parameters = []) {
   if (RULE_EDITORS[type] && type !== 'CALC') return defaultRule(type, column ? [column, ...(headers || [])] : headers);
   if (type === 'COLUMN') return { type: 'COLUMN', column };
   if (type === 'SPLIT') return { type: 'SPLIT_WORD', column, index: 0 };
+  if (type === 'NAME_PART') return { type: 'NAME_PART', column, order: source?.order || 'SURNAMES_FIRST', part: source?.part || 'PATERNAL' };
   if (type === 'CONCAT') return { type: 'CONCAT', separator: ' ', parts: [{ type: 'COLUMN', column }] };
   if (type === 'CONSTANT') return { type: 'CONSTANT', value: '' };
   if (type === 'CALC') return defaultCalc(column);
   return { type: 'EMPTY' };
 }
 
-export function SourceEditor({ idPrefix, source, headers, suggestions, outputColumns = [], onChange }) {
+export function SourceEditor({ idPrefix, source, headers, suggestions, outputColumns = [], onChange, onSplitName = null }) {
   const parameters = useTemplateParameters();
   const RuleEditor = RULE_EDITORS[source.type];
   if (RuleEditor) {
@@ -112,6 +127,36 @@ export function SourceEditor({ idPrefix, source, headers, suggestions, outputCol
       </div>
 
       <div className="min-w-0">
+        {source.type === 'NAME_PART' ? (
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="min-w-0">
+                <label className={labelClass} htmlFor={`${idPrefix}-column`}>Columna con el nombre completo</label>
+                <HeaderInput id={`${idPrefix}-column`} value={source.column} headers={headers} suggestions={suggestions} onChange={(column) => onChange({ ...source, column })} />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={`${idPrefix}-name-order`}>El nombre viene como</label>
+                <select id={`${idPrefix}-name-order`} className={inputClass} value={source.order} onChange={(event) => onChange({ ...source, order: event.target.value })}>
+                  {NAME_ORDERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={`${idPrefix}-name-part`}>Tomar</label>
+                <select id={`${idPrefix}-name-part`} className={inputClass} value={source.part} onChange={(event) => onChange({ ...source, part: event.target.value })}>
+                  {NAME_PARTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-ink-500">Los apellidos compuestos («De la Fuente», «San Martín») se mantienen juntos. Si el nombre trae coma («PÉREZ SOTO, JUAN») se usa para separar apellidos de nombres.</p>
+            {onSplitName ? (
+              <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-ink-200 px-2 text-xs font-medium text-cobalt-700 hover:bg-cobalt-50" onClick={() => onSplitName(source)}>
+                <Columns3 size={14} aria-hidden="true" />
+                Crear columnas de apellido paterno, apellido materno y nombres
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {source.type === 'PARAM' ? (
           <>
             <label className={labelClass} htmlFor={`${idPrefix}-param`}>Parámetro</label>

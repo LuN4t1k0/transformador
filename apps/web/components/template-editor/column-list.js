@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Check, CheckCircle2, ChevronDown, Copy, LayoutList, ListFilter, Plus, Rows3, Trash2 } from 'lucide-react';
 import { maskValue } from '../../lib/preview';
-import { createColumn, duplicateColumn, formatCell, moveColumn, splitColumn } from '../../lib/template-editor';
+import { createColumn, duplicateColumn, formatCell, moveColumn, splitColumn, splitNameColumn } from '../../lib/template-editor';
 import { describeIssue, describeSource, describeTransformations } from '../../lib/templates';
 import { StatusPill } from '../status-pill';
 import { FormatEditor } from './format-editor';
@@ -16,7 +16,7 @@ const iconButton = 'flex h-8 w-8 items-center justify-center rounded-md text-ink
 
 function sourceSample(values, source) {
   if (!values) return null;
-  if (source.type === 'COLUMN' || source.type.startsWith('SPLIT')) return values[source.column];
+  if (source.type === 'COLUMN' || source.type === 'NAME_PART' || source.type.startsWith('SPLIT')) return values[source.column];
   if (source.type === 'CONSTANT') return source.value;
   if (source.type === 'CONCAT') return source.parts.map((part) => (part.type === 'COLUMN' ? formatCell(values[part.column]) : part.value)).filter(Boolean).join(source.separator);
   if (['CALC', 'CASE', 'MAP', 'COALESCE', 'TEMPLATE', 'DATE_CALC', 'ROW_NUMBER'].includes(source.type)) return 'regla';
@@ -133,6 +133,7 @@ function InlineSourceSelect({ column, headers, outputNames, onChange, onExpand }
         <option value="__rule:TEMPLATE">Texto con variables…</option>
         <option value="__rule:DATE_CALC">Operación con fechas…</option>
         <option value="__rule:ROW_NUMBER">Número correlativo</option>
+        <option value="__rule:NAME_PART">Apellidos o nombres de un nombre completo…</option>
         <option value="__more">Unir o separar columnas…</option>
         {source.type !== 'EMPTY' ? <option value="__empty">Dejar vacía</option> : null}
       </optgroup>
@@ -190,7 +191,7 @@ function CompactRow({ column, index, row, sample, headers, outputNames, flag, on
   );
 }
 
-function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onRemove, onConfirm }) {
+function ColumnCard({ column, index, total, row, sample, headers, suggestions, outputColumns, outputNames, isFixedWidth, isExpanded, onToggle, onChange, onMove, onDuplicate, onSplit, onSplitName, onRemove, onConfirm }) {
   const idPrefix = `column-${column.id}`;
   const status = row?.status;
   const tone = status === 'FALTANTE' ? 'border-rose-200 bg-rose-50/40' : status === 'REQUIERE_CONFIRMACION' ? 'border-amber-200 bg-amber-50/40' : 'border-ink-200 bg-white';
@@ -246,7 +247,7 @@ function ColumnCard({ column, index, total, row, sample, headers, suggestions, o
 
       {isExpanded ? (
         <div className="space-y-4 border-t border-ink-100 bg-white px-3 py-4 sm:pl-11">
-          <SourceEditor idPrefix={idPrefix} source={column.source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(source) => onChange({ ...column, source, reviewed: false }, { sourceChanged: true })} />
+          <SourceEditor idPrefix={idPrefix} source={column.source} headers={headers} suggestions={suggestions} outputColumns={outputColumns} onChange={(source) => onChange({ ...column, source, reviewed: false }, { sourceChanged: true })} onSplitName={onSplitName} />
           {column.source.type === 'CALC'
             ? <p className="text-xs text-ink-500">El resultado de un cálculo es un número; el redondeo se define arriba.</p>
             : <FormatEditor idPrefix={idPrefix} column={column} onChange={(next) => onChange(next)} onSplit={onSplit} />}
@@ -368,6 +369,11 @@ export function ColumnList({ columns, onChange, headers = null, suggestions = []
                 onChange(next, { confirm: [column.id, next[index + 1].id] });
               }}
               onSplit={(domain) => onChange(splitColumn(columns, index, domain))}
+              onSplitName={(source) => {
+                // Asked for explicitly: the three new columns need no further confirmation.
+                const next = splitNameColumn(columns, index, source);
+                onChange(next, { confirm: next.slice(index, index + 3).map((created) => created.id) });
+              }}
               onRemove={() => onChange(columns.filter((_, columnIndex) => columnIndex !== index))}
               onConfirm={onConfirm}
             />

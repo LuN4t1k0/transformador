@@ -68,6 +68,7 @@ export function describeSource(source, outputNames) {
   if (source.type === 'SPLIT_WORD') return `${source.delimiter ? 'Parte' : 'Palabra'} ${source.index + 1} de «${source.column}»`;
   if (source.type === 'SPLIT_WORD_RANGE') return `Desde ${source.delimiter ? 'la parte' : 'la palabra'} ${source.start + 1} de «${source.column}»`;
   if (source.type === 'CONSTANT') return `Valor fijo «${source.value}»`;
+  if (source.type === 'NAME_PART') return `${NAME_PART_LABELS[source.part]} de «${source.column}»`;
   if (source.type === 'PARAM') return `Valor del ${describeOperand(source, outputNames)}`;
   if (source.type === 'CALC') return describeCalc(source, outputNames);
   if (source.type === 'CASE') {
@@ -116,6 +117,7 @@ export function describeRowSteps(steps, columns) {
   return lines;
 }
 
+const NAME_PART_LABELS = { PATERNAL: 'Apellido paterno', MATERNAL: 'Apellido materno', NAMES: 'Nombres', FIRST_NAME: 'Primer nombre', SURNAMES: 'Apellidos' };
 const TOTAL_LABELS = { SUM: 'suma', COUNT: 'cantidad', AVERAGE: 'promedio', MIN: 'mínimo', MAX: 'máximo' };
 const CELL_FORMAT_LABELS = { NUMBER: 'número', NUMBER_2: 'número con 2 decimales', PERCENT: 'porcentaje', DATE: 'fecha', TEXT: 'texto' };
 const PARAMETER_TYPE_LABELS = { TEXT: 'texto', NUMBER: 'número', DATE: 'fecha' };

@@ -20,6 +20,11 @@ function describeExpected(column) {
   const transformation = (column.transformations || []).find((item) => ['DATE_FORMAT', 'NUMBER'].includes(item.type) || packTransformation(item.type)?.example);
   if (['CALC', 'DATE_CALC'].includes(column.source.type)) return { example: column.source.type === 'CALC' ? 1234567 : '03-05-2024', text: 'Se usa en un cálculo' };
   if (['CASE', 'MAP', 'COALESCE', 'TEMPLATE'].includes(column.source.type)) return { example: 'Valor de ejemplo', text: 'Se usa en una regla de la plantilla' };
+  if (column.source.type === 'NAME_PART') {
+    return column.source.order === 'NAMES_FIRST'
+      ? { example: 'JUAN CARLOS PÉREZ SOTO', text: 'Nombre completo: nombres, apellido paterno y apellido materno' }
+      : { example: 'PÉREZ SOTO JUAN CARLOS', text: 'Nombre completo: apellido paterno, apellido materno y nombres' };
+  }
   if (column.source.type.startsWith('SPLIT')) return { example: 'PÉREZ SOTO JUAN CARLOS', text: 'Nombre completo: apellido paterno, apellido materno y nombres, separados por espacios' };
   if (transformation && packTransformation(transformation.type)?.example) return packTransformation(transformation.type).example(transformation);
   if (transformation?.type === 'DATE_FORMAT') {

@@ -1,4 +1,5 @@
 const { DATE_INPUT_FORMATS, DATE_OUTPUT_FORMATS } = require('../../transformations/src/date');
+const { NAME_ORDERS, NAME_PARTS } = require('../../transformations/src/names');
 const { packTransformation, packValidationTypes } = require('./packs');
 const { PARAMETER_TYPES, ParameterError, parseParameterValue, parameterReferences } = require('./params');
 
@@ -199,6 +200,14 @@ function normalizeSource(source, label) {
   if (type === 'COLUMN') return { type, column: normalizeSourceColumn(source.column, label) };
   if (type === 'CONSTANT') return { type, value: text(source.value ?? '', `el valor fijo de ${label}`) };
   if (type === 'PARAM') return normalizeOperand(source, label);
+  if (type === 'NAME_PART') {
+    return {
+      type,
+      column: normalizeSourceColumn(source.column, label),
+      order: oneOf(source.order || 'SURNAMES_FIRST', NAME_ORDERS, `${label}: el orden del nombre no es válido.`),
+      part: oneOf(source.part, NAME_PARTS, `${label}: la parte del nombre no es válida.`)
+    };
+  }
   const delimiter = source.delimiter ? { delimiter: text(source.delimiter, `el separador de ${label}`, { max: 5 }) || undefined } : {};
   if (delimiter.delimiter === undefined) delete delimiter.delimiter;
   if (type === 'SPLIT_WORD') return { type, column: normalizeSourceColumn(source.column, label), index: integer(source.index, `La palabra de ${label}`), ...delimiter };

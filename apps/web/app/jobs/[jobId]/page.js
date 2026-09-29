@@ -429,7 +429,7 @@ function JobWorkspace({ job, setJob }) {
   }
 
   function changeSource(column, header) {
-    const source = column.source.type.startsWith('SPLIT') ? { ...column.source, column: header } : { type: 'COLUMN', column: header };
+    const source = column.source.type.startsWith('SPLIT') || column.source.type === 'NAME_PART' ? { ...column.source, column: header } : { type: 'COLUMN', column: header };
     changeColumns(template.columns.map((candidate) => (candidate.id === column.id ? { ...candidate, source, reviewed: false } : candidate)), { unconfirm: column.id });
   }
 

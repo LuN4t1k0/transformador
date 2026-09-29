@@ -125,3 +125,17 @@ test('splits a RUT column into the number and a new check digit column right aft
   assert.deepEqual(next[1].source, { type: 'COLUMN', column: 'Rut' });
   validateTemplateConfig({ name: 'T', columns: next });
 });
+
+test('splits a full name column into paternal surname, maternal surname and given names', async () => {
+  const { splitNameColumn } = await load();
+  const columns = [
+    { id: 'n', outputName: 'NOMBRE COMPLETO', source: { type: 'COLUMN', column: 'Nombre' }, transformations: [{ type: 'TEXT', operation: 'UPPERCASE' }], validations: [] },
+    { id: 'm', outputName: 'NOMBRES', source: { type: 'COLUMN', column: 'Otro' }, transformations: [], validations: [] }
+  ];
+  const next = splitNameColumn(columns, 0, { type: 'NAME_PART', column: 'Nombre', order: 'NAMES_FIRST', part: 'PATERNAL' });
+  assert.deepEqual(next.map((column) => column.outputName), ['APELLIDO PATERNO', 'APELLIDO MATERNO', 'NOMBRES 2', 'NOMBRES']);
+  assert.equal(next[0].id, 'n');
+  assert.deepEqual(next.slice(0, 3).map((column) => column.source.part), ['PATERNAL', 'MATERNAL', 'NAMES']);
+  assert.deepEqual(next[2].transformations, [{ type: 'TEXT', operation: 'UPPERCASE' }], 'keeps the column format');
+  validateTemplateConfig({ name: 'T', columns: next });
+});

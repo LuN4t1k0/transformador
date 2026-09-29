@@ -194,6 +194,10 @@ function candidateSources(headers, rows) {
     candidates.push({ source: { type: 'COLUMN', column: header }, order, rank: 0 });
     const hasWords = rows.some((row) => typeof row.values[header] === 'string' && /\s/.test(row.values[header].trim()));
     if (!hasWords) return;
+    // Name parts go first: on a tie they win over plain word positions, since they handle compound surnames.
+    for (const nameOrder of ['SURNAMES_FIRST', 'NAMES_FIRST']) {
+      for (const part of ['PATERNAL', 'MATERNAL', 'NAMES', 'SURNAMES', 'FIRST_NAME']) candidates.push({ source: { type: 'NAME_PART', column: header, order: nameOrder, part }, order, rank: 1 });
+    }
     for (let index = 0; index < 4; index += 1) candidates.push({ source: { type: 'SPLIT_WORD', column: header, index }, order, rank: 1 });
     for (let start = 1; start < 4; start += 1) candidates.push({ source: { type: 'SPLIT_WORD_RANGE', column: header, start }, order, rank: 2 });
   });

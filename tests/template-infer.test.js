@@ -43,9 +43,9 @@ test('learns the PlanVital template from an input file and an output example', (
   assert.equal(template.columns.length, 17);
   assert.deepEqual(byName.RUT.source, { type: 'COLUMN', column: 'RUT' });
   assert.deepEqual(byName.RUT.transformations, [{ type: 'RUT_FORMAT', format: 'NO_DOTS_NO_DASH' }]);
-  assert.deepEqual(byName['APELLIDO PATERNO'].source, { type: 'SPLIT_WORD', column: 'Nombre completo', index: 0 });
-  assert.deepEqual(byName['APELLIDO MATERNO'].source, { type: 'SPLIT_WORD', column: 'Nombre completo', index: 1 });
-  assert.deepEqual(byName.NOMBRE.source, { type: 'SPLIT_WORD_RANGE', column: 'Nombre completo', start: 2 });
+  assert.deepEqual(byName['APELLIDO PATERNO'].source, { type: 'NAME_PART', column: 'Nombre completo', order: 'SURNAMES_FIRST', part: 'PATERNAL' });
+  assert.deepEqual(byName['APELLIDO MATERNO'].source, { type: 'NAME_PART', column: 'Nombre completo', order: 'SURNAMES_FIRST', part: 'MATERNAL' });
+  assert.deepEqual(byName.NOMBRE.source, { type: 'NAME_PART', column: 'Nombre completo', order: 'SURNAMES_FIRST', part: 'NAMES' });
   assert.ok(byName.NOMBRE.transformations.some((t) => t.operation === 'UPPERCASE'));
   assert.deepEqual(byName.PERIODO.source, { type: 'COLUMN', column: 'Periodo' });
   assert.deepEqual(byName.PERIODO.transformations, [{ type: 'DATE_FORMAT', inputFormat: 'AUTO', outputFormat: 'DD/MM/YYYY' }]);
@@ -138,7 +138,7 @@ test('aligns example rows by RUT when files list people in a different order', (
   const byName = Object.fromEntries(template.columns.map((column) => [column.outputName, column]));
   assert.equal(report.alignment, 'KEY');
   assert.equal(report.alignmentKey, 'RUT');
-  assert.deepEqual(byName.PATERNO.source, { type: 'SPLIT_WORD', column: 'Nombre completo', index: 0 });
+  assert.deepEqual(byName.PATERNO.source, { type: 'NAME_PART', column: 'Nombre completo', order: 'SURNAMES_FIRST', part: 'PATERNAL' });
   assert.deepEqual(byName.VALOR.source, { type: 'COLUMN', column: 'Monto' });
   assert.equal(report.byName.VALOR.method, 'EXAMPLE');
 });
