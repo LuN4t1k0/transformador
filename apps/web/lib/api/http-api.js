@@ -92,6 +92,15 @@ export function createHttpApi(baseUrl) {
     async duplicateTemplate(templateId, name) {
       return (await getJson(`/templates/${templateId}/duplicate`, { method: 'POST', json: { name } })).template;
     },
+    async getAssistantStatus() {
+      return getJson('/assistant/status');
+    },
+
+    // The rows are the draft's `exampleRows`, sent back as received (dates tagged as { $date }).
+    async proposeTemplate({ template, input, output, instruction }) {
+      return getJson('/assistant/propose', { method: 'POST', json: { template, input, output, instruction } });
+    },
+
     async createTemplateDraft({ input, output, inputSheet, outputSheet }) {
       const form = new FormData();
       if (inputSheet) form.append('inputSheet', inputSheet);

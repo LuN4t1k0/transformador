@@ -10,6 +10,7 @@ import { previewDesign } from '@previley-transformer/template-engine/src/output-
 import { ParametersContext } from './parameters-context';
 import { listPacks } from '../../lib/packs.js';
 import { ParametersEditor } from './parameters-editor';
+import { AssistantPanel } from './assistant-panel';
 import { api } from '../../lib/api';
 import { reviveSampleRows } from '../../lib/template-editor';
 import { buttonStyles, Notice, Panel } from '../panel';
@@ -42,7 +43,7 @@ function SampleLoader({ sample, onLoaded }) {
     setState({ loading: true, error: '' });
     try {
       const draft = await api.createTemplateDraft({ input: file });
-      onLoaded({ fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows) });
+      onLoaded({ fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows), exampleRows: draft.input.exampleRows });
       setState({ loading: false, error: '' });
     } catch (error) {
       setState({ loading: false, error: error.message });
@@ -63,7 +64,7 @@ function SampleLoader({ sample, onLoaded }) {
 }
 
 // Template editor: metadata, columns and output format. With a sample Excel it offers real headers, examples and a preview.
-export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSample = null, report = null }) {
+export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSample = null, outputExample = null, report = null }) {
   const [template, setTemplate] = useState(initial);
   const [sample, setSample] = useState(initialSample);
   // Columns suggested by a similar header name stay marked until the user accepts or changes them.
@@ -171,6 +172,17 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
           {report.ignored?.length ? <p className="mt-0.5 text-ink-500">Ignoramos del ejemplo: {report.ignored.join(', ')} (columnas ocultas o vacías).</p> : null}
         </Notice>
       ) : null}
+
+      <AssistantPanel
+        template={template}
+        sample={sample}
+        outputExample={outputExample}
+        onApply={(proposal) => {
+          // The proposal replaces columns, output and row steps; the template's own data stays as the user wrote it.
+          setTemplate({ ...template, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : { rowSteps: undefined }) });
+          setFlagged(new Map());
+        }}
+      />
 
       <Panel
         title="Columnas"

@@ -452,4 +452,4 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
   return { template, report };
 }
 
-module.exports = { detectFormat, inferTemplate };
+module.exports = { detectFormat, inferTemplate, alignRows, comparable };

@@ -78,3 +78,12 @@ El núcleo no conoce RUT, AFP ni UF. Un paquete aporta formatos, validaciones, d
 4. Separar el paquete Chile del núcleo.
    Hecho: el núcleo tiene un registro de paquetes (`packages/template-engine/src/packs.js`) y no conoce RUT ni AFP. `packages/packs/chile` aporta el formato y la validación de RUT, sus mensajes, los detectores de RUT y AFP, el RUT como clave para aprender de ejemplos, la detección del formato de RUT, el enmascarado en vistas previas, el formato «RUT» del editor y la plantilla PlanVital PAGEX. Cada despliegue elige sus paquetes con `DOMAIN_PACKS` (web: `NEXT_PUBLIC_DOMAIN_PACKS`); un paquete nuevo se agrega al catálogo de `packages/packs/index.js` sin tocar el núcleo.
 5. Varias tablas, validaciones genéricas, corrección en grilla y automatización.
+
+## Asistente de plantillas (IA)
+
+Opcional; se activa con `GEMINI_API_KEY` (y `GEMINI_MODEL` para elegir modelo; si el preferido está saturado o retirado se usa el siguiente de la lista). Solo interviene al **crear o ajustar** plantillas, nunca al convertir archivos.
+
+- Recibe encabezados, hasta 15 filas de cada archivo, la plantilla actual y las instrucciones del usuario.
+- Antes de salir del sistema, los datos se **seudonimizan**: RUT y otros identificadores de los paquetes se reemplazan por identificadores válidos ficticios escritos igual; nombres y textos libres, palabra por palabra por palabras inventadas del mismo largo; montos, fechas y valores categóricos (pocos valores que se repiten, como la AFP) se envían tal cual. El mismo valor real recibe siempre el mismo valor ficticio en ambos archivos, y los valores ficticios que aparezcan en la propuesta (equivalencias, constantes) se devuelven a los reales.
+- El modelo solo puede proponer plantillas con la herramienta `propose_template`; cada propuesta pasa por el validador y se mide contra el ejemplo de destino columna por columna, y ese resultado vuelve al modelo para que corrija (hasta 6 rondas).
+- El usuario ve la propuesta con el calce por columna y decide si la aplica. La auditoría registra solo metadatos (modelo, rondas, tokens, filas enviadas), nunca filas ni instrucciones.

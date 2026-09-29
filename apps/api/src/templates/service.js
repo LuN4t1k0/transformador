@@ -7,6 +7,9 @@ const { receiveFiles } = require('../jobs/upload');
 
 const DRAFT_ROWS = 30;
 const PREVIEW_ROWS = 5;
+const EXAMPLE_ROWS = 15;
+
+const encodeRow = (headers) => (row) => ({ rowNumber: row.rowNumber, values: Object.fromEntries(headers.map((header) => [header, encodeCell(row.values[header] ?? null)])) });
 
 function encodeCell(value) {
   return value instanceof Date ? { $date: value.toISOString() } : value;
@@ -132,9 +135,19 @@ function createTemplateService({ templates, storage, config, audit = { record: a
             sheet: input.sheet,
             sheets: input.sheets,
             headers: input.headers,
-            sampleRows: input.rows.slice(0, PREVIEW_ROWS).map((row) => ({ rowNumber: row.rowNumber, values: Object.fromEntries(Object.entries(row.values).map(([key, value]) => [key, encodeCell(value)])) }))
+            sampleRows: input.rows.slice(0, PREVIEW_ROWS).map(encodeRow(input.headers)),
+            exampleRows: input.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(input.headers))
           } : null,
-          output: output ? { fileName: output.fileName, sheet: output.sheet, sheets: output.sheets, headerRow: output.headerRow, headers: output.visibleHeaders, ignoredHeaders: output.ignoredHeaders } : null
+          output: output ? {
+            fileName: output.fileName,
+            sheet: output.sheet,
+            sheets: output.sheets,
+            headerRow: output.headerRow,
+            headers: output.visibleHeaders,
+            ignoredHeaders: output.ignoredHeaders,
+            // For the template assistant, which checks its proposals against the destination example.
+            exampleRows: output.rows.slice(0, EXAMPLE_ROWS).map(encodeRow(output.visibleHeaders))
+          } : null
         };
       } finally {
         await Promise.all(Object.values(files).map((upload) => storage.delete(upload.key).catch(() => {})));

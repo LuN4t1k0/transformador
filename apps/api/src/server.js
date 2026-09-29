@@ -15,6 +15,8 @@ const { createAuthenticator } = require('./auth/authenticator');
 const { HttpError, applyCors, createRouter, readJson, sendError, sendJson } = require('./http');
 const { createJobService } = require('./jobs/service');
 const { createTemplateService } = require('./templates/service');
+const { createAssistantService } = require('./assistant/service');
+const { createGeminiProvider } = require('./assistant/gemini');
 const { attachRealtime } = require('./realtime/socket');
 
 const port = Number(process.env.PORT || 4000);
@@ -45,6 +47,11 @@ async function main() {
   });
   const audit = createAuditRepository(pool, { log });
   const templateService = createTemplateService({ templates, storage, config, audit });
+  // The template assistant is optional: enabled only when a Gemini key is configured.
+  const assistantService = createAssistantService({
+    provider: process.env.GEMINI_API_KEY ? createGeminiProvider({ apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || null }) : null,
+    audit
+  });
   const jobService = createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config, audit });
 
   const match = createRouter([
@@ -55,6 +62,8 @@ async function main() {
     ['GET', '/templates', async ({ url }) => ({ templates: await templateService.list({ includeArchived: url.searchParams.get('archived') === 'true' }) })],
     ['GET', '/templates/facets', async () => templateService.facets()],
     ['POST', '/templates/draft', async ({ request }) => templateService.draft(request)],
+    ['GET', '/assistant/status', async () => assistantService.status()],
+    ['POST', '/assistant/propose', async ({ user, request }) => assistantService.propose(await readJson(request), user)],
     ['POST', '/templates', async ({ user, request }) => ({ status: 201, body: { template: await templateService.create((await readJson(request)).configuration, user) } })],
     ['GET', '/templates/:templateId', async ({ params }) => ({ template: await templateService.get(params.templateId) })],
     ['GET', '/templates/:templateId/example', async ({ params, response }) => {

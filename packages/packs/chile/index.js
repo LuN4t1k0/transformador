@@ -1,4 +1,4 @@
-const { normalizeRut, isValidRut, formatRut } = require('./rut');
+const { normalizeRut, isValidRut, formatRut, calculateDv } = require('./rut');
 const { planVitalPagexTemplate } = require('./planvital-pagex');
 
 // Chile pack: RUT (format, validation, detection, masking), AFP detection and the PlanVital PAGEX template.
@@ -21,6 +21,17 @@ function normalized(text) {
 function rutKey(value) {
   const text = String(value ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
   return text.length >= 7 && isValidRut(text) ? text : null;
+}
+
+// `digits` (a string of pseudo-random digits) builds the fake body; the same real RUT must get the same digits.
+function fakeRut(value, digits) {
+  const real = rutKey(value);
+  if (!real) return null;
+  const length = real.length - 1;
+  const body = `${(Number(digits[0]) % 9) + 1}${digits.slice(1, length)}`.padEnd(length, '7');
+  const text = String(value).trim();
+  const format = text.includes('.') ? 'DOTS_DASH' : text.includes('-') ? 'NO_DOTS_DASH' : 'NO_DOTS_NO_DASH';
+  return formatRut(`${body}${calculateDv(body)}`, format);
 }
 
 // Keeps the format, the first two digits and the verifier: 12.•••.•••-5
@@ -86,7 +97,9 @@ const chilePack = {
     }
   ],
 
-  keys: [{ id: 'CHILEAN_RUT', label: 'RUT', key: rutKey }],
+  // `fake` gives a valid RUT with the same number of digits, written like the original (dots, dash or neither),
+  // for pseudonymized samples sent outside (e.g. to the template assistant).
+  keys: [{ id: 'CHILEAN_RUT', label: 'RUT', key: rutKey, fake: fakeRut }],
 
   // RUTs written with dashes are recognized before dates; plain digits only after dates ruled them out,
   // and they keep 8-digit dates (20240503) from being read as RUTs when every value has a valid verifier.

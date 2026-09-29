@@ -211,7 +211,8 @@ function NewTemplate() {
       initial: { ...draft.template, name: '' },
       report: { ...draft.report, ignored: draft.output?.ignoredHeaders || [] },
       note: draft.output ? `Deducida de «${draft.input?.fileName || '—'}» y del ejemplo «${draft.output.fileName}».` : `Creada desde los encabezados de «${draft.input.fileName}».`,
-      sample: draft.input ? { fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows) } : null
+      sample: draft.input ? { fileName: draft.input.fileName, sheet: draft.input.sheet, headers: draft.input.headers, rows: reviveSampleRows(draft.input.sampleRows), exampleRows: draft.input.exampleRows } : null,
+      outputExample: draft.output?.exampleRows ? { fileName: draft.output.fileName, headers: draft.output.headers, rows: draft.output.exampleRows } : null
     };
   }
 
@@ -245,7 +246,7 @@ function NewTemplate() {
     body = (
       <>
         {examples ? <ExampleSources examples={examples} isBusy={rerunning} onChangeSheet={changeExampleSheet} /> : null}
-        <TemplateForm key={editor.key || 'editor'} initial={editor.initial} initialSample={editor.sample} report={editor.report} note={editor.note} submitLabel="Crear plantilla" onSubmit={save} />
+        <TemplateForm key={editor.key || 'editor'} initial={editor.initial} initialSample={editor.sample} outputExample={editor.outputExample || null} report={editor.report} note={editor.note} submitLabel="Crear plantilla" onSubmit={save} />
       </>
     );
   } else if (method === 'example') {
