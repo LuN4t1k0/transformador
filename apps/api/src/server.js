@@ -84,6 +84,7 @@ async function main() {
     ['POST', '/templates/:templateId/unarchive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, false, user) })],
     ['GET', '/jobs', async ({ user }) => ({ jobs: await jobService.list(user) })],
     ['POST', '/jobs', async ({ user, request }) => ({ status: 201, body: { job: await jobService.create(request, user) } })],
+    ['POST', '/jobs/delete', async ({ user }) => jobService.removeAll(user)],
     ['GET', '/jobs/:jobId', async ({ user, params }) => ({ job: await jobService.get(params.jobId, user) })],
     ['GET', '/jobs/:jobId/activity', async ({ user, params }) => ({ events: await jobService.activity(params.jobId, user) })],
     ['PATCH', '/jobs/:jobId/sheet', async ({ user, params, request }) => ({ job: await jobService.selectSheet(params.jobId, user, await readJson(request)) })],
@@ -95,6 +96,7 @@ async function main() {
     ['GET', '/jobs/:jobId/sample', async ({ user, params }) => jobService.sample(params.jobId, user)],
     ['POST', '/jobs/:jobId/transform', async ({ user, params, request }) => ({ job: await jobService.transform(params.jobId, user, await readJson(request)) })],
     ['POST', '/jobs/:jobId/purge', async ({ user, params }) => ({ job: await jobService.purge(params.jobId, user) })],
+    ['POST', '/jobs/:jobId/delete', async ({ user, params }) => jobService.remove(params.jobId, user)],
     ['POST', '/jobs/:jobId/cancel', async ({ user, params }) => ({ job: await jobService.cancel(params.jobId, user) })],
     ['GET', '/jobs/:jobId/download', async ({ user, params, response, url }) => {
       await jobService.download(params.jobId, user, response, { file: url.searchParams.get('file') === 'rejects' ? 'rejects' : 'output' });

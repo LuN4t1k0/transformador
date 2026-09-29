@@ -168,6 +168,12 @@ export function createHttpApi(baseUrl) {
     async purgeJob(jobId) {
       return (await getJson(`/jobs/${jobId}/purge`, { method: 'POST' })).job;
     },
+    async deleteJob(jobId) {
+      return getJson(`/jobs/${jobId}/delete`, { method: 'POST' });
+    },
+    async deleteAllJobs() {
+      return getJson('/jobs/delete', { method: 'POST' });
+    },
     async cancelJob(jobId) {
       return (await getJson(`/jobs/${jobId}/cancel`, { method: 'POST' })).job;
     },

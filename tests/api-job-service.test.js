@@ -57,3 +57,51 @@ test('transform validates and stores the values of the template parameters', asy
   await service.transform(baseJob.id, user, { parameters: { periodo: '31/05/2024', otro: 'x' } });
   assert.deepEqual(updates[0].runParameters, { periodo: '2024-05-31', tasa: 5 });
 });
+
+test('deleting a job hides it, cancels pending work and removes temporary files', async () => {
+  const deleted = [];
+  const removed = [];
+  const cancelFlags = [];
+  const job = { ...baseJob, status: 'QUEUED_ANALYSIS', inputStorageKey: 'input.xlsx', outputStorageKey: 'out.xlsx', rejectsStorageKey: 'bad.xlsx' };
+  const service = createJobService({
+    jobs: {
+      getForUser: async () => ({ ...job }),
+      markDeletedForUser: async (id, userId, options) => {
+        deleted.push({ id, userId, options });
+        return { ...job, status: options.cancel ? 'CANCELLED' : job.status, previousStatus: job.status };
+      }
+    },
+    templates: { getVersion: async () => null },
+    storage: { delete: async (key) => removed.push(key) },
+    queues: { analysis: { remove: async (id) => removed.push(`analysis:${id}`) }, transformation: { remove: async (id) => removed.push(`transformation:${id}`) } },
+    redis: { set: async (...args) => cancelFlags.push(args) },
+    publish: async () => {},
+    audit: { record: async () => {} },
+    config
+  });
+
+  await assert.deepEqual(await service.remove(baseJob.id, user), { deleted: true });
+  assert.deepEqual(deleted, [{ id: baseJob.id, userId: user.id, options: { cancel: true } }]);
+  assert.deepEqual(removed.sort(), [`analysis:${baseJob.id}`, 'bad.xlsx', 'input.xlsx', 'out.xlsx', `transformation:${baseJob.id}`].sort());
+  assert.equal(cancelFlags.length, 1);
+});
+
+test('deleting all jobs returns the amount removed', async () => {
+  const service = createJobService({
+    jobs: {
+      markAllDeletedForUser: async (userId, options) => [
+        { ...baseJob, id: '00000000-0000-0000-0000-000000000002', userId, status: 'CANCELLED', previousStatus: 'READY', inputStorageKey: 'a.xlsx' },
+        { ...baseJob, id: '00000000-0000-0000-0000-000000000003', userId, status: 'DOWNLOADED', previousStatus: 'DOWNLOADED', outputStorageKey: 'b.xlsx' }
+      ].map((job) => ({ ...job, options }))
+    },
+    templates: { getVersion: async () => null },
+    storage: { delete: async () => {} },
+    queues: { analysis: { remove: async () => {} }, transformation: { remove: async () => {} } },
+    redis: { set: async () => {} },
+    publish: async () => {},
+    audit: { record: async () => {} },
+    config
+  });
+
+  assert.deepEqual(await service.removeAll(user), { deleted: 2 });
+});

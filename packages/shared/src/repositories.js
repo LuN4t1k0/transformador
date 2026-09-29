@@ -61,6 +61,7 @@ function toJob(row) {
     confirmedIds: row.confirmed_ids || [],
     runParameters: row.run_parameters || {},
     outputFileName: row.output_file_name,
+    previousStatus: row.previous_status,
     validationSummary: row.validation_summary,
     errorCode: row.error_code,
     errorMessage: row.error_message,
@@ -68,6 +69,7 @@ function toJob(row) {
     completedAt: row.completed_at,
     downloadedAt: row.downloaded_at,
     purgedAt: row.purged_at,
+    deletedAt: row.deleted_at,
     expiresAt: row.expires_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -272,12 +274,12 @@ function createJobRepository(pool) {
     },
 
     async getForUser(id, userId) {
-      const { rows } = await pool.query('select * from transformation_jobs where id = $1 and user_id = $2', [id, userId]);
+      const { rows } = await pool.query('select * from transformation_jobs where id = $1 and user_id = $2 and deleted_at is null', [id, userId]);
       return toJob(rows[0]);
     },
 
     async listForUser(userId, limit = 50) {
-      const { rows } = await pool.query('select * from transformation_jobs where user_id = $1 order by created_at desc limit $2', [userId, limit]);
+      const { rows } = await pool.query('select * from transformation_jobs where user_id = $1 and deleted_at is null order by created_at desc limit $2', [userId, limit]);
       return rows.map(toJob);
     },
 
@@ -291,7 +293,7 @@ function createJobRepository(pool) {
         values.push(JSON_FIELDS.has(field) && value !== null ? JSON.stringify(value) : value);
         sets.push(`${column} = $${values.length}`);
       }
-      let where = 'id = $1';
+      let where = 'id = $1 and deleted_at is null';
       if (expectStatus) {
         values.push([].concat(expectStatus));
         where += ` and status = any($${values.length})`;
@@ -307,7 +309,7 @@ function createJobRepository(pool) {
     async lastUsedTemplates(userId) {
       const { rows } = await pool.query(
         `select template_id, max(completed_at) as last_used_at from transformation_jobs
-         where user_id = $1 and template_id is not null and completed_at is not null
+         where user_id = $1 and template_id is not null and completed_at is not null and deleted_at is null
          group by template_id`,
         [userId]
       );
@@ -315,14 +317,52 @@ function createJobRepository(pool) {
     },
 
     async countActiveForUser(userId, statuses) {
-      const { rows } = await pool.query('select count(*)::int as count from transformation_jobs where user_id = $1 and status = any($2)', [userId, statuses]);
+      const { rows } = await pool.query('select count(*)::int as count from transformation_jobs where user_id = $1 and status = any($2) and deleted_at is null', [userId, statuses]);
       return rows[0].count;
     },
 
     async findExpired(now = new Date(), limit = 100) {
       const { rows } = await pool.query(
-        'select * from transformation_jobs where expires_at < $1 and not (status = any($2)) order by expires_at limit $3',
+        'select * from transformation_jobs where expires_at < $1 and deleted_at is null and not (status = any($2)) order by expires_at limit $3',
         [now, TERMINAL_STATUSES, limit]
+      );
+      return rows.map(toJob);
+    },
+
+    async markDeletedForUser(jobId, userId, { cancel = false } = {}) {
+      const { rows } = await pool.query(
+        `with target as (
+           select * from transformation_jobs where id = $1 and user_id = $2 and deleted_at is null
+         )
+         update transformation_jobs t
+         set deleted_at = now(),
+             status = case when $3 then $4 else t.status end,
+             stage = case when $3 then null else t.stage end,
+             purged_at = coalesce(t.purged_at, now()),
+             updated_at = now()
+         from target
+         where t.id = target.id
+         returning t.*, target.status as previous_status`,
+        [jobId, userId, cancel, 'CANCELLED']
+      );
+      return toJob(rows[0]);
+    },
+
+    async markAllDeletedForUser(userId, { cancelStatuses = [] } = {}) {
+      const { rows } = await pool.query(
+        `with target as (
+           select * from transformation_jobs where user_id = $1 and deleted_at is null
+         )
+         update transformation_jobs t
+         set deleted_at = now(),
+             status = case when t.status = any($2) then $3 else t.status end,
+             stage = case when t.status = any($2) then null else t.stage end,
+             purged_at = coalesce(t.purged_at, now()),
+             updated_at = now()
+         from target
+         where t.id = target.id
+         returning t.*, target.status as previous_status`,
+        [userId, cancelStatuses, 'CANCELLED']
       );
       return rows.map(toJob);
     }

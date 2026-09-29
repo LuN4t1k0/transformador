@@ -58,7 +58,6 @@ export default function TemplatesPage() {
   const [actionError, setActionError] = useState('');
   const [query, setQuery] = useState('');
   const [destination, setDestination] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
   const [advanced] = useAdvancedMode();
   // Set by the detail page after deleting a template, to confirm what happened.
   const [deletedName, setDeletedName] = useState('');
@@ -68,8 +67,8 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     setTemplates(null);
-    api.listTemplates({ includeArchived: showArchived }).then(setTemplates).catch(setError);
-  }, [showArchived]);
+    api.listTemplates().then(setTemplates).catch(setError);
+  }, []);
 
   const destinations = useMemo(() => [...new Set((templates || []).map((t) => t.destination || NO_DESTINATION))].sort((a, b) => (a === NO_DESTINATION) - (b === NO_DESTINATION) || a.localeCompare(b)), [templates]);
   const groups = useMemo(() => {
@@ -117,7 +116,6 @@ export default function TemplatesPage() {
             <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-ink-400" aria-hidden="true" />
             <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre, destino o proceso" className="h-9 w-full rounded-md border border-ink-200 bg-white pl-9 pr-3 text-sm text-ink-900" />
           </label>
-          <button type="button" aria-pressed={showArchived} className={chip(showArchived)} onClick={() => setShowArchived(!showArchived)}>Mostrar archivadas</button>
         </div>
         {destinations.length > 1 ? (
           <div role="group" aria-label="Filtrar por destino" className="mb-2 flex flex-wrap gap-2">

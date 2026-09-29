@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, Download, Loader2, Upload } from 'lucide-react';
+import { AlertCircle, Download, Loader2, Trash2, Upload } from 'lucide-react';
 import { FileDropzone } from '../components/file-dropzone';
 import { BatchConvert } from '../components/home/batch-convert';
+import { ConfirmDialog } from '../components/confirm-dialog';
 import { formatDateTime, JobStatusBadge } from '../components/job-status';
 import { buttonStyles, Notice } from '../components/panel';
 import { ReuseUploadButton } from '../components/reuse-upload-button';
@@ -58,7 +59,7 @@ function Upload_({ defaultTemplateId }) {
   return <FileDropzone variant="sheet" error={state.error} onFile={handleFile} multiple onFiles={setBatch} />;
 }
 
-function OpenJob({ job, onDownload }) {
+function OpenJob({ job, onDownload, onDelete }) {
   const downloadable = DOWNLOADABLE.has(job.status);
   const running = !downloadable && job.status !== 'READY';
   return (
@@ -76,6 +77,10 @@ function OpenJob({ job, onDownload }) {
       ) : (
         <Link href={`/jobs/${job.id}`} className={buttonStyles.secondary}>{running ? 'Ver avance' : 'Continuar'}</Link>
       )}
+      <button type="button" className={buttonStyles.secondary} title="Eliminar de la lista" onClick={() => onDelete(job)}>
+        <Trash2 size={16} aria-hidden="true" />
+        Eliminar
+      </button>
     </li>
   );
 }
@@ -113,6 +118,7 @@ function FrequentTemplates({ templates, used }) {
 export default function HomePage() {
   const [data, setData] = useState({ jobs: null, templates: null, error: null });
   const [actionError, setActionError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
     Promise.all([api.listJobs(), api.listTemplates()])
@@ -139,6 +145,21 @@ export default function HomePage() {
     }
   }
 
+  async function deleteJob(job) {
+    setActionError('');
+    await api.deleteJob(job.id);
+    setData((current) => ({ ...current, jobs: (current.jobs || []).filter((item) => item.id !== job.id) }));
+    setDeleteTarget(null);
+  }
+
+  async function deleteOpenJobs() {
+    setActionError('');
+    await Promise.all(openJobs.map((job) => api.deleteJob(job.id)));
+    const deleted = new Set(openJobs.map((job) => job.id));
+    setData((current) => ({ ...current, jobs: (current.jobs || []).filter((job) => !deleted.has(job.id)) }));
+    setDeleteTarget(null);
+  }
+
   return (
     <Shell>
       <div className="mx-auto max-w-6xl">
@@ -158,12 +179,20 @@ export default function HomePage() {
           <section>
             <div className="mb-2 flex items-baseline justify-between gap-3">
               <h2 className="text-lg font-bold text-ink-900">Continúa donde quedaste</h2>
-              <Link href="/jobs" className={quietLink}>Historial</Link>
+              <div className="flex items-center gap-4">
+                {openJobs.length ? (
+                  <button type="button" className={`${quietLink} text-ink-500`} onClick={() => setDeleteTarget({ type: 'open-all', count: openJobs.length })}>
+                    <Trash2 size={14} aria-hidden="true" />
+                    Borrar todo
+                  </button>
+                ) : null}
+                <Link href="/jobs" className={quietLink}>Historial</Link>
+              </div>
             </div>
             {data.jobs === null ? (
               <p className="flex items-center gap-2 border-t border-ink-200 pt-3 text-sm text-ink-500"><Loader2 size={16} className="animate-spin" aria-hidden="true" />Cargando…</p>
             ) : openJobs.length ? (
-              <ul className="border-t border-ink-200">{openJobs.map((job) => <OpenJob key={job.id} job={job} onDownload={download} />)}</ul>
+              <ul className="border-t border-ink-200">{openJobs.map((job) => <OpenJob key={job.id} job={job} onDownload={download} onDelete={(item) => setDeleteTarget({ type: 'job', job: item })} />)}</ul>
             ) : (
               <p className="border-t border-ink-200 pt-3 text-sm text-ink-500">No tienes conversiones pendientes. Las terminadas y expiradas están en el Historial.</p>
             )}
@@ -171,6 +200,28 @@ export default function HomePage() {
           {data.templates ? <FrequentTemplates templates={shortcutTemplates} used={usedTemplates.length > 0} /> : null}
         </div>
       </div>
+      {deleteTarget?.type === 'job' ? (
+        <ConfirmDialog
+          title={`Eliminar «${deleteTarget.job.fileName}»`}
+          confirmLabel="Eliminar conversión"
+          loadingLabel="Eliminando…"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteJob(deleteTarget.job)}
+        >
+          Esta conversión desaparecerá de “Continúa donde quedaste” y del historial. Si está pendiente, se cancelará y se limpiarán sus archivos temporales.
+        </ConfirmDialog>
+      ) : null}
+      {deleteTarget?.type === 'open-all' ? (
+        <ConfirmDialog
+          title="Borrar conversiones pendientes"
+          confirmLabel="Borrar todo"
+          loadingLabel="Borrando…"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={deleteOpenJobs}
+        >
+          Se eliminarán {deleteTarget.count} {deleteTarget.count === 1 ? 'conversión pendiente' : 'conversiones pendientes'} de esta lista. Los procesos en curso se cancelarán.
+        </ConfirmDialog>
+      ) : null}
     </Shell>
   );
 }

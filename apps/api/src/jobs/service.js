@@ -82,6 +82,14 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
     await Promise.all([job.inputStorageKey, job.outputStorageKey, job.rejectsStorageKey].filter(Boolean).map((key) => storage.delete(key).catch(() => {})));
   }
 
+  async function stopQueues(job) {
+    if (CANCELLABLE.has(job.previousStatus || job.status) && redis.set) await redis.set(cancelFlagKey(job.id), '1', 'EX', 24 * 60 * 60).catch(() => {});
+    await Promise.all([
+      queues.analysis?.remove?.(job.id),
+      queues.transformation?.remove?.(job.id)
+    ].filter(Boolean).map((removal) => removal.catch(() => {})));
+  }
+
   return {
     view,
 
@@ -319,6 +327,28 @@ function createJobService({ jobs, templates, templateService, storage, queues, r
       await auditJob(job, user, 'JOB_CANCELLED', { previousStatus: job.status });
       await publish(job.id, 'job:cancelled');
       return view(cancelled);
+    },
+
+    async remove(jobId, user) {
+      const job = await requireJob(jobId, user);
+      await stopQueues(job);
+      await purgeFiles(job);
+      const deleted = await jobs.markDeletedForUser(job.id, user.id, { cancel: CANCELLABLE.has(job.status) });
+      if (!deleted) throw new HttpError(404, 'NOT_FOUND', 'El job no existe o no tienes acceso a él.');
+      await auditJob(job, user, 'JOB_DELETED', { previousStatus: job.status });
+      await publish(job.id, CANCELLABLE.has(job.status) ? 'job:cancelled' : 'job:purged');
+      return { deleted: true };
+    },
+
+    async removeAll(user) {
+      const deleted = await jobs.markAllDeletedForUser(user.id, { cancelStatuses: [...CANCELLABLE] });
+      await Promise.all(deleted.map(async (job) => {
+        await stopQueues(job);
+        await purgeFiles(job);
+        await auditJob(job, user, 'JOB_DELETED', { previousStatus: job.previousStatus || job.status, bulk: true });
+        await publish(job.id, CANCELLABLE.has(job.previousStatus || job.status) ? 'job:cancelled' : 'job:purged');
+      }));
+      return { deleted: deleted.length };
     },
 
     async download(jobId, user, response, { file = 'output' } = {}) {

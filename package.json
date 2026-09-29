@@ -11,9 +11,9 @@
   "scripts": {
     "dev": "docker compose up --build --renew-anon-volumes",
     "dev:detached": "docker compose up --build --renew-anon-volumes -d",
-    "dev:api": "node apps/api/src/server.js",
+    "dev:api": "node --watch apps/api/src/server.js",
     "dev:web": "npm --workspace @previley-transformer/web run dev",
-    "dev:worker": "node apps/worker/src/worker.js",
+    "dev:worker": "node --watch apps/worker/src/worker.js",
     "stop": "docker compose down",
     "logs": "docker compose logs -f",
     "test": "node --require ./packages/packs/register.js --test tests/*.test.js",

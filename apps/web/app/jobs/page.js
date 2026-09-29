@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, Download, History, Loader2, Repeat, Search } from 'lucide-react';
+import { AlertCircle, Download, History, Loader2, Repeat, Search, Trash2 } from 'lucide-react';
 import { formatTime, JobStatusBadge } from '../../components/job-status';
 import { buttonStyles, Notice } from '../../components/panel';
+import { ConfirmDialog } from '../../components/confirm-dialog';
 import { Shell } from '../../components/shell';
 import { api } from '../../lib/api';
 import { downloadBlob } from '../../lib/download';
@@ -45,7 +46,7 @@ function templateLabel(job) {
   return job.workingTemplate ? 'Plantilla nueva, sin guardar' : 'Sin plantilla elegida';
 }
 
-function JobRow({ job, onDownload }) {
+function JobRow({ job, onDownload, onDelete }) {
   const rows = job.summary?.rowSteps?.outputRows ?? job.summary?.validRows;
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-100 py-3">
@@ -73,6 +74,10 @@ function JobRow({ job, onDownload }) {
         {job.workingTemplate && !OPEN.has(job.status) ? (
           <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={quietLink}>Repetir con otro archivo</ReuseUploadButton>
         ) : null}
+        <button type="button" className={`${quietLink} text-ink-500`} onClick={() => onDelete(job)} title="Eliminar del historial">
+          <Trash2 size={15} aria-hidden="true" />
+          Eliminar
+        </button>
       </div>
     </li>
   );
@@ -85,6 +90,7 @@ export default function JobsPage() {
   const [filter, setFilter] = useState('open');
   const [query, setQuery] = useState('');
   const [showClosed, setShowClosed] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
     api.listJobs().then((list) => {
@@ -100,7 +106,7 @@ export default function JobsPage() {
     const matches = (job) => !text || job.fileName.toLowerCase().includes(text) || templateLabel(job).toLowerCase().includes(text);
     return (jobs || []).filter(FILTERS.find((item) => item.id === filter).test).filter(matches);
   }, [jobs, filter, query]);
-  // Expired, deleted and cancelled conversions stay available but folded: they need no action.
+  // Expired, purged and cancelled conversions stay available but folded: they need no action.
   const active = visible.filter((job) => !CLOSED.has(job.status));
   const closed = visible.filter((job) => CLOSED.has(job.status));
 
@@ -111,6 +117,21 @@ export default function JobsPage() {
     } catch (downloadError) {
       setActionError(downloadError.message);
     }
+  }
+
+  async function deleteJob(job) {
+    setActionError('');
+    await api.deleteJob(job.id);
+    setJobs((current) => (current || []).filter((item) => item.id !== job.id));
+    setDeleteTarget(null);
+  }
+
+  async function deleteAllJobs() {
+    setActionError('');
+    await api.deleteAllJobs();
+    setJobs([]);
+    setShowClosed(false);
+    setDeleteTarget(null);
   }
 
   return (
@@ -152,6 +173,10 @@ export default function JobsPage() {
                 <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-ink-400" aria-hidden="true" />
                 <input type="search" className="h-9 w-full rounded-md border border-ink-200 bg-white pl-9 pr-3 text-sm" placeholder="Buscar archivo o plantilla" value={query} onChange={(event) => setQuery(event.target.value)} />
               </label>
+              <button type="button" className={`${buttonStyles.secondary} text-ink-500`} onClick={() => setDeleteTarget({ type: 'all', count: jobs.length })}>
+                <Trash2 size={16} aria-hidden="true" />
+                Borrar historial
+              </button>
             </div>
 
             {actionError ? <div className="mb-4"><Notice tone="danger" icon={AlertCircle} role="alert">{actionError}</Notice></div> : null}
@@ -163,7 +188,7 @@ export default function JobsPage() {
             {groupByDay(active).map((group) => (
               <section key={group.label} className="mb-2">
                 <h2 className="mb-1 mt-5 text-sm font-bold capitalize text-ink-500">{group.label}</h2>
-                <ul className="border-t border-ink-200">{group.jobs.map((job) => <JobRow key={job.id} job={job} onDownload={download} />)}</ul>
+                <ul className="border-t border-ink-200">{group.jobs.map((job) => <JobRow key={job.id} job={job} onDownload={download} onDelete={(item) => setDeleteTarget({ type: 'job', job: item })} />)}</ul>
               </section>
             ))}
 
@@ -172,13 +197,13 @@ export default function JobsPage() {
                 groupByDay(closed).map((group) => (
                   <section key={`closed-${group.label}`} className="mb-2">
                     <h2 className="mb-1 mt-5 text-sm font-bold capitalize text-ink-500">{group.label}</h2>
-                    <ul className="border-t border-ink-200">{group.jobs.map((job) => <JobRow key={job.id} job={job} onDownload={download} />)}</ul>
+                    <ul className="border-t border-ink-200">{group.jobs.map((job) => <JobRow key={job.id} job={job} onDownload={download} onDelete={(item) => setDeleteTarget({ type: 'job', job: item })} />)}</ul>
                   </section>
                 ))
               ) : (
                 <div className="mt-6 flex justify-center">
                   <button type="button" className={buttonStyles.secondary} onClick={() => setShowClosed(true)}>
-                    Mostrar {closed.length} {closed.length === 1 ? 'conversión expirada o eliminada' : 'conversiones expiradas o eliminadas'}
+                    Mostrar {closed.length} {closed.length === 1 ? 'conversión expirada o cerrada' : 'conversiones expiradas o cerradas'}
                   </button>
                 </div>
               )
@@ -186,6 +211,28 @@ export default function JobsPage() {
           </>
         )}
       </div>
+      {deleteTarget?.type === 'job' ? (
+        <ConfirmDialog
+          title={`Eliminar «${deleteTarget.job.fileName}»`}
+          confirmLabel="Eliminar del historial"
+          loadingLabel="Eliminando…"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteJob(deleteTarget.job)}
+        >
+          Esta conversión desaparecerá del historial y de “Continúa donde quedaste”. Si está pendiente, se cancelará y se limpiarán sus archivos temporales.
+        </ConfirmDialog>
+      ) : null}
+      {deleteTarget?.type === 'all' ? (
+        <ConfirmDialog
+          title="Borrar historial"
+          confirmLabel="Borrar historial"
+          loadingLabel="Borrando…"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={deleteAllJobs}
+        >
+          Se eliminarán {deleteTarget.count} {deleteTarget.count === 1 ? 'conversión' : 'conversiones'} de tu historial. Los procesos en curso se cancelarán.
+        </ConfirmDialog>
+      ) : null}
     </Shell>
   );
 }
