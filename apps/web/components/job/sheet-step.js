@@ -18,7 +18,7 @@ export function DetectedColumns({ sheet, open = false }) {
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50">
         Encabezados detectados en «{sheet.name}» ({sheet.columns.length})
       </summary>
-      <div className="overflow-x-auto border-t border-ink-200">
+      <div className="relative overflow-x-auto border-t border-ink-200">
         <table className="w-full min-w-[480px] text-left text-sm">
           <thead className="bg-ink-50 text-xs text-ink-500">
             <tr>

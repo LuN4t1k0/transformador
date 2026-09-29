@@ -124,7 +124,7 @@ export function OutputEditor({ template, onChange }) {
       {output.format === 'FIXED_WIDTH' ? (
         <div>
           <h3 className="mb-2 text-sm font-semibold text-ink-900">Largo de cada columna <span className="font-normal text-ink-500">· total {totalWidth} caracteres por línea</span></h3>
-          <div className="overflow-x-auto rounded-lg border border-ink-200">
+          <div className="relative overflow-x-auto rounded-lg border border-ink-200">
             <table className="w-full min-w-[520px] text-left text-sm">
               <thead className="bg-ink-50 text-xs text-ink-500">
                 <tr>

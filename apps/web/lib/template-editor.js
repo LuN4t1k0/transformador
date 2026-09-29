@@ -1,3 +1,4 @@
+import { parseNumber } from '@previley-transformer/transformations/src/number.js';
 import { packFormats, isSensitiveColumn } from './packs.js';
 
 // Pure helpers behind the template editor UI. The UI edits a simplified "format" model per column which is
@@ -193,8 +194,10 @@ export function reviveSampleRows(rows) {
 // the stored fraction as a percentage (0.0069 → 0,69%).
 export function formatCell(value, column = null) {
   if (value === null || value === undefined || value === '') return '';
-  if (column?.cellFormat === 'PERCENT' && typeof value === 'number') {
-    return `${Number((value * 100).toPrecision(12)).toLocaleString('es-CL', { maximumFractionDigits: 6 })}%`;
+  // Like the Excel writer, text that reads as a number is stored as one, so a fixed "0.69" also shows as 69%.
+  const percent = column?.cellFormat === 'PERCENT' ? (typeof value === 'number' ? value : parseNumber(value)) : null;
+  if (typeof percent === 'number') {
+    return `${Number((percent * 100).toPrecision(12)).toLocaleString('es-CL', { maximumFractionDigits: 6 })}%`;
   }
   if (value instanceof Date) {
     const pad = (n) => String(n).padStart(2, '0');

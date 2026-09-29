@@ -115,7 +115,7 @@ export function FilePreview({ template, results, sampleCount = results.length, d
   } else {
     const statusOf = (column) => COLUMN_STATUS[columnStatus?.get(column.outputName)] || null;
     body = (
-      <div className="overflow-x-auto rounded-md border border-ink-200 bg-white">
+      <div className="relative overflow-x-auto rounded-md border border-ink-200 bg-white">
         {headerLines.length ? <div className="border-b border-ink-100 bg-white px-3 py-1.5 font-mono text-xs text-ink-700">{headerLines.map((text, index) => <p key={index}>{text || ' '}</p>)}</div> : null}
         <table className="w-full border-collapse text-left font-mono text-[13.5px]">
           <thead>

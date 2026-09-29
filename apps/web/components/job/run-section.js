@@ -70,7 +70,7 @@ export function RunProgress({ job, onCancel, isBusy }) {
 
 function IssuesTable({ groups }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-ink-200">
+    <div className="relative overflow-x-auto rounded-lg border border-ink-200">
       <table className="w-full min-w-[560px] text-left text-sm">
         <thead className="bg-ink-50 text-xs text-ink-500">
           <tr>
@@ -109,13 +109,20 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
   const steps = summary.rowSteps;
   const stats = [
     { label: 'Filas totales', value: summary.totalRows },
-    { label: 'Filas en el archivo', value: steps?.outputRows ?? summary.validRows, tone: 'text-mint-600' },
+    { label: 'Filas en el archivo', value: steps?.outputRows ?? summary.validRows, tone: (steps?.outputRows ?? summary.validRows) ? 'text-mint-600' : 'text-rose-700' },
     { label: 'Filas rechazadas', value: invalidRows, tone: invalidRows ? 'text-rose-700' : undefined },
     { label: 'Advertencias', value: summary.warningCount, tone: summary.warningCount ? 'text-amber-700' : undefined }
   ];
 
+  const outputRows = steps?.outputRows ?? summary.validRows;
+
   return (
     <div>
+      {outputRows === 0 && summary.totalRows > 0 ? (
+        <div className="mb-4">
+          <Notice tone="danger" icon={AlertCircle} role="alert">El archivo salió sin filas: todas fueron rechazadas. Revisa los problemas de abajo, corrige las filas o repite la conversión ajustando las columnas.</Notice>
+        </div>
+      ) : null}
       {job.status === 'DOWNLOADED' ? (
         <div className="mb-4">
           <Notice tone="success" icon={CheckCircle2} role="status">Archivo descargado. Puedes volver a descargarlo hasta las {formatTime(job.expiresAt)}.</Notice>
@@ -180,7 +187,7 @@ export function RunResult({ job, onDownload, onPurge, isBusy }) {
 
       <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
         <ReuseUploadButton reuseFromJobId={job.id} icon={Repeat} className={buttonStyles.secondary}>Repetir con otro archivo</ReuseUploadButton>
-        <button type="button" className={buttonStyles.primary} disabled={isBusy} onClick={() => onDownload('output')}>
+        <button type="button" className={outputRows ? buttonStyles.primary : buttonStyles.secondary} disabled={isBusy} onClick={() => onDownload('output')}>
           <Download size={16} aria-hidden="true" />
           {job.status === 'DOWNLOADED' ? 'Descargar de nuevo' : 'Descargar archivo'}
         </button>

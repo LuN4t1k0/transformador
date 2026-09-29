@@ -43,7 +43,7 @@ function Comparison({ current, result }) {
   });
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-ink-200">
+    <div className="relative overflow-x-auto rounded-lg border border-ink-200">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="bg-ink-50 text-xs text-ink-500">
           <tr>
@@ -89,7 +89,7 @@ function DestinationExample({ example, columns }) {
   const rows = reviveSampleRows(example.rows).slice(0, 5);
   const byName = new Map(columns.map((column) => [column.outputName.toLowerCase(), column]));
   return (
-    <div className="overflow-x-auto rounded-lg border border-ink-200">
+    <div className="relative overflow-x-auto rounded-lg border border-ink-200">
       <table className="w-full text-left text-sm">
         <thead className="bg-ink-50 text-xs text-ink-500">
           <tr>{example.headers.map((header) => <th key={header} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{header}</th>)}</tr>

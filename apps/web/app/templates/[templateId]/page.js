@@ -157,7 +157,7 @@ export default function TemplateDetailPage() {
                     </ol>
                   </div>
                 ) : null}
-                <div className="overflow-x-auto">
+                <div className="relative overflow-x-auto">
                   <table className="w-full min-w-[720px] text-left text-sm">
                     <thead className="bg-ink-50 text-xs text-ink-500">
                       <tr>

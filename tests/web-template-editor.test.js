@@ -144,6 +144,7 @@ test('shows percentage cells as Excel does and keeps the percent number option',
   const { formatCell, parseFormat, applyFormat } = await load();
   assert.equal(formatCell(0.0069, { cellFormat: 'PERCENT' }), '0,69%');
   assert.equal(formatCell(0.0069), '0.0069');
+  assert.equal(formatCell('0.69', { cellFormat: 'PERCENT' }), '69%');
   const column = { id: 'p', outputName: '% AFP', source: { type: 'COLUMN', column: 'Tasa' }, transformations: [{ type: 'NUMBER', fixedDecimals: 2, decimalSeparator: ',', percent: true }] };
   const format = parseFormat(column);
   assert.equal(format.numberPercent, true);

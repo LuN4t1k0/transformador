@@ -4,7 +4,7 @@ export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 export function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Number((bytes / (1024 * 1024)).toFixed(1)).toLocaleString('es-CL')} MB`;
 }
 
 export function validateExcelFile(file) {

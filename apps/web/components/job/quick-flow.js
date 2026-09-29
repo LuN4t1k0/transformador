@@ -197,6 +197,25 @@ function ColumnReview({ evaluation, headers, sample, onChangeSource, onConfirm, 
   );
 }
 
+// Before generating: how many example rows would be left out. When none pass, the file would come out empty.
+function SampleErrorsNotice({ results }) {
+  if (!results?.length) return null;
+  const failing = results.filter((result) => result.issues.some((issue) => issue.severity === 'error')).length;
+  if (!failing) return null;
+  if (failing === results.length) {
+    return (
+      <Notice tone="danger" icon={AlertCircle}>
+        Ninguna de las {results.length} filas de ejemplo pasa las validaciones: con esta configuración el archivo saldría vacío. Revisa los errores marcados en la vista previa.
+      </Notice>
+    );
+  }
+  return (
+    <Notice tone="warning" icon={AlertCircle}>
+      {failing} de {results.length} filas de ejemplo tienen errores y quedarían fuera del archivo.
+    </Notice>
+  );
+}
+
 export function QuickFlow({ job, template, evaluation, results, design = null, parametersForm = null, sampleCount, sample, headers, isBusy, blockedReason, onSelectSheet, onApply, onChangeSource, onConfirm, onConfirmAll, onGenerate, onAdvanced }) {
   const [changingTemplate, setChangingTemplate] = useState(false);
   const [mode, setMode] = useState('LENIENT');
@@ -307,6 +326,7 @@ export function QuickFlow({ job, template, evaluation, results, design = null, p
 
         <section className="space-y-4 rounded-md border border-ink-200 bg-white p-4">
           {parametersForm}
+          <SampleErrorsNotice results={results} />
           <div className="flex flex-wrap items-end justify-between gap-3">
             <label className="text-sm text-ink-700">
               Si una fila tiene errores
