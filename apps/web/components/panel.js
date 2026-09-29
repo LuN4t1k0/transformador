@@ -1,9 +1,9 @@
 export function Panel({ title, description, actions, headingRef, children }) {
   return (
-    <section className="rounded-lg border border-ink-200 bg-white shadow-panel">
+    <section className="rounded-md border border-ink-200 bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-ink-100 px-4 py-4 sm:px-5">
         <div className="min-w-0">
-          <h2 ref={headingRef} tabIndex={-1} className="text-base font-semibold text-ink-900 focus:outline-none">{title}</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="text-lg font-bold text-ink-900 focus:outline-none">{title}</h2>
           {description ? <p className="mt-1 text-sm text-ink-500">{description}</p> : null}
         </div>
         {actions}

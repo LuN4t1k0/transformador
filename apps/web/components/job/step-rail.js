@@ -6,7 +6,7 @@ import { Check } from 'lucide-react';
 // or what is missing, so the list doubles as the summary. `state`: done | current | attention | todo.
 export function StepRail({ steps, label = 'Pasos' }) {
   return (
-    <nav aria-label={label} className="lg:sticky lg:top-6 lg:self-start">
+    <nav aria-label={label} className="min-w-0 lg:sticky lg:top-6 lg:self-start">
       <ol className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
         {steps.map((step, index) => {
           const isCurrent = step.state === 'current';

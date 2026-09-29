@@ -386,9 +386,9 @@ function JobWorkspace({ job, setJob }) {
   }));
 
   return (
-    <div className={isEditable ? 'grid gap-6 lg:grid-cols-[232px_minmax(0,1fr)]' : ''}>
+    <div className={isEditable ? 'grid grid-cols-1 gap-6 lg:grid-cols-[232px_minmax(0,1fr)]' : ''}>
       {isEditable ? (
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <StepRail steps={railSteps} label="Pasos de la conversión" />
           <div className="hidden space-y-2 px-2.5 text-xs text-ink-500 lg:block">
             {template ? <SaveIndicator saveState={saveState} /> : null}

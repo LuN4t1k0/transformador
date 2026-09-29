@@ -332,7 +332,7 @@ export function QuickFlow({ job, template, evaluation, results, design = null, p
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[232px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_minmax(0,1fr)]">
       <StepRail steps={steps} label="Pasos de la conversión" />
       <div className="min-w-0">{content}</div>
     </div>

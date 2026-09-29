@@ -167,7 +167,7 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   return (
     <ParametersContext.Provider value={template.parameters || []}>
     <form className="space-y-5" onSubmit={submit}>
-      <div className="sticky top-14 z-10 -mx-4 border-b border-ink-200 bg-canvas/95 px-4 pb-0 pt-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-8 lg:px-8">
+      <div className="-mx-4 border-b border-ink-200 bg-canvas/95 px-4 pb-0 pt-3 backdrop-blur sm:-mx-6 sm:px-6 lg:sticky lg:top-0 lg:z-10 lg:-mx-8 lg:px-8">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 basis-64">
             <label className={labelClass} htmlFor="template-name">Nombre de la plantilla *</label>

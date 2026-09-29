@@ -13,6 +13,13 @@ import { api } from '../../../lib/api';
 import { describeOutput, describeOutputDesign, describeParameter, describeRowSteps, describeSource, describeTransformations } from '../../../lib/templates';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
 
+// Spreadsheet column letters: A…Z, AA… (the column's place in the generated file).
+function columnLetter(index) {
+  let letters = '';
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) letters = String.fromCharCode(65 + ((n - 1) % 26)) + letters;
+  return letters;
+}
+
 export default function TemplateDetailPage() {
   const { templateId } = useParams();
   const [template, setTemplate] = useState(null);
@@ -69,23 +76,23 @@ export default function TemplateDetailPage() {
 
         {template && shown ? (
           <>
-            <div className="mb-5 mt-3 flex flex-wrap items-start justify-between gap-3">
+            <div className="mb-6 mt-3 space-y-4">
               <div className="min-w-0">
-                <h1 className="text-2xl font-semibold text-ink-900">
+                <h1 className="text-[28px] font-bold leading-tight text-ink-900">
                   {template.name}
-                  {template.archivedAt ? <span className="ml-2 align-middle rounded bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-500">Archivada</span> : null}
+                  {template.archivedAt ? <span className="ml-2 align-middle rounded bg-ink-100 px-2 py-0.5 text-sm font-semibold text-ink-500">Archivada</span> : null}
                 </h1>
-                <p className="mt-1 text-sm text-ink-500">{[template.destination, template.process].filter(Boolean).join(' · ') || 'Sin clasificar'}</p>
-                {template.description ? <p className="mt-1 text-sm text-ink-700">{template.description}</p> : null}
+                <p className="mt-1 text-ink-500">{[template.destination, template.process].filter(Boolean).join(', ') || 'Sin destino asignado'}</p>
+                {template.description ? <p className="mt-1 max-w-[70ch] text-ink-700">{template.description}</p> : null}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {!template.archivedAt ? <ReuseUploadButton templateId={template.id} icon={Upload} className={buttonStyles.primary}>Usar con un archivo</ReuseUploadButton> : null}
                 <button type="button" className={buttonStyles.secondary} onClick={async () => downloadBlob(await api.downloadTemplateExample(template.id))}>
                   <Download size={16} aria-hidden="true" />
                   Excel de ejemplo
                 </button>
-              </div>
-              {advanced ? <div className="flex flex-wrap gap-2">
+              {advanced ? <>
+                <span aria-hidden="true" className="mx-1 hidden h-6 w-px bg-ink-200 sm:block" />
                 {!template.archivedAt ? (
                   <Link href={`/templates/${template.id}/edit`} className={buttonStyles.secondary}>
                     <Pencil size={16} aria-hidden="true" />
@@ -100,16 +107,17 @@ export default function TemplateDetailPage() {
                   {template.archivedAt ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />}
                   {template.archivedAt ? 'Restaurar' : 'Archivar'}
                 </button>
-              </div> : null}
+              </> : null}
+              </div>
             </div>
 
 
             <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
-              <section className="min-w-0 rounded-lg border border-ink-200 bg-white shadow-panel">
+              <section className="min-w-0 rounded-md border border-ink-200 bg-white">
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-ink-100 px-4 py-4 sm:px-5">
                   <div>
-                    <h2 className="text-base font-semibold text-ink-900">Versión {shown.version}{isOldVersion ? ' (anterior)' : ' (vigente)'}</h2>
-                    <p className="mt-1 text-sm text-ink-500">{describeOutput(shown.configuration.output)} · {shown.configuration.columns.length} columnas</p>
+                    <h2 className="text-lg font-bold text-ink-900">Versión {shown.version}{isOldVersion ? ', anterior' : ', vigente'}</h2>
+                    <p className="mt-0.5 text-sm text-ink-500">{describeOutput(shown.configuration.output)}, {shown.configuration.columns.length} columnas.</p>
                   </div>
                   {isOldVersion && !template.archivedAt && advanced ? (
                     <Link href={`/templates/${template.id}/edit?version=${shown.versionId}`} className={buttonStyles.secondary}>
@@ -120,7 +128,7 @@ export default function TemplateDetailPage() {
                 </div>
                 {shown.configuration.parameters?.length ? (
                   <div className="border-b border-ink-100 px-4 py-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Parámetros que se piden al generar</h3>
+                    <h3 className="text-sm font-bold text-ink-900">Datos que se piden al generar</h3>
                     <ul className="mt-1 space-y-0.5 text-sm text-ink-700">
                       {shown.configuration.parameters.map((parameter) => <li key={parameter.id}>{describeParameter(parameter)}</li>)}
                     </ul>
@@ -128,7 +136,7 @@ export default function TemplateDetailPage() {
                 ) : null}
                 {describeOutputDesign(shown.configuration.output, shown.configuration.columns).length ? (
                   <div className="border-b border-ink-100 px-4 py-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Diseño del archivo</h3>
+                    <h3 className="text-sm font-bold text-ink-900">Diseño del archivo</h3>
                     <ul className="mt-1 space-y-0.5 text-sm text-ink-700">
                       {describeOutputDesign(shown.configuration.output, shown.configuration.columns).map((line) => <li key={line} className="break-words">{line}</li>)}
                     </ul>
@@ -136,7 +144,7 @@ export default function TemplateDetailPage() {
                 ) : null}
                 {shown.configuration.rowSteps ? (
                   <div className="border-b border-ink-100 px-4 py-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">Filas</h3>
+                    <h3 className="text-sm font-bold text-ink-900">Filas</h3>
                     <ol className="mt-1 list-inside list-decimal space-y-0.5 text-sm text-ink-700">
                       {describeRowSteps(shown.configuration.rowSteps, shown.configuration.columns).map((line) => <li key={line}>{line}</li>)}
                     </ol>
@@ -146,7 +154,7 @@ export default function TemplateDetailPage() {
                   <table className="w-full min-w-[720px] text-left text-sm">
                     <thead className="bg-ink-50 text-xs text-ink-500">
                       <tr>
-                        <th scope="col" className="w-10 px-4 py-2 font-medium">#</th>
+                        <th scope="col" className="w-10 px-4 py-2 font-medium"><span className="sr-only">Columna del Excel</span></th>
                         <th scope="col" className="px-4 py-2 font-medium">Columna</th>
                         <th scope="col" className="px-4 py-2 font-medium">Origen</th>
                         <th scope="col" className="px-4 py-2 font-medium">Formato</th>
@@ -156,7 +164,7 @@ export default function TemplateDetailPage() {
                     <tbody className="divide-y divide-ink-100">
                       {shown.configuration.columns.map((column) => (
                         <tr key={column.id}>
-                          <td className="px-4 py-2 tabular-nums text-ink-400">{column.position}</td>
+                          <td className="px-4 py-2 text-center font-mono text-xs text-ink-400" title={`Columna ${column.position} del archivo`}>{columnLetter(column.position - 1)}</td>
                           <td className="px-4 py-2">
                             <span className="font-medium text-ink-900">{column.outputName}</span>
                             {column.required ? <span className="ml-2 text-xs text-ink-500">Obligatoria</span> : null}
@@ -183,8 +191,8 @@ export default function TemplateDetailPage() {
                 </div>
               </section>
 
-              <aside className="rounded-lg border border-ink-200 bg-white p-4 shadow-panel lg:self-start">
-                <h2 className="text-sm font-semibold text-ink-900">Historial de versiones</h2>
+              <aside className="lg:sticky lg:top-6 lg:self-start">
+                <h2 className="px-2 text-sm font-bold text-ink-900">Versiones</h2>
                 <ol className="mt-3 space-y-1">
                   {template.versions.map((version) => {
                     const isShown = version.id === shown.versionId;
@@ -198,7 +206,7 @@ export default function TemplateDetailPage() {
                         >
                           <span className="font-medium">Versión {version.version}</span>
                           {version.id === template.versionId ? <span className="ml-1 text-xs text-mint-600">vigente</span> : null}
-                          <span className="block text-xs text-ink-500">{formatDateTime(version.createdAt)}{version.createdBy ? ` · ${version.createdBy}` : ''}</span>
+                          <span className="block text-xs text-ink-500">{formatDateTime(version.createdAt)}{version.createdBy ? `, ${version.createdBy}` : ''}</span>
                         </button>
                       </li>
                     );
