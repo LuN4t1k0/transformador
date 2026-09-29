@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useMemo, useState } from 'react';
-import { AlertCircle, FileSpreadsheet, Loader2, Save, Sparkles, X } from 'lucide-react';
+import { AlertCircle, FileSpreadsheet, Loader2, Save } from 'lucide-react';
 import { evaluateColumns } from '@previley-transformer/template-engine/src/mapping.js';
 import { runRows } from '@previley-transformer/template-engine/src/run.js';
 import { previewRows } from '@previley-transformer/template-engine/src/rows.js';
@@ -51,11 +51,11 @@ function SampleLoader({ sample, onLoaded }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      {sample ? <span className="inline-flex items-center gap-1 text-ink-700"><FileSpreadsheet size={15} className="text-cobalt-600" aria-hidden="true" />Probando con «{sample.fileName}» (hoja {sample.sheet})</span> : null}
-      <label htmlFor={inputId} className={`${buttonStyles.secondary} cursor-pointer ${state.loading ? 'pointer-events-none opacity-60' : ''}`}>
-        {state.loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <FileSpreadsheet size={16} aria-hidden="true" />}
-        {sample ? 'Probar con otro Excel' : 'Probar con un Excel'}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-500">
+      <FileSpreadsheet size={15} className="text-cobalt-600" aria-hidden="true" />
+      {sample ? <span>Probando con «{sample.fileName}», hoja {sample.sheet}.</span> : <span>Sin Excel de prueba.</span>}
+      <label htmlFor={inputId} className={`cursor-pointer font-semibold text-cobalt-700 hover:underline ${state.loading ? 'pointer-events-none opacity-60' : ''}`}>
+        {state.loading ? 'Leyendo…' : sample ? 'Cambiar' : 'Cargar uno para ver ejemplos'}
       </label>
       <input id={inputId} type="file" className="sr-only" accept=".xlsx" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) load(file); }} />
       {state.error ? <span role="alert" className="text-xs text-rose-700">{state.error}</span> : null}
@@ -78,15 +78,6 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
   const [activeTab, setActiveTab] = useState('columns');
-  // The assistant lives in a side panel, so it can be opened from any tab and keeps its proposal while open or closed.
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  useEffect(() => {
-    if (!assistantOpen) return undefined;
-    document.getElementById('assistant-instruction')?.focus();
-    const onKey = (event) => event.key === 'Escape' && setAssistantOpen(false);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [assistantOpen]);
   const [columnsView, setColumnsView] = useState('workbench');
   const [selectedId, setSelectedId] = useState(null);
   const [state, setState] = useState({ saving: false, error: null });
@@ -174,27 +165,13 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
   return (
     <ParametersContext.Provider value={template.parameters || []}>
     <form className="space-y-5" onSubmit={submit}>
-      <div className="-mx-4 border-b border-ink-200 bg-canvas/95 px-4 pb-0 pt-3 backdrop-blur sm:-mx-6 sm:px-6 lg:sticky lg:top-0 lg:z-10 lg:-mx-8 lg:px-8">
+      <div className="border-b border-ink-200 bg-canvas pt-1 lg:sticky lg:top-0 lg:z-10">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 basis-64">
             <label className={labelClass} htmlFor="template-name">Nombre de la plantilla *</label>
             <input id="template-name" required maxLength={120} className="h-11 w-full rounded-md border border-ink-200 bg-white px-3 text-lg font-bold text-ink-900" value={template.name} onChange={setMeta('name')} placeholder="Ej: PlanVital 2026" />
           </div>
-          <SampleLoader sample={sample} onLoaded={setSample} />
-          {sample?.exampleRows ? (
-            <button
-              type="button"
-              className={assistantOpen ? `${buttonStyles.secondary} border-cobalt-600 text-cobalt-700` : buttonStyles.secondary}
-              title="La IA propone de dónde sale cada columna comparando tus archivos"
-              aria-expanded={assistantOpen}
-              aria-controls="asistente"
-              onClick={() => setAssistantOpen((open) => !open)}
-            >
-              <Sparkles size={16} aria-hidden="true" />
-              Asistente
-            </button>
-          ) : null}
-          <button type="submit" className={buttonStyles.primary} disabled={state.saving}>
+          <button type="submit" className={`${buttonStyles.primary} h-11`} disabled={state.saving}>
             {state.saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
             {submitLabel}
           </button>
@@ -253,7 +230,21 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
 
       {activeTab === 'columns' ? (
       <div className="space-y-5" role="tabpanel" aria-label="Columnas">
-      <ExampleReport report={report} assistantAvailable={Boolean(sample?.exampleRows)} onOpenAssistant={() => setAssistantOpen(true)} />
+      {/* With examples, the files and sheets are chosen above the editor; otherwise a test Excel can be loaded here. */}
+      {outputExample ? null : <SampleLoader sample={sample} onLoaded={setSample} />}
+      {/* Same order as creating a template inside a conversion: what the example taught, what the assistant
+          proposes for the rest, and then each column by hand. */}
+      <ExampleReport report={report} assistantAvailable={Boolean(sample?.exampleRows)} />
+      <AssistantPanel
+        template={template}
+        sample={sample}
+        outputExample={outputExample}
+        onApply={(proposal) => {
+          // The proposal replaces columns, output and row steps; the template's own data stays as the user wrote it.
+          setTemplate({ ...template, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : { rowSteps: undefined }) });
+          setFlagged(new Map());
+        }}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[70ch] text-sm text-ink-500">
@@ -317,28 +308,6 @@ export function TemplateForm({ initial, submitLabel, onSubmit, note, initialSamp
         </div>
       ) : null}
 
-      {sample?.exampleRows ? (
-        <aside id="asistente" aria-label="Asistente" hidden={!assistantOpen} className="fixed inset-0 z-40 !mt-0 overflow-y-auto border-l border-ink-200 bg-canvas px-4 pb-6 shadow-2xl lg:left-auto lg:w-[560px]">
-          <div className="sticky top-0 z-10 -mx-4 mb-2 flex justify-end bg-canvas px-4 py-3">
-            <button type="button" className={buttonStyles.secondary} onClick={() => setAssistantOpen(false)}>
-              <X size={16} aria-hidden="true" />
-              Cerrar
-            </button>
-          </div>
-          <AssistantPanel
-            template={template}
-            sample={sample}
-            outputExample={outputExample}
-            onApply={(proposal) => {
-              // The proposal replaces columns, output and row steps; the template's own data stays as the user wrote it.
-              setTemplate({ ...template, output: proposal.output, columns: proposal.columns, ...(proposal.rowSteps ? { rowSteps: proposal.rowSteps } : { rowSteps: undefined }) });
-              setFlagged(new Map());
-              setActiveTab('columns');
-              setAssistantOpen(false);
-            }}
-          />
-        </aside>
-      ) : null}
     </form>
     </ParametersContext.Provider>
   );

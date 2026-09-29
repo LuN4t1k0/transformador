@@ -303,16 +303,6 @@ function JobWorkspace({ job, setJob }) {
             </label>
           ) : null}
           <ExampleReport report={exampleContext?.report} assistantAvailable={Boolean(assistantSample)} />
-          <ColumnList
-            columns={template.columns}
-            onChange={changeColumns}
-            headers={headers}
-            evaluation={evaluation}
-            onConfirm={(id) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, id])] }))}
-            onConfirmAll={(ids) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, ...ids])] }))}
-            sample={sample}
-            isFixedWidth={template.output.format === 'FIXED_WIDTH'}
-          />
           {assistantSample ? (
             <AssistantPanel
               template={template}
@@ -325,6 +315,16 @@ function JobWorkspace({ job, setJob }) {
               })}
             />
           ) : null}
+          <ColumnList
+            columns={template.columns}
+            onChange={changeColumns}
+            headers={headers}
+            evaluation={evaluation}
+            onConfirm={(id) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, id])] }))}
+            onConfirmAll={(ids) => update((current) => ({ ...current, confirmedIds: [...new Set([...current.confirmedIds, ...ids])] }))}
+            sample={sample}
+            isFixedWidth={template.output.format === 'FIXED_WIDTH'}
+          />
         </div>
       );
     }
