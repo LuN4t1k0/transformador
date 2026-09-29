@@ -1,6 +1,6 @@
 const { transformRow } = require('./engine');
 const { createTemplateFromHeaders, findHeader, normalizeHeader } = require('./mapping');
-const { packKeys, packFormatDetectors, packDerivedFormats } = require('./packs');
+const { packKeys, packFormatDetectors, packDerivedFormats, packCompanionFormats } = require('./packs');
 const { parseNumber } = require('../../transformations/src/number');
 
 // Learns a template by example: given rows of the file users receive (input) and rows of the file the
@@ -373,6 +373,53 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
   const { mode: alignment, key: alignmentKey, pairs } = alignRows(input ? { ...input, rows: inputRows } : null, outputRows, output.headers);
   const candidates = input ? candidateSources(input.headers, pairs.map((pair) => pair.input)) : [];
   const inputColumns = new Map((input?.columns || []).map((column) => [column.header, column]));
+  // Sources to look for a value the destination repeats in every row, over the input's own rows (no pairing needed).
+  let allRowCandidates = null;
+  const constantFromInput = (outputName, formatSpec, constant) => {
+    if (!inputRows.length) return null;
+    allRowCandidates ||= candidateSources(input.headers, inputRows);
+    const expected = inputRows.map(() => constant);
+    let best = null;
+    for (const spec of [formatSpec, ...packDerivedFormats()]) {
+      for (const candidate of allRowCandidates) {
+        const score = scoreCandidate(candidate, outputName, spec, inputRows, expected);
+        if (!score) continue;
+        const key = [score, -candidate.rank, nameSimilarity(outputName, candidate.source.column), -candidate.order];
+        if (!best || isBetter(key, best.key)) best = { candidate, score, key, spec };
+      }
+    }
+    return best;
+  };
+  // Without paired rows, a column found by name takes the format whose results look like the destination's values
+  // (same shape: "12345678" vs "12.345.678-5"), so a full RUT can feed a column that only has its number.
+  const shape = (value) => String(value).trim().replace(/\d+/g, '9').replace(/[A-Za-zÀ-ÿ]+/g, 'A');
+  const shapedSpec = (header, outputName, formatSpec, values) => {
+    if (!inputRows.length) return formatSpec;
+    const targets = new Set(values.filter((value) => !isBlank(value)).map(shape));
+    const fit = (spec) => {
+      const column = { id: 'shape', position: 1, outputName, required: false, source: { type: 'COLUMN', column: header }, ...spec };
+      const results = inputRows.map((row) => {
+        try {
+          return transformRow(row.values, { columns: [column] }).output[outputName];
+        } catch {
+          return null;
+        }
+      }).filter((value) => !isBlank(value));
+      return results.length ? results.filter((value) => targets.has(shape(value))).length / inputRows.filter((row) => !isBlank(row.values[header])).length : 0;
+    };
+    let best = { spec: formatSpec, score: fit(formatSpec) };
+    for (const spec of packDerivedFormats()) {
+      const score = fit(spec);
+      if (score > best.score) best = { spec, score };
+    }
+    return best.spec;
+  };
+  // A fixed value is never taken as learned: the next file may bring another employer or period.
+  const asConstant = (column, outputName, value) => {
+    report.suggested.push(outputName);
+    report.byName[outputName] = { method: 'CONSTANT' };
+    return { ...column, source: { type: 'CONSTANT', value }, transformations: [], validations: [] };
+  };
   const report = { mode: input ? 'BY_EXAMPLE' : 'OUTPUT_ONLY', alignment, ...(alignmentKey ? { alignmentKey } : {}), pairs: pairs.length, learned: 0, suggested: [], unresolved: [], byName: {} };
 
   const columns = names.map((outputName, index) => {
@@ -418,27 +465,29 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
       }
     }
 
-    // Without an input file, a repeated value is a constant; other columns keep their own name as source.
-    if (!input && format.constant !== null) {
-      report.learned += 1;
-      report.byName[outputName] = { method: 'CONSTANT' };
-      return { ...column, source: { type: 'CONSTANT', value: format.constant }, transformations: [], validations: [] };
+    // A value repeated in every example row (the same employer in all of them) comes from the input column that
+    // holds it, when there is one: a template reads the data, it does not copy this example's values.
+    if (input && format.constant !== null) {
+      const found = constantFromInput(outputName, formatSpec, format.constant);
+      if (found) {
+        if (found.score === 1) report.learned += 1;
+        else report.suggested.push(outputName);
+        report.byName[outputName] = { method: 'FROM_INPUT', score: found.score };
+        return { ...column, ...found.spec, source: found.candidate.source, reviewed: found.score === 1 };
+      }
     }
+
+    // Without an input file, a repeated value can only be a fixed value, to be reviewed.
+    if (!input && format.constant !== null) return asConstant(column, outputName, format.constant);
 
     // 2. Same header name in the input.
     const exact = input ? findHeader(outputName, input.headers) : outputName;
     if (exact) {
       report.learned += 1;
       report.byName[outputName] = { method: input ? 'NAME' : 'OUTPUT_NAME' };
-      return { ...column, source: { type: 'COLUMN', column: exact } };
+      return { ...column, ...shapedSpec(exact, outputName, formatSpec, values), source: { type: 'COLUMN', column: exact } };
     }
 
-    // A value repeated in many example rows is a constant: stronger evidence than a merely similar name.
-    if (format.constant !== null && outputRows.length >= 3) {
-      report.learned += 1;
-      report.byName[outputName] = { method: 'CONSTANT' };
-      return { ...column, source: { type: 'CONSTANT', value: format.constant }, transformations: [], validations: [] };
-    }
 
     // 3. Similar header name with a compatible format: a suggestion the user must review.
     if (input) {
@@ -449,19 +498,30 @@ function inferTemplate({ input = null, output = null, sheet } = {}) {
       if (ranked.length && (ranked.length === 1 || ranked[0].rank > ranked[1].rank)) {
         report.suggested.push(outputName);
         report.byName[outputName] = { method: 'SIMILAR_NAME', score: ranked[0].match };
-        return { ...column, source: { type: 'COLUMN', column: ranked[0].header } };
+        return { ...column, ...shapedSpec(ranked[0].header, outputName, formatSpec, values), source: { type: 'COLUMN', column: ranked[0].header } };
       }
     }
 
-    // 4. The same value in every example row.
-    if (format.constant !== null) {
-      report.learned += 1;
-      report.byName[outputName] = { method: 'CONSTANT' };
-      return { ...column, source: { type: 'CONSTANT', value: format.constant }, transformations: [], validations: [] };
-    }
+    // 4. The same value in every example row and in no input column: a fixed value, to be reviewed.
+    if (format.constant !== null) return asConstant(column, outputName, format.constant);
 
     report.unresolved.push(outputName);
     return column;
+  });
+
+  // An unresolved column that a pack pairs with the one before it (a "DV" right after a RUT number) takes that
+  // part of the same source; a suggestion to review, since the rows could not confirm it.
+  const plainHeader = (index) => String((output.columns || []).find((column) => column.header === output.headers[index])?.label || names[index]).replace(/\s*\(\d+\)$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  columns.forEach((column, index) => {
+    if (!index || column.source.type !== 'EMPTY' || !report.unresolved.includes(column.outputName)) return;
+    const previous = columns[index - 1];
+    const companion = packCompanionFormats().find((item) => item.header.test(plainHeader(index))
+      && (previous.transformations || []).some((transformation) => Object.entries(item.after).every(([key, value]) => transformation[key] === value)));
+    if (!companion || previous.source.type === 'EMPTY' || previous.source.type === 'CONSTANT') return;
+    columns[index] = { ...column, ...companion.spec, source: previous.source };
+    report.unresolved = report.unresolved.filter((name) => name !== column.outputName);
+    report.suggested.push(column.outputName);
+    report.byName[column.outputName] = { method: 'COMPANION' };
   });
 
   // Unresolved numeric columns may be calculations over other columns of the example (e.g. TOTAL = 10% + ADICIONAL).

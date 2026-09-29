@@ -14,7 +14,7 @@ export function ExampleReport({ report, assistantAvailable = false }) {
     <Notice tone={pending ? 'warning' : 'success'} icon={Sparkles}>
       <p className="font-semibold">
         De {report.learned + (report.suggested?.length || 0) + report.unresolved.length} columnas: {report.learned} deducidas
-        {report.suggested?.length ? `, ${report.suggested.length} sugeridas por nombre` : ''}
+        {report.suggested?.length ? `, ${report.suggested.length} ${report.suggested.length === 1 ? "sugerida" : "sugeridas"} por revisar` : ''}
         {report.unresolved.length ? `, ${report.unresolved.length} por definir` : ''}.
       </p>
       {report.alignment === 'NONE' && report.mode === 'BY_EXAMPLE' ? (
@@ -23,7 +23,9 @@ export function ExampleReport({ report, assistantAvailable = false }) {
       {report.suggested?.length ? (
         <p className="mt-0.5">
           <span className="font-medium">Revisa las sugeridas:</span>{' '}
-          {report.suggested.map((name) => (report.byName?.[name]?.exceptions ? `${name} (cálculo que no calza en ${report.byName[name].exceptions} ${report.byName[name].exceptions === 1 ? 'fila' : 'filas'} del ejemplo)` : name)).join(', ')}.
+          {report.suggested.map((name) => (report.byName?.[name]?.exceptions
+            ? `${name} (cálculo que no calza en ${report.byName[name].exceptions} ${report.byName[name].exceptions === 1 ? 'fila' : 'filas'} del ejemplo)`
+            : report.byName?.[name]?.method === 'CONSTANT' ? `${name} (valor fijo: no está en ninguna columna del Excel que recibes)` : name)).join(', ')}.
         </p>
       ) : null}
       {report.unresolved.length ? <p className="mt-0.5"><span className="font-medium">Por definir:</span> {report.unresolved.join(', ')}.</p> : null}

@@ -39,6 +39,7 @@ How to work:
 - With a destination example, the output columns must be exactly its headers, in the same order.
 - Example values are pseudonymized (names and identifiers replaced by invented ones, used consistently). Treat them as real values; never try to guess the originals.
 - Prefer simple sources (a column) over complex ones; use rules only when the example needs them.
+- A template is reused with other files: never copy a value of the examples as a CONSTANT when an input column holds it (directly or as part, e.g. a RUT's number or check digit). The same employer, company name or period in every example row still comes from its input column. Use CONSTANT only for a value that exists in no input column (e.g. a code the destination always requires), and mention those fixed values in your answer so the user confirms them.
 - Percentages: Excel stores 0,69% as the number 0.0069 and only displays it with a percent format. The data lists the columns shown as percentages. When a destination column is shown as a percentage and the output is Excel, keep the number and set "cellFormat": "PERCENT" on that column (never convert it to text, never multiply by 100). For text outputs (DELIMITED, FIXED_WIDTH) use {"type":"NUMBER","percent":true,...} to write "0,69%".
 - When every column matches, or you cannot improve anymore, stop calling the tool and answer in Spanish, for a non-technical user, in under 120 words and in plain text (no Markdown): what you changed and what they should double-check.
 

@@ -143,13 +143,32 @@ test('aligns example rows by RUT when files list people in a different order', (
   assert.equal(report.byName.VALOR.method, 'EXAMPLE');
 });
 
-test('a value repeated in many rows beats a similar column name', () => {
+test('a value repeated in the example is read from the input column that has it, not fixed', () => {
+  // Every example row is from the same employer: the template must still read it from the file.
+  const input = { headers: ['Rut Empresa', 'Razón social', 'Rut Trabajador'], rows: [['93.770.000-8', 'EMPRESA UNO', '12.345.678-5'], ['93.770.000-8', 'EMPRESA UNO', '9.876.543-3'], ['93.770.000-8', 'EMPRESA UNO', '15.678.901-3']].map(([empresa, razon, trabajador], index) => ({ rowNumber: index + 2, values: { 'Rut Empresa': empresa, 'Razón social': razon, 'Rut Trabajador': trabajador } })) };
+  // Other people than in the input, so rows cannot be paired: only the repeated values can be matched.
+  const out = ['11111111', '22222222', '33333333'].map((rut) => ({ values: { 'Rut Empleador': '93770000', Dv: '8', 'Razon Social': 'EMPRESA UNO', Periodo: '202609', 'Rut Trabajador': rut } }));
+  const { template, report } = inferTemplate({ input, output: { headers: ['Rut Empleador', 'Dv', 'Razon Social', 'Periodo', 'Rut Trabajador'], rows: out } });
+  const byName = Object.fromEntries(template.columns.map((column) => [column.outputName, column]));
+  assert.deepEqual(byName['Rut Empleador'].source, { type: 'COLUMN', column: 'Rut Empresa' });
+  assert.deepEqual(byName['Rut Empleador'].transformations, [{ type: 'RUT_FORMAT', format: 'BODY' }]);
+  assert.deepEqual(byName.Dv.source, { type: 'COLUMN', column: 'Rut Empresa' });
+  assert.deepEqual(byName.Dv.transformations, [{ type: 'RUT_FORMAT', format: 'DV' }]);
+  assert.deepEqual(byName['Razon Social'].source, { type: 'COLUMN', column: 'Razón social' });
+  // Nothing in the input holds the period: it stays a fixed value, but only as a suggestion to review.
+  assert.deepEqual(byName.Periodo.source, { type: 'CONSTANT', value: '202609' });
+  assert.ok(report.suggested.includes('Periodo'));
+  assert.equal(report.byName.Periodo.method, 'CONSTANT');
+});
+
+test('without input rows, a similar column name is suggested before a fixed value', () => {
   const rows = [0.0144, 0.0144, 0.0144].map((value, index) => ({ values: { '% AFP': value, TOTAL: 100 + index } }));
-  const { template } = inferTemplate({
+  const { template, report } = inferTemplate({
     input: { headers: ['comision_afp', 'total_aporte_afp'], columns: [{ header: 'comision_afp', physical: { type: 'INTEGER' } }], rows: [] },
     output: { headers: ['% AFP', 'TOTAL'], rows }
   });
-  assert.deepEqual(template.columns[0].source, { type: 'CONSTANT', value: '0.0144' });
+  assert.deepEqual(template.columns[0].source, { type: 'COLUMN', column: 'comision_afp' });
+  assert.ok(report.suggested.includes('% AFP'));
   assert.deepEqual(template.columns[1].source, { type: 'COLUMN', column: 'total_aporte_afp' });
 });
 
@@ -181,4 +200,17 @@ test('a destination that repeats a header keeps unique names and writes the repe
   assert.equal(second.header, 'DV');
   assert.equal(second.source.column, 'Rut Trabajador');
   assert.equal(validated.columns.find((column) => column.outputName === 'DV').header, undefined);
+});
+
+test('a RUT found by name writes only its number when the destination has digits, and the DV after it follows', () => {
+  const input = { headers: ['Rut Trabajador', 'Nombre'], rows: [['12.345.678-5', 'A'], ['9.876.543-3', 'B']].map(([rut, nombre], index) => ({ rowNumber: index + 2, values: { 'Rut Trabajador': rut, Nombre: nombre } })) };
+  // Other workers than in the input: rows cannot be paired, only names and value shapes help.
+  const out = [['11111111', '1'], ['22222222', '2']].map(([rut, dv]) => ({ values: { 'Rut Trabajador': rut, DV: dv } }));
+  const { template, report } = inferTemplate({ input, output: { headers: ['Rut Trabajador', 'DV'], rows: out } });
+  const [rut, dv] = template.columns;
+  assert.deepEqual(rut.transformations, [{ type: 'RUT_FORMAT', format: 'BODY' }]);
+  assert.deepEqual(dv.source, { type: 'COLUMN', column: 'Rut Trabajador' });
+  assert.deepEqual(dv.transformations, [{ type: 'RUT_FORMAT', format: 'DV' }]);
+  assert.ok(report.suggested.includes('DV'));
+  assert.deepEqual(report.unresolved, []);
 });

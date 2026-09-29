@@ -53,6 +53,8 @@ const packKeys = () => fromPacks('keys');
 const packFormatDetectors = (stage) => fromPacks('formatDetectors').filter((detector) => detector.stage === stage);
 const packFormats = () => fromPacks('formats');
 const packDerivedFormats = () => fromPacks('derivedFormats');
+// Columns that usually come right after another one and take a part of the same value (a RUT's check digit).
+const packCompanionFormats = () => fromPacks('companionFormats');
 const packTemplates = () => fromPacks('templates');
 
 function packIssueText(kind, code) {
@@ -85,6 +87,7 @@ module.exports = {
   packFormatDetectors,
   packFormats,
   packDerivedFormats,
+  packCompanionFormats,
   packTemplates,
   packIssueText,
   isSensitiveColumn,

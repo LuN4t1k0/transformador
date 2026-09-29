@@ -126,6 +126,15 @@ const chilePack = {
     { transformations: [{ type: 'RUT_FORMAT', format: 'DV' }], validations: [{ type: 'VALID_RUT' }] }
   ],
 
+  // A "DV" column right after a RUT written without its check digit is that RUT's check digit.
+  companionFormats: [
+    {
+      after: { type: 'RUT_FORMAT', format: 'BODY' },
+      header: /^(dv|d\.\s?v\.?|digito(\s+verificador)?|dig\.?\s?verif\.?)$/i,
+      spec: { transformations: [{ type: 'RUT_FORMAT', format: 'DV' }], validations: [{ type: 'VALID_RUT' }] }
+    }
+  ],
+
   formats: [
     {
       kind: 'RUT',
