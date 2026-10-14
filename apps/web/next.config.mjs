@@ -7,6 +7,7 @@ const nextConfig = {
     return {
       beforeFiles: [
         { source: '/api/:path*', destination: `${api}/:path*` },
+        { source: '/socket.io', destination: `${api}/socket.io/` },
         { source: '/socket.io/:path*', destination: `${api}/socket.io/:path*` }
       ]
     };
