@@ -19,7 +19,9 @@ const { createAssistantService } = require('./assistant/service');
 const { createGeminiProvider } = require('./assistant/gemini');
 const { attachRealtime } = require('./realtime/socket');
 
-const port = Number(process.env.PORT || 4000);
+// API_PORT lets the API and the Next.js web server share one Railway image
+// while listening on separate ports. PORT remains the conventional fallback.
+const port = Number(process.env.API_PORT || process.env.PORT || 4000);
 const allowedOrigin = process.env.WEB_ORIGIN || 'http://localhost:3000';
 
 function log(payload) {
