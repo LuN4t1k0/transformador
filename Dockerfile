@@ -13,8 +13,10 @@ RUN npm ci
 # exposes service variables to Docker builds only when the ARG is declared.
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_DOMAIN_PACKS
+ARG API_INTERNAL_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_DOMAIN_PACKS=$NEXT_PUBLIC_DOMAIN_PACKS
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
 
 RUN npm --workspace @previley-transformer/web run build
 

@@ -17,7 +17,7 @@ function parseFileName(disposition, fallback) {
   return plain ? plain[1] : fallback;
 }
 
-export function createHttpApi(baseUrl) {
+export function createHttpApi(baseUrl, socketUrl = baseUrl) {
   const listeners = new Map();
   const connectionListeners = new Set();
   let socket = null;
@@ -56,7 +56,7 @@ export function createHttpApi(baseUrl) {
 
   function getSocket() {
     if (socket) return socket;
-    socket = io(baseUrl, { withCredentials: true });
+    socket = io(socketUrl, { withCredentials: true });
     socket.on('connect', () => {
       for (const jobId of listeners.keys()) joinRoom(jobId);
       connectionListeners.forEach((listener) => listener(true));
