@@ -1,12 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Socket.IO's Engine.IO endpoint uses a trailing slash; avoid Next.js
+  // redirecting the handshake to a path the backend does not serve.
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     const api = process.env.API_INTERNAL_URL || 'http://localhost:4000';
     return {
       beforeFiles: [
         { source: '/api/:path*', destination: `${api}/:path*` },
-        { source: '/socket.io', destination: `${api}/socket.io` },
+        { source: '/socket.io', destination: `${api}/socket.io/` },
         { source: '/socket.io/:path*', destination: `${api}/socket.io/:path*` }
       ]
     };
