@@ -11,13 +11,14 @@ export function AdvancedToggle({ variant = 'compact' }) {
   const { user } = useSession();
   const [loginOpen, setLoginOpen] = useState(false);
   const isRail = variant === 'rail';
+  const adminLoginDisabled = process.env.NEXT_PUBLIC_ADMIN_LOGIN_DISABLED === 'true';
 
   function change(requested) {
     if (!requested) {
       setAdvanced(false);
       return;
     }
-    if (user?.role === 'admin') {
+    if (adminLoginDisabled || user?.role === 'admin') {
       setAdvanced(true);
       return;
     }
@@ -48,7 +49,7 @@ export function AdvancedToggle({ variant = 'compact' }) {
         />
         <span aria-hidden="true" className="relative h-5 w-9 shrink-0 rounded-full bg-ink-200 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-cobalt-600 peer-checked:after:translate-x-4 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-cobalt-500" />
       </label>
-      <AdminLoginDialog open={loginOpen} onCancel={() => setLoginOpen(false)} onSuccess={authenticated} />
+      {!adminLoginDisabled ? <AdminLoginDialog open={loginOpen} onCancel={() => setLoginOpen(false)} onSuccess={authenticated} /> : null}
     </>
   );
 }

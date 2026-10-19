@@ -18,6 +18,7 @@ const IDENTITY_HEADERS = [
 export function proxy(request) {
   const secret = process.env.PROXY_AUTH_SECRET;
   const adminToken = process.env.ADMIN_SESSION_TOKEN;
+  const adminLoginDisabled = process.env.ADMIN_LOGIN_DISABLED === 'true';
 
   // Local development keeps using AUTH_MODE=dev. Production fails closed if its
   // private web-to-API secret or admin-session token has not been configured.
@@ -30,7 +31,8 @@ export function proxy(request) {
 
   const existingVisitor = readVisitorCookie(request.cookies.get(VISITOR_COOKIE_NAME)?.value, secret);
   const visitor = existingVisitor ? { id: existingVisitor, value: null } : createVisitorCookie(secret);
-  const isAdmin = safeEqual(request.cookies.get(ADMIN_COOKIE_NAME)?.value, adminToken);
+  // Temporary access switch: when enabled, every visitor is treated as an administrator.
+  const isAdmin = adminLoginDisabled || safeEqual(request.cookies.get(ADMIN_COOKIE_NAME)?.value, adminToken);
   const identity = isAdmin
     ? { email: 'admin@previley.local', name: 'Cristian', role: 'admin' }
     : { email: `visitor-${visitor.id}@transformador.local`, name: 'Usuario', role: 'user' };
