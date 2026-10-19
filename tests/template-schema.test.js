@@ -29,6 +29,12 @@ test('fills output defaults per format and strips unknown properties', () => {
   assert.equal('extra' in result.columns[0], false);
 });
 
+test('validates and retains multi-row Excel headers with one cell per output column', () => {
+  const result = validateTemplateConfig(config({ output: { format: 'XLSX', sheetName: 'DATOS', headerRows: [['RUT'], ['Identificación']] } }));
+  assert.deepEqual(result.output.headerRows, [['RUT'], ['Identificación']]);
+  assert.throws(() => validateTemplateConfig(config({ output: { format: 'XLSX', headerRows: [['RUT', 'Extra']] } })), /una celda por columna/);
+});
+
 test('accepts every supported source and transformation', () => {
   const result = validateTemplateConfig(config({
     output: { format: 'FIXED_WIDTH' },

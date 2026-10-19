@@ -140,9 +140,21 @@ async function writeXlsxParts(filePath, { output, columns, parts }) {
     const prepared = prepareRows(part.rows, columns);
     const context = { ...part.vars, totals: prepared.totals, columns };
     for (const text of output.headerLines || []) sheet.addRow([renderDesignText(text, context)]).commit();
-    const header = sheet.addRow(columns.map(headerText));
-    header.font = { bold: true };
-    header.commit();
+    const headerRows = output.headerRows || [columns.map(headerText)];
+    for (const values of headerRows) {
+      const header = sheet.addRow(values);
+      header.font = { bold: true };
+      header.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      // Repeated adjacent labels in a multi-row header represent a grouped heading.
+      for (let start = 0; start < values.length;) {
+        const value = values[start];
+        let end = start + 1;
+        while (value && end < values.length && values[end] === value) end += 1;
+        if (end - start > 1) sheet.mergeCells(header.number, start + 1, header.number, end);
+        start = end;
+      }
+      header.commit();
+    }
     let count = 0;
     for await (const row of prepared.rows) {
       if (!prepared.counted) prepared.totals.add(row);

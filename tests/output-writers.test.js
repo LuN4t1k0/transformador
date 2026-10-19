@@ -52,6 +52,35 @@ test('writes xlsx with headers', async () => {
   assert.deepEqual(workbook.getWorksheet('DATOS').getRow(1).values.slice(1), ['RUT', 'NOMBRE', 'MONTO']);
 });
 
+test('writes and merges multi-row Excel headers before data rows', async () => {
+  const filePath = await tempFile('grouped-headers.xlsx');
+  const groupedColumns = [
+    { outputName: 'RUT' },
+    { outputName: 'APELLIDO PATERNO' },
+    { outputName: 'APELLIDO MATERNO' },
+    { outputName: 'NOMBRE' }
+  ];
+  async function* groupedRows() {
+    yield { output: { RUT: '12345678-5', 'APELLIDO PATERNO': 'PEREZ', 'APELLIDO MATERNO': 'SOTO', NOMBRE: 'ANA' }, raw: {} };
+  }
+  await writeOutput(filePath, {
+    template: template({ format: 'XLSX', sheetName: 'Datos', headerRows: [
+      ['RUT', 'Apellido', 'Apellido', 'Nombre'],
+      ['RUT', 'Paterno', 'Materno', 'Nombre']
+    ] }),
+    columns: groupedColumns,
+    rows: groupedRows()
+  });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+  const sheet = workbook.getWorksheet('Datos');
+  assert.deepEqual(sheet.getRow(1).values.slice(1), ['RUT', 'Apellido', 'Apellido', 'Nombre']);
+  assert.deepEqual(sheet.getRow(2).values.slice(1), ['RUT', 'Paterno', 'Materno', 'Nombre']);
+  assert.equal(sheet.getCell('B1').isMerged, true);
+  assert.equal(sheet.getCell('C1').master.address, 'B1');
+  assert.equal(sheet.getRow(3).getCell(1).value, '12345678-5');
+});
+
 test('reports fixed width overflow as an error instead of truncating', () => {
   assert.equal(formatFixedWidthValue('7', { length: 3, align: 'RIGHT', padChar: '0' }), '007');
   const issues = checkFixedWidth(columns, { RUT: '1234567890', NOMBRE: 'ANA', MONTO: 1 });

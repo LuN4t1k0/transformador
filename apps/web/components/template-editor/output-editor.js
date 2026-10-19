@@ -14,7 +14,7 @@ const labelClass = 'mb-1 block text-xs font-medium text-ink-500';
 // Design options survive a format change; splitting into sheets only exists for Excel.
 function designOf(format, current) {
   const design = {};
-  for (const key of ['fileName', 'headerLines', 'footerLines', 'totals']) if (current[key]) design[key] = current[key];
+  for (const key of ['fileName', 'headerLines', 'headerRows', 'footerLines', 'totals']) if (current[key]) design[key] = current[key];
   if (current.split) design.split = format === 'XLSX' ? current.split : { ...current.split, mode: 'FILES' };
   return design;
 }

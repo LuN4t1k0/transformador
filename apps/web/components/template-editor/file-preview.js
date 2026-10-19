@@ -78,6 +78,7 @@ export function FilePreview({ template, results, sampleCount = results.length, d
   const { columns, output } = template;
   const rowValues = results.map((result) => columns.map((column) => cellText(column, result.output[column.outputName])));
   const totalsValues = design?.totalsRow ? columns.map((column) => cellText(column, design.totalsRow.output[column.outputName])) : null;
+  const excelHeaderRows = output.headerRows || [columns.map(headerText)];
   const headerLines = design?.headerLines || [];
   const footerLines = design?.footerLines || [];
   // One line per problem: columns sharing the same issue on the same rows are listed together.
@@ -126,6 +127,22 @@ export function FilePreview({ template, results, sampleCount = results.length, d
               <th className="sticky left-0 w-10 border-b border-r border-ink-200 bg-ink-50" />
               {columns.map((column, index) => <th key={column.id} className="border-b border-r border-ink-100 px-3 py-0.5 text-center font-normal">{columnLetter(index)}</th>)}
             </tr>
+            {excelHeaderRows.slice(0, -1).map((values, rowIndex) => {
+              const cells = [];
+              for (let index = 0; index < values.length;) {
+                const label = values[index];
+                let span = 1;
+                while (label && index + span < values.length && values[index + span] === label) span += 1;
+                cells.push({ index, label, span });
+                index += span;
+              }
+              return (
+                <tr key={`group-header-${rowIndex}`} className="bg-ink-50 font-sans text-[12px] text-ink-700">
+                  <th aria-hidden="true" className="sticky left-0 border-b border-r border-ink-200 bg-ink-50" />
+                  {cells.map(({ index, label, span }) => <th key={index} colSpan={span} className="border-b border-r border-ink-200 px-3 py-1 text-center font-semibold">{label || ' '}</th>)}
+                </tr>
+              );
+            })}
             <tr className="font-sans text-[13px] text-ink-900">
               <th scope="col" className="sticky left-0 w-10 border-b border-r border-ink-200 bg-ink-50 px-2"><span className="sr-only">Fila del Excel</span></th>
               {columns.map((column) => {

@@ -421,6 +421,14 @@ function normalizeOutputDesign(output, raw = {}, columnIds) {
   if (fileName) design.fileName = fileName;
   const headerLines = designLines(raw.headerLines, 'El encabezado del archivo');
   if (headerLines.some(Boolean)) design.headerLines = headerLines;
+  if (raw.headerRows !== undefined && raw.headerRows !== null) {
+    if (output.format !== 'XLSX') fail('Las filas de encabezado múltiples solo están disponibles para Excel.');
+    if (!Array.isArray(raw.headerRows) || raw.headerRows.length < 1 || raw.headerRows.length > 5) fail('La plantilla admite entre 1 y 5 filas de encabezado.');
+    design.headerRows = raw.headerRows.map((row, rowIndex) => {
+      if (!Array.isArray(row) || row.length !== columnIds.size) fail(`La fila de encabezado ${rowIndex + 1} debe tener una celda por columna de salida.`);
+      return row.map((cell) => text(String(cell ?? ''), `la celda ${rowIndex + 1} del encabezado`, { max: 120 }));
+    });
+  }
   const footerLines = designLines(raw.footerLines, 'El pie del archivo');
   if (footerLines.some(Boolean)) design.footerLines = footerLines;
 
