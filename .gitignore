@@ -27,6 +27,7 @@ build/
 .next/
 **/.next/
 coverage/
+graphify-out/
 
 # OS/editor
 .DS_Store
