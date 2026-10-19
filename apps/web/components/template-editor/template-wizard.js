@@ -49,7 +49,9 @@ function knownHeaderNames(columns) {
 export function TemplateWizard({ initial, initialSample = null, outputExample = null, report = null, note = null, files = null, submitLabel = 'Crear plantilla', onSubmit }) {
   const [template, setTemplate] = useState(initial);
   const [sample, setSample] = useState(initialSample);
-  const [activeId, setActiveId] = useState(initialSample ? 'columns' : 'files');
+  // When the wizard was opened from uploaded examples, show their selected sheets
+  // before the inferred columns. This keeps the sheet controls discoverable.
+  const [activeId, setActiveId] = useState(initialSample && !files ? 'columns' : 'files');
   const [sampleAt, setSampleAt] = useState(0);
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
   const [state, setState] = useState({ saving: false, error: null });
