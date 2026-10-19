@@ -144,32 +144,43 @@ export function TemplateStep({ job, onApply, onFromExample, isBusy }) {
     );
   }
 
-  const selectClass = 'h-9 rounded-md border border-ink-200 bg-white px-2 text-sm text-ink-900';
+  const selectClass = 'h-10 rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900';
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink-900">Plantillas disponibles</h3>
+          <span className="text-xs text-ink-500" aria-live="polite">
+            {visible.length === state.templates.length
+              ? `${state.templates.length} ${state.templates.length === 1 ? 'plantilla' : 'plantillas'}`
+              : `${visible.length} de ${state.templates.length} plantillas`}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
         <label className="relative min-w-0 flex-1 basis-56">
-          <span className="sr-only">Buscar plantilla</span>
+          <span className="sr-only">Buscar por entidad, nombre o servicio</span>
           <Search size={15} className="pointer-events-none absolute left-2.5 top-2.5 text-ink-400" aria-hidden="true" />
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar por nombre, destino o proceso"
-            className="h-9 w-full rounded-md border border-ink-200 bg-white pl-8 pr-2 text-sm text-ink-900"
+            placeholder="Buscar por entidad, nombre o servicio"
+            aria-label="Buscar plantillas por entidad, nombre o servicio"
+            className="h-10 w-full rounded-md border border-ink-200 bg-white pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400"
           />
         </label>
-        <label className="sr-only" htmlFor="filter-destination">Destino</label>
+        <label className="sr-only" htmlFor="filter-destination">Entidad</label>
         <select id="filter-destination" className={selectClass} value={destination} onChange={(event) => setDestination(event.target.value)}>
-          <option value="">Todos los destinos</option>
+          <option value="">Todas las entidades</option>
           {destinations.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <label className="sr-only" htmlFor="filter-process">Proceso</label>
+        <label className="sr-only" htmlFor="filter-process">Servicio</label>
         <select id="filter-process" className={selectClass} value={process} onChange={(event) => setProcess(event.target.value)}>
-          <option value="">Todos los procesos</option>
+          <option value="">Todos los servicios</option>
           {processes.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
+        </div>
       </div>
 
       <div className="grid gap-2" role="radiogroup" aria-label="Plantilla">
