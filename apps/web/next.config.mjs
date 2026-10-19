@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
   async rewrites() {
     const api = process.env.API_INTERNAL_URL || 'http://localhost:4000';
     return {

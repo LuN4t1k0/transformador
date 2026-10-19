@@ -11,7 +11,7 @@ const { seedTemplates } = require('../../../packages/shared/templates');
 const { validateTemplateConfig } = require('../../../packages/template-engine/src/schema');
 const { LocalTemporaryStorage } = require('../../../packages/storage/src');
 const { QUEUE_NAMES, createEventPublisher, createQueues, createRedisConnection } = require('../../../packages/queue/src');
-const { createAuthenticator } = require('./auth/authenticator');
+const { createAuthenticator, requireAdmin } = require('./auth/authenticator');
 const { HttpError, applyCors, createRouter, readJson, sendError, sendJson } = require('./http');
 const { createJobService } = require('./jobs/service');
 const { createTemplateService } = require('./templates/service');
@@ -57,16 +57,16 @@ async function main() {
   const jobService = createJobService({ jobs, templates, templateService, storage, queues, redis, publish, config, audit });
 
   const match = createRouter([
-    ['GET', '/session', async ({ user }) => ({ user: { email: user.email, displayName: user.displayName } })],
+    ['GET', '/session', async ({ user }) => ({ user: { email: user.email, displayName: user.displayName, role: user.role } })],
     ['POST', '/auth/sso/callback', async () => {
       throw new HttpError(501, 'SSO_NOT_CONFIGURED', 'El adaptador de Previley SSO aún no está implementado.');
     }],
     ['GET', '/templates', async ({ url }) => ({ templates: await templateService.list({ includeArchived: url.searchParams.get('archived') === 'true' }) })],
     ['GET', '/templates/facets', async () => templateService.facets()],
-    ['POST', '/templates/draft', async ({ request }) => templateService.draft(request)],
+    ['POST', '/templates/draft', async ({ user, request }) => { requireAdmin(user); return templateService.draft(request); }],
     ['GET', '/assistant/status', async () => assistantService.status()],
-    ['POST', '/assistant/propose', async ({ user, request }) => assistantService.propose(await readJson(request), user)],
-    ['POST', '/templates', async ({ user, request }) => ({ status: 201, body: { template: await templateService.create((await readJson(request)).configuration, user) } })],
+    ['POST', '/assistant/propose', async ({ user, request }) => { requireAdmin(user); return assistantService.propose(await readJson(request), user); }],
+    ['POST', '/templates', async ({ user, request }) => { requireAdmin(user); return { status: 201, body: { template: await templateService.create((await readJson(request)).configuration, user) } }; }],
     ['GET', '/templates/:templateId', async ({ params }) => ({ template: await templateService.get(params.templateId) })],
     ['GET', '/templates/:templateId/example', async ({ params, response }) => {
       const { fileName, buffer } = await templateService.example(params.templateId);
@@ -79,11 +79,11 @@ async function main() {
       return { handled: true };
     }],
     ['GET', '/templates/:templateId/versions/:versionId', async ({ params }) => ({ template: await templateService.getVersion(params.templateId, params.versionId) })],
-    ['POST', '/templates/:templateId/versions', async ({ user, params, request }) => ({ template: await templateService.addVersion(params.templateId, (await readJson(request)).configuration, user) })],
-    ['POST', '/templates/:templateId/duplicate', async ({ user, params, request }) => ({ status: 201, body: { template: await templateService.duplicate(params.templateId, await readJson(request), user) } })],
-    ['POST', '/templates/:templateId/archive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, true, user) })],
-    ['POST', '/templates/:templateId/delete', async ({ user, params, request }) => templateService.remove(params.templateId, await readJson(request), user)],
-    ['POST', '/templates/:templateId/unarchive', async ({ user, params }) => ({ template: await templateService.setArchived(params.templateId, false, user) })],
+    ['POST', '/templates/:templateId/versions', async ({ user, params, request }) => { requireAdmin(user); return { template: await templateService.addVersion(params.templateId, (await readJson(request)).configuration, user) }; }],
+    ['POST', '/templates/:templateId/duplicate', async ({ user, params, request }) => { requireAdmin(user); return { status: 201, body: { template: await templateService.duplicate(params.templateId, await readJson(request), user) } }; }],
+    ['POST', '/templates/:templateId/archive', async ({ user, params }) => { requireAdmin(user); return { template: await templateService.setArchived(params.templateId, true, user) }; }],
+    ['POST', '/templates/:templateId/delete', async ({ user, params, request }) => { requireAdmin(user); return templateService.remove(params.templateId, await readJson(request), user); }],
+    ['POST', '/templates/:templateId/unarchive', async ({ user, params }) => { requireAdmin(user); return { template: await templateService.setArchived(params.templateId, false, user) }; }],
     ['GET', '/jobs', async ({ user }) => ({ jobs: await jobService.list(user) })],
     ['POST', '/jobs', async ({ user, request }) => ({ status: 201, body: { job: await jobService.create(request, user) } })],
     ['POST', '/jobs/delete', async ({ user }) => jobService.removeAll(user)],
@@ -94,7 +94,7 @@ async function main() {
     ['POST', '/jobs/:jobId/template', async ({ user, params, request }) => ({ job: await jobService.applyTemplate(params.jobId, user, await readJson(request)) })],
     ['POST', '/jobs/:jobId/template/from-example', async ({ user, params, request }) => jobService.templateFromExample(params.jobId, user, request)],
     ['PATCH', '/jobs/:jobId/working-template', async ({ user, params, request }) => ({ job: await jobService.saveWorkingTemplate(params.jobId, user, await readJson(request)) })],
-    ['POST', '/jobs/:jobId/template/save', async ({ user, params, request }) => ({ job: await jobService.saveTemplate(params.jobId, user, await readJson(request)) })],
+    ['POST', '/jobs/:jobId/template/save', async ({ user, params, request }) => { requireAdmin(user); return { job: await jobService.saveTemplate(params.jobId, user, await readJson(request)) }; }],
     ['GET', '/jobs/:jobId/sample', async ({ user, params }) => jobService.sample(params.jobId, user)],
     ['POST', '/jobs/:jobId/transform', async ({ user, params, request }) => ({ job: await jobService.transform(params.jobId, user, await readJson(request)) })],
     ['POST', '/jobs/:jobId/purge', async ({ user, params }) => ({ job: await jobService.purge(params.jobId, user) })],

@@ -13,6 +13,7 @@ import { formatDateTime } from '../../../components/job-status';
 import { api } from '../../../lib/api';
 import { describeOutput, describeOutputDesign, describeParameter, describeRowSteps, describeSource, describeTransformations } from '../../../lib/templates';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
+import { useSession } from '../../../lib/hooks/use-session';
 
 // Spreadsheet column letters: A…Z, AA… (the column's place in the generated file).
 function columnLetter(index) {
@@ -28,6 +29,8 @@ export default function TemplateDetailPage() {
   const [error, setError] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [advanced] = useAdvancedMode();
+  const { user } = useSession();
+  const canManage = user?.role === 'admin';
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
@@ -94,7 +97,7 @@ export default function TemplateDetailPage() {
                   <Download size={16} aria-hidden="true" />
                   Excel de ejemplo
                 </button>
-              {advanced ? <>
+              {canManage && advanced ? <>
                 <span aria-hidden="true" className="mx-1 hidden h-6 w-px bg-ink-200 sm:block" />
                 {!template.archivedAt ? (
                   <Link href={`/templates/${template.id}/edit`} className={buttonStyles.secondary}>
@@ -126,7 +129,7 @@ export default function TemplateDetailPage() {
                     <h2 className="text-lg font-bold text-ink-900">Versión {shown.version}{isOldVersion ? ', anterior' : ', vigente'}</h2>
                     <p className="mt-0.5 text-sm text-ink-500">{describeOutput(shown.configuration.output)}, {shown.configuration.columns.length} columnas.</p>
                   </div>
-                  {isOldVersion && !template.archivedAt && advanced ? (
+                  {isOldVersion && !template.archivedAt && canManage && advanced ? (
                     <Link href={`/templates/${template.id}/edit?version=${shown.versionId}`} className={buttonStyles.secondary}>
                       <History size={16} aria-hidden="true" />
                       Restaurar esta versión

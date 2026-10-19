@@ -19,6 +19,7 @@
     "start:api": "node apps/api/src/server.js",
     "start:worker": "node apps/worker/src/worker.js",
     "start:backend": "node scripts/start-backend.js",
+    "start:production": "node scripts/start-production.js",
     "stop": "docker compose down",
     "logs": "docker compose logs -f",
     "test": "node --require ./packages/packs/register.js --test tests/*.test.js",

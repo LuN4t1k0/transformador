@@ -28,21 +28,21 @@ function useBaseConfiguration(job) {
   return base;
 }
 
-function SaveOptions({ job, template, choice, setChoice, meta, setMeta, facets }) {
+function SaveOptions({ job, template, choice, setChoice, meta, setMeta, facets, canManageTemplates }) {
   const base = useBaseConfiguration(job);
   const changed = base === undefined ? false : hasTemplateChanges(base, template);
 
   const options = [
     { value: 'NONE', label: 'Usar solo en este archivo', description: 'No se guarda nada; la próxima vez tendrás que repetir los cambios.' }
   ];
-  if (job.template) {
+  if (canManageTemplates && job.template) {
     options.push({
       value: 'NEW_VERSION',
       label: `Guardar como versión ${job.template.version + 1} de «${job.template.name}»`,
       description: 'Todos los que usen esta plantilla verán los cambios. Las versiones anteriores quedan en el historial.'
     });
   }
-  options.push({ value: 'NEW_TEMPLATE', label: 'Guardar como plantilla nueva', description: 'Útil cuando un destino pide un formato distinto.' });
+  if (canManageTemplates) options.push({ value: 'NEW_TEMPLATE', label: 'Guardar como plantilla nueva', description: 'Útil cuando un destino pide un formato distinto.' });
 
   return (
     <div className="space-y-3">
@@ -88,7 +88,7 @@ function SaveOptions({ job, template, choice, setChoice, meta, setMeta, facets }
   );
 }
 
-export function GenerateStep({ job, template, evaluation, onSave, onTransform, isBusy, blockedReason, parametersForm = null }) {
+export function GenerateStep({ job, template, evaluation, onSave, onTransform, isBusy, blockedReason, parametersForm = null, canManageTemplates = false }) {
   const [choice, setChoice] = useState('NONE');
   const [meta, setMeta] = useState({ name: '', destination: job.template?.destination || '', process: job.template?.process || '', description: '' });
   const [facets, setFacets] = useState({ destinations: [], processes: [] });
@@ -125,7 +125,7 @@ export function GenerateStep({ job, template, evaluation, onSave, onTransform, i
 
       {template.parameters?.length ? parametersForm : null}
 
-      <SaveOptions job={job} template={template} choice={choice} setChoice={setChoice} meta={meta} setMeta={setMeta} facets={facets} />
+      <SaveOptions job={job} template={template} choice={choice} setChoice={setChoice} meta={meta} setMeta={setMeta} facets={facets} canManageTemplates={canManageTemplates} />
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-ink-900">Si hay filas con errores</legend>

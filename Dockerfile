@@ -24,4 +24,4 @@ ENV NODE_ENV=production
 
 EXPOSE 3000 4000
 
-CMD ["npm", "run", "start:backend"]
+CMD ["npm", "run", "start:production"]

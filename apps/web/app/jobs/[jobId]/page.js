@@ -32,6 +32,7 @@ import { useJob } from '../../../lib/hooks/use-job';
 import { StepRail } from '../../../components/job/step-rail';
 import { useWorkingTemplate } from '../../../lib/hooks/use-working-template';
 import { useAdvancedMode } from '../../../lib/hooks/use-advanced-mode';
+import { useSession } from '../../../lib/hooks/use-session';
 import { reviveSampleRows } from '../../../lib/template-editor';
 import { describeOutput } from '../../../lib/templates';
 import { downloadBlob } from '../../../lib/download';
@@ -98,6 +99,7 @@ function initialSection(job) {
 function JobWorkspace({ job, setJob }) {
   const { draft, update, flush, reset, saveState } = useWorkingTemplate(job, setJob);
   const [advanced, setAdvanced] = useAdvancedMode();
+  const { user } = useSession();
   const [activeId, setActiveId] = useState(() => initialSection(job));
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -359,6 +361,7 @@ function JobWorkspace({ job, setJob }) {
         blockedReason={generateBlocked}
         onSave={(payload) => replaceFromServer(() => api.saveJobTemplate(job.id, payload))}
         onTransform={transform}
+        canManageTemplates={user?.role === 'admin'}
       />
     );
   }

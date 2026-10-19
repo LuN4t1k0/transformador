@@ -10,6 +10,7 @@ import { api } from '../../lib/api';
 import { downloadBlob } from '../../lib/download';
 import { outputFormatLabel } from '../../lib/templates';
 import { useAdvancedMode } from '../../lib/hooks/use-advanced-mode';
+import { useSession } from '../../lib/hooks/use-session';
 
 const NO_DESTINATION = 'Sin destino asignado';
 const quietLink = 'inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-cobalt-700 hover:underline';
@@ -18,7 +19,7 @@ function formatDay(date) {
   return new Date(date).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
 }
 
-function TemplateRow({ template, advanced, onDownloadExample }) {
+function TemplateRow({ template, canManage, advanced, onDownloadExample }) {
   const archived = Boolean(template.archivedAt);
   return (
     <li className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-100 py-3.5 ${archived ? 'opacity-70' : ''}`}>
@@ -38,7 +39,7 @@ function TemplateRow({ template, advanced, onDownloadExample }) {
           <Download size={15} aria-hidden="true" />
           Excel de ejemplo
         </button>
-        {advanced && !archived ? (
+        {canManage && advanced && !archived ? (
           <Link href={`/templates/${template.id}/edit`} className={quietLink}>
             <Pencil size={15} aria-hidden="true" />
             Editar
@@ -59,6 +60,8 @@ export default function TemplatesPage() {
   const [query, setQuery] = useState('');
   const [destination, setDestination] = useState('');
   const [advanced] = useAdvancedMode();
+  const { user } = useSession();
+  const canManage = user?.role === 'admin';
   // Set by the detail page after deleting a template, to confirm what happened.
   const [deletedName, setDeletedName] = useState('');
   useEffect(() => {
@@ -100,14 +103,14 @@ export default function TemplatesPage() {
             <h1 className="text-[28px] font-bold leading-tight text-ink-900">Plantillas</h1>
             <p className="mt-1 max-w-[62ch] text-ink-500">El formato que pide cada destino. Se comparten con todo el equipo y cada cambio queda como una versión nueva.</p>
           </div>
-          {advanced ? (
+          {canManage && advanced ? (
             <Link href="/templates/new" className={buttonStyles.primary}>
               <Plus size={16} aria-hidden="true" />
               Nueva plantilla
             </Link>
-          ) : (
+          ) : canManage ? (
             <p className="max-w-xs text-sm text-ink-500">Para crear o editar plantillas, activa el modo avanzado en el menú.</p>
-          )}
+          ) : null}
         </div>
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -140,7 +143,7 @@ export default function TemplatesPage() {
                   <span className="text-sm text-ink-500">{group.templates.length} {group.templates.length === 1 ? 'plantilla' : 'plantillas'}</span>
                 </div>
                 <ul className="border-t border-ink-200">
-                  {group.templates.map((template) => <TemplateRow key={template.id} template={template} advanced={advanced} onDownloadExample={downloadExample} />)}
+                  {group.templates.map((template) => <TemplateRow key={template.id} template={template} canManage={canManage} advanced={advanced} onDownloadExample={downloadExample} />)}
                 </ul>
               </section>
             ))

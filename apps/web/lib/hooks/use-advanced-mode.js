@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useSession } from './use-session';
 
 const STORAGE_KEY = 'previley.advancedMode';
 const EVENT = 'previley:advanced-mode';
@@ -16,6 +17,7 @@ function read() {
 // Per-browser preference: simple mode (use saved templates) vs advanced mode (edit columns and templates).
 export function useAdvancedMode() {
   const [advanced, setAdvanced] = useState(false);
+  const { user } = useSession();
 
   useEffect(() => {
     setAdvanced(read());
@@ -38,5 +40,7 @@ export function useAdvancedMode() {
     window.dispatchEvent(new Event(EVENT));
   }, []);
 
-  return [advanced, update];
+  // The preference controls the UI, but an authenticated administrator session
+  // is always required before advanced capabilities become visible.
+  return [advanced && user?.role === 'admin', update];
 }
